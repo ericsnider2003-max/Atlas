@@ -266,9 +266,14 @@ const GUARDS: &[(&str, &str, &str)] = &[
         "an unparseable amount goes back to silently booking as a zero transaction",
     ),
     (
-        "src/daemon.rs",
-        "MAX_SLEEP_SECS",
-        "the loop goes back to sleeping for the full backed-off interval, and a signal or typed command can sit unnoticed for up to three minutes on battery",
+        "src/daemon/running.rs",
+        "crate::perf::loop_sleep_ms(",
+        "the loop's nap stops being shortened for the next scheduled job and the friends' door (which is polled, not rung), so a job or a signal can sit unnoticed for the whole backed-off interval, up to three minutes on battery",
+    ),
+    (
+        "src/daemon/running.rs",
+        "crate::doorbell::wait_after(seen, (left.as_millis() as u64).min(STOP_FILE_LOOK_MS))",
+        "the nap stops waiting on the doorbell, or stops looking for the stop file (the one stop request that rings nothing), and a typed command or a stop sits unnoticed for the whole idle interval",
     ),
     (
         "src/kin.rs",

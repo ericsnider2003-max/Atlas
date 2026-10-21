@@ -1454,22 +1454,18 @@ pub fn total_bytes(pieces: &[Piece]) -> u64 {
     pieces.iter().map(|p| p.bytes).sum()
 }
 
-/// The one question put in front of the owner for these missing pieces: how
-/// many, how big all told, which, and how to say yes. Worked out from the
-/// catalogue's own sizes, so the number is the download, not a guess. The
-/// same words every time for the same list -- that is what keeps the ask to
-/// one (`Daemon::keep_everything_here` files it once).
-pub fn ask_for(missing: &[Piece]) -> String {
-    ask_for_setup(missing, false)
-}
-
 /// What the code checkers' own second step fetches, said in words for the ask
 /// (2026-10-21: it used to download Python, node packages and the Rust
 /// toolchain with no yes).
 const FINISH_STEP: &str = "the code checkers' own setup (Python through uv, the TypeScript and Prettier packages, and the Rust toolchain, each downloaded from its own site)";
 
-/// `ask_for`, and -- when `finish_code_tools` -- the code checkers' second
-/// setup step named in it, so the one yes covers what will be downloaded.
+/// The one question put in front of the owner for these missing pieces: how
+/// many, how big all told, which, and how to say yes. Worked out from the
+/// catalogue's own sizes, so the number is the download, not a guess. The
+/// same words every time for the same list -- that is what keeps the ask to
+/// one (`Daemon::keep_everything_here` files it once). When
+/// `finish_code_tools`, the code checkers' second setup step is named in it,
+/// so the one yes covers what will be downloaded.
 fn ask_for_setup(missing: &[Piece], finish_code_tools: bool) -> String {
     if missing.is_empty() {
         return format!(
@@ -1570,7 +1566,7 @@ mod asking_first {
     #[test]
     fn the_ask_is_the_same_words_for_the_same_list() {
         let m = everything_else();
-        assert_eq!(ask_for(&m), ask_for(&m));
+        assert_eq!(ask_for_setup(&m, false), ask_for_setup(&m, false));
     }
 
     #[cfg(all(windows, target_arch = "x86_64"))]

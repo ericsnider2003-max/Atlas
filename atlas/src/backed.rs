@@ -390,7 +390,8 @@ fn task_object(after: &[&str], now: bool, sentence: &str) -> bool {
     }
     if matches!(
         after.first().copied(),
-        Some("it" | "that" | "this" | "them" | "those")
+        // Not "this": "I'll make this simple" is a manner of speaking.
+        Some("it" | "that" | "them" | "those")
     ) {
         return true;
     }
@@ -416,8 +417,10 @@ fn task_object(after: &[&str], now: bool, sentence: &str) -> bool {
         let w = w.trim_matches(|c: char| !c.is_alphanumeric());
         w.contains('\\')
             || w.contains('/')
-            || w.split_once('.')
-                .is_some_and(|(a, b)| !a.is_empty() && !b.is_empty())
+            // A file name has a lettered extension; "version 2.0" is not one.
+            || w.split_once('.').is_some_and(|(a, b)| {
+                !a.is_empty() && b.chars().next().is_some_and(|c| c.is_ascii_alphabetic())
+            })
     })
 }
 
@@ -579,7 +582,14 @@ fn claims_by_structure(sentence: &str) -> bool {
         let general = sentence_words
             .clone()
             .any(|w| FINITE.contains(w) || GENERAL.contains(w));
-        if says_now || !general {
+        // A gerund clause set off by a comma with no task named is an
+        // instruction's lead-in ("Adding the eggs one at a time, beat until
+        // smooth"), not a report (21 Oct 2026 review).
+        // Only commas after the "Sure, " that opens it count.
+        let own = sentence.to_lowercase();
+        let from = own.find(first).unwrap_or(0);
+        let lead_in = own[from..].contains(',') && !task_object(&[], false, sentence);
+        if says_now || (!general && !lead_in) {
             return true;
         }
     }
@@ -636,7 +646,14 @@ fn claims_by_structure(sentence: &str) -> bool {
                         .split_whitespace()
                         .skip(a.split_whitespace().count())
                         .collect();
-                    if !WEAK_FUTURE.contains(a)
+                    // "I'll make this simple": a manner of speaking.
+                    if *a == "make" && matches!(object.first(), Some(&("this" | "things" | "sure")))
+                    {
+                        continue;
+                    }
+                    // "We'll create the sauce first" is a plan said to a
+                    // reader, so "we'll" needs the task named like a weak verb.
+                    if (!WEAK_FUTURE.contains(a) && *w != "we'll")
                         || task_object(&object, words.contains(&"now"), sentence)
                     {
                         return true;
@@ -1273,6 +1290,12 @@ mod structure_tests {
             "Nice choice.",
             "Running is good exercise.",
             "That sounds like a plan.",
+            // Second review, 21 Oct 2026: recipes, manner of speaking, versions.
+            "Adding the eggs one at a time, beat until smooth.",
+            "Removing the lid, let it simmer for ten minutes.",
+            "I'll make this simple.",
+            "We'll create the sauce first.",
+            "I'm running version 2.0 of the app.",
         ] {
             assert!(!claims_work_started(s), "{s}");
         }

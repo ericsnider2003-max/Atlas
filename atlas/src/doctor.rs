@@ -394,12 +394,12 @@ pub fn run(cfg: &Config, tools: Option<&ToolsConfig>, plat: &dyn Platform) -> Ve
                 (Some(m), true) => (true, format!("{m}, started when it's needed")),
                 (Some(m), false) => (
                     false,
-                    format!("{m} is here but the program that runs it (llama-server) isn't — start Atlas again and its setup fetches it"),
+                    format!("{m} is here but the program that runs it (llama-server) isn't — say \"finish setting up\" (or Download on the Connections page) and I'll fetch it"),
                 ),
                 (None, _) => (
                     false,
-                    "no language model yet, so only the things on the command list work — start Atlas again \
-                     and its setup fetches it (about 3 GB)"
+                    "no language model yet, so only the things on the command list work — say \"finish setting up\" \
+                     (or Download on the Connections page) and I'll fetch it (about 3 GB)"
                         .to_string(),
                 ),
             }

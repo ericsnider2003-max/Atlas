@@ -75,7 +75,7 @@ impl Default for Config {
 /// Half the machine's processors, at least two and at most four (the same
 /// reading as `kokoro::thread_count`; logical processors halved approximates
 /// the physical cores).
-pub fn thread_count(cfg: &Config) -> u32 {
+pub fn server_thread_count(cfg: &Config) -> u32 {
     if cfg.threads > 0 {
         return cfg.threads;
     }
@@ -286,7 +286,7 @@ fn free_loopback_port() -> std::io::Result<u16> {
 }
 
 /// The arguments that make the server private and loaded with `model`.
-pub fn server_args(model: &str, port: u16, threads: u32, audio_ctx: u32) -> Vec<String> {
+pub fn whisper_server_args(model: &str, port: u16, threads: u32, audio_ctx: u32) -> Vec<String> {
     let mut a = vec![
         "-m".into(),
         model.into(),
@@ -374,7 +374,12 @@ fn spawn(program: &Path, model: &str, cfg: &Config) -> Result<Running, String> {
         Err(_) => std::process::Stdio::null(),
     };
     let mut child = crate::tools::command(program)
-        .args(server_args(model, port, thread_count(cfg), cfg.audio_ctx))
+        .args(whisper_server_args(
+            model,
+            port,
+            server_thread_count(cfg),
+            cfg.audio_ctx,
+        ))
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(log)
@@ -425,7 +430,7 @@ fn kill(mut r: Running) {
 
 /// Stop the server now (Atlas ending, a different model, the last relief
 /// step). True when one was running.
-pub fn stop_now(why: &str) -> bool {
+pub fn stop_server_now(why: &str) -> bool {
     let mut s = shared();
     s.life.stopped();
     match s.running.take() {
@@ -481,7 +486,7 @@ fn ensure_reaper(idle: Duration) {
             s.life.idle_expired(clock(), idle.as_millis() as u64)
         };
         if expired {
-            stop_now(&format!("idle for {} minutes", idle.as_secs() / 60));
+            stop_server_now(&format!("idle for {} minutes", idle.as_secs() / 60));
         }
     });
 }
@@ -618,7 +623,7 @@ pub fn transcribe(
     // A different model than the one loaded: restart with the new one.
     let wrong_model = shared().running.as_ref().is_some_and(|r| r.model != model);
     if wrong_model {
-        stop_now("the speech model changed");
+        stop_server_now("the speech model changed");
     }
     // The child may have died by itself (killed, crashed): treat as stopped.
     {
@@ -871,17 +876,17 @@ mod tests {
 
     #[test]
     fn server_is_private_and_threads_are_sane() {
-        let a = server_args("m.bin", 5000, 2, 0);
+        let a = whisper_server_args("m.bin", 5000, 2, 0);
         let at = a.iter().position(|x| x == "--host").unwrap();
         assert_eq!(a[at + 1], "127.0.0.1");
         assert!(!a.iter().any(|x| x == "0.0.0.0"));
         assert!(!a.iter().any(|x| x == "-ac"));
-        assert!(server_args("m.bin", 5000, 2, 750)
+        assert!(whisper_server_args("m.bin", 5000, 2, 750)
             .windows(2)
             .any(|w| w == ["-ac", "750"]));
-        assert!((2..=4).contains(&thread_count(&Config::default())));
+        assert!((2..=4).contains(&server_thread_count(&Config::default())));
         assert_eq!(
-            thread_count(&Config {
+            server_thread_count(&Config {
                 threads: 7,
                 ..Config::default()
             }),
@@ -937,7 +942,7 @@ mod tests {
         let first = transcribe(&cfg, &v, Path::new(&wav), &|| false);
         let second = transcribe(&cfg, &v, Path::new(&wav), &|| false);
         assert!(resident());
-        assert!(stop_now("test over"));
+        assert!(stop_server_now("test over"));
         assert!(!resident());
         match (first, second) {
             (Outcome::Text(a), Outcome::Text(b)) => {

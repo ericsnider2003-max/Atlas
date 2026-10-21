@@ -752,7 +752,7 @@ pub(super) fn handle(
     // Not understood, with no model to ask: said, not "blocked".
     if matches!(intent, Intent::Unknown(_)) {
         return "I can't answer that here — general questions need my language model, and there isn't one \
-                running. Start Atlas again and its setup fetches it (about 3 GB)."
+                running. Say \"finish setting up\" (or use Download on the Connections page) and I'll fetch it (about 3 GB)."
             .into();
     }
     if let Err(e) = gate_with_identity(cfg, &intent, approver) {

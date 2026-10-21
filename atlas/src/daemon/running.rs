@@ -1520,7 +1520,12 @@ impl<'a> Daemon<'a> {
             // Read before looking (`doorbell`): news that lands between the
             // look and the wait has already moved the count.
             let seen = crate::doorbell::rung();
-            if crate::goodbye::asked_to_stop() {
+            // The stop file is the one way out that rings nothing: another
+            // process writes it. So the nap looks for it every
+            // `STOP_FILE_LOOK_MS` (one `stat`), however long the nap is.
+            if crate::goodbye::asked_to_stop()
+                || crate::goodbye::asked_by_file(&crate::roots::state_dir())
+            {
                 return None;
             }
             if let Some(u) = keyboard.poll() {
@@ -1545,7 +1550,7 @@ impl<'a> Daemon<'a> {
             }
             // Asleep until a typed line, the microphone, the hub or a stop
             // rings, not awake 20 times a second to look (audit Q14).
-            crate::doorbell::wait_after(seen, left.as_millis() as u64);
+            crate::doorbell::wait_after(seen, (left.as_millis() as u64).min(STOP_FILE_LOOK_MS));
         }
     }
 

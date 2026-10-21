@@ -253,6 +253,11 @@ pub const PERSIST_SWEEP_SECS: u64 = 60;
 /// The tick's nap while the crew has something it could start.
 const CREW_NAP_MS: u64 = 100;
 
+/// How often an idle nap looks for the stop file (`goodbye::asked_by_file`),
+/// the one stop request that rings no doorbell because another process writes
+/// it. A single `stat`; everything else ends the nap by ringing.
+const STOP_FILE_LOOK_MS: u64 = 2_000;
+
 /// A hub request slower than this, from arriving to answered, gets a log line
 /// of its own (`Daemon::hub_timing`).
 const SLOW_HUB_MS: u64 = 150;

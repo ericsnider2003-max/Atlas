@@ -4,7 +4,6 @@
 //! memory to load it isn't there. The plain half is `crate::floor`.
 
 use super::*;
-use crate::floor as fl;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
@@ -51,8 +50,8 @@ impl<'a> Daemon<'a> {
         kind: &str,
         stage: &str,
         what: &str,
-        work: impl FnOnce() -> fl::Done,
-    ) -> fl::Done {
+        work: impl FnOnce() -> crate::floor::Done,
+    ) -> crate::floor::Done {
         let t = self.now_acting();
         let id = format!(
             "{}floor-{kind}:{t}:{}",
@@ -90,7 +89,7 @@ impl<'a> Daemon<'a> {
     /// "Create a text file named x.txt in my Desktop folder containing ...".
     pub(super) fn on_create_file(&mut self, raw: &str) -> String {
         let today = self.floor_today();
-        let spec = match fl::read_create(raw, &today) {
+        let spec = match crate::floor::read_create(raw, &today) {
             Ok(s) => s,
             Err(question) => return question,
         };
@@ -100,7 +99,7 @@ impl<'a> Daemon<'a> {
                 spec.name, spec.name
             );
         };
-        let Some(folder) = fl::folder_named(&words) else {
+        let Some(folder) = crate::floor::folder_named(&words) else {
             return format!(
                 "I couldn't find a folder called \"{words}\", so I didn't make {}. Name one that exists, like \"my Documents folder\" or a full path.",
                 spec.name
@@ -108,36 +107,36 @@ impl<'a> Daemon<'a> {
         };
         let what = format!("Making {} in {}", spec.name, folder.display());
         self.floor_job("create-file", "Make a file", &what, move || {
-            fl::create_file(&spec, &folder)
+            crate::floor::create_file(&spec, &folder)
         })
         .said
     }
 
     /// "Read atlas-test.txt on my Desktop": changes nothing, so no job.
     pub(super) fn on_read_file(&mut self, raw: &str) -> String {
-        let Some((name, folder)) = fl::read_file_ask(raw) else {
+        let Some((name, folder)) = crate::floor::read_file_ask(raw) else {
             return "Which file? Say it like: read notes.txt on my Desktop.".into();
         };
         let folder = match folder {
-            Some(w) => match fl::folder_named(&w) {
+            Some(w) => match crate::floor::folder_named(&w) {
                 Some(p) => Some(p),
                 None => return format!("I couldn't find a folder called \"{w}\"."),
             },
             None => None,
         };
-        match fl::locate(&name, folder.as_deref()) {
-            Ok(p) => fl::read_file(&p).said,
+        match crate::floor::locate(&name, folder.as_deref()) {
+            Ok(p) => crate::floor::read_file(&p).said,
             Err(why) => why,
         }
     }
 
     /// "Move x.txt from my Desktop to my Documents folder".
     pub(super) fn on_move_file(&mut self, raw: &str) -> String {
-        let Some((name, from, to)) = fl::read_move(raw) else {
+        let Some((name, from, to)) = crate::floor::read_move(raw) else {
             return "Say it like: move notes.txt from my Desktop to my Documents folder.".into();
         };
         let from = match from {
-            Some(w) => match fl::folder_named(&w) {
+            Some(w) => match crate::floor::folder_named(&w) {
                 Some(p) => Some(p),
                 None => {
                     return format!(
@@ -147,16 +146,16 @@ impl<'a> Daemon<'a> {
             },
             None => None,
         };
-        let src = match fl::locate(&name, from.as_deref()) {
+        let src = match crate::floor::locate(&name, from.as_deref()) {
             Ok(p) => p,
             Err(why) => return format!("{why} Nothing was moved."),
         };
-        let Some(dest) = fl::folder_named(&to) else {
+        let Some(dest) = crate::floor::folder_named(&to) else {
             return format!("I couldn't find a folder called \"{to}\", so nothing was moved.");
         };
         let what = format!("Moving {name} to {}", dest.display());
         self.floor_job("move-file", "Move a file", &what, move || {
-            fl::move_file(&src, &dest)
+            crate::floor::move_file(&src, &dest)
         })
         .said
     }
@@ -164,10 +163,10 @@ impl<'a> Daemon<'a> {
     /// "Back up my Documents folder to D:\Backups". With no place said, asks,
     /// and the answer comes back to `floor_answer`.
     pub(super) fn on_back_up_folder(&mut self, raw: &str) -> String {
-        let Some((folder_words, dest_words)) = fl::read_backup(raw) else {
+        let Some((folder_words, dest_words)) = crate::floor::read_backup(raw) else {
             return "Which folder? Say it like: back up my Documents folder to D:\\Backups.".into();
         };
-        let Some(src) = fl::folder_named(&folder_words) else {
+        let Some(src) = crate::floor::folder_named(&folder_words) else {
             return format!(
                 "I couldn't find a folder called \"{folder_words}\", so I didn't back anything up."
             );
@@ -180,7 +179,7 @@ impl<'a> Daemon<'a> {
             );
         }
         match dest_words {
-            Some(w) => match fl::folder_named(&w) {
+            Some(w) => match crate::floor::folder_named(&w) {
                 Some(dest) => self.start_folder_backup(src, dest),
                 None => format!("I couldn't find a place called \"{w}\" to put the backup. Name a folder or a full path."),
             },
@@ -189,7 +188,7 @@ impl<'a> Daemon<'a> {
                     "Where should I put the backup of {}? Say a folder, like \"D:\\Backups\" or \"my Documents folder\". I'll make a new dated folder inside it and never overwrite anything there.",
                     src.display()
                 );
-                self.floor.pending = Some(fl::Pending::BackupDest { folder: src });
+                self.floor.pending = Some(crate::floor::Pending::BackupDest { folder: src });
                 self.session.ask(&q);
                 q
             }
@@ -200,7 +199,7 @@ impl<'a> Daemon<'a> {
     /// begun here and ended by the worker with how it really ended.
     fn start_folder_backup(&mut self, src: std::path::PathBuf, dest: std::path::PathBuf) -> String {
         let t = self.now_acting();
-        let plan = match fl::plan_backup(&src, &dest, &self.floor_stamp()) {
+        let plan = match crate::floor::plan_backup(&src, &dest, &self.floor_stamp()) {
             Ok(p) => p,
             Err(why) => return why,
         };
@@ -227,7 +226,7 @@ impl<'a> Daemon<'a> {
         let jobs = self.hub_jobs.clone();
         let (job_id, worker_plan) = (id.clone(), plan.clone());
         let work: crew::Work = Box::new(move |c| {
-            let done = fl::run_backup(&worker_plan, &|| c.stopping());
+            let done = crate::floor::run_backup(&worker_plan, &|| c.stopping());
             let state = if done.ok {
                 crate::job::State::Succeeded
             } else {
@@ -287,9 +286,9 @@ impl<'a> Daemon<'a> {
     /// moment, from the process list and the memory counters.
     pub(super) fn on_whats_using_memory(&mut self) -> String {
         let procs = crate::tune::snapshot();
-        let top = fl::biggest(&procs, std::process::id());
-        let (total, free) = fl::memory_now();
-        fl::memory_said(&top, total, free)
+        let top = crate::floor::biggest(&procs, std::process::id());
+        let (total, free) = crate::floor::memory_now();
+        crate::floor::memory_said(&top, total, free)
     }
 
     /// Closing an app Atlas knows: refused for Windows and Atlas itself, then
@@ -303,23 +302,23 @@ impl<'a> Daemon<'a> {
         let what = format!("Closing {app}");
         self.floor_job("close-app", "Close an app", &what, move || {
             if let Err(e) = workspace::close_app(cfg, plat, &name) {
-                return fl::Done::no(format!("I couldn't close {name}: {e}."));
+                return crate::floor::Done::no(format!("I couldn't close {name}: {e}."));
             }
             let Ok(spec) = cfg.apps.get(&name) else {
-                return fl::Done::no(format!("I asked {name} to close but have no way to check it."));
+                return crate::floor::Done::no(format!("I asked {name} to close but have no way to check it."));
             };
             for _ in 0..12 {
                 match plat.find_window(spec) {
-                    Ok(None) => return fl::Done::yes(format!("Closed {name}. Checked: its window is gone.")),
+                    Ok(None) => return crate::floor::Done::yes(format!("Closed {name}. Checked: its window is gone.")),
                     Ok(Some(_)) => std::thread::sleep(std::time::Duration::from_millis(250)),
                     Err(e) => {
-                        return fl::Done::no(format!(
+                        return crate::floor::Done::no(format!(
                             "I asked {name} to close but couldn't check that it did: {e}."
                         ))
                     }
                 }
             }
-            fl::Done::no(format!(
+            crate::floor::Done::no(format!(
                 "I asked {name} to close, but its window is still there. It may be asking whether to save; I left it."
             ))
         })
@@ -328,10 +327,10 @@ impl<'a> Daemon<'a> {
 
     // ------------------------------------------------ a question needing the model
 
-    /// What is known about the model right now, for `fl::decide`. `None` when
+    /// What is known about the model right now, for `crate::floor::decide`. `None` when
     /// this isn't Atlas's own model to judge: a model of your own is set, or
     /// Atlas isn't the one starting it.
-    fn floor_facts(&self) -> Option<fl::Facts> {
+    fn floor_facts(&self) -> Option<crate::floor::Facts> {
         if let Some(f) = &self.floor.facts {
             return Some(f());
         }
@@ -351,7 +350,7 @@ impl<'a> Daemon<'a> {
         }
         let (registry, _) =
             crate::models::Registry::scan_reporting(&crate::models::Registry::dir_for(&tc.models));
-        let (total_mb, free_mb) = fl::memory_now();
+        let (total_mb, free_mb) = crate::floor::memory_now();
         let machine = crate::fit::machine_from(
             &crate::health::read_machine(),
             crate::fit::Graphics::default(),
@@ -361,11 +360,11 @@ impl<'a> Daemon<'a> {
             .or_else(|| registry.choose_for(&tc.models, u64::MAX))
             .map(|m| (m.id.clone(), crate::models::footprint_mb(m, &tc.models)));
         let procs = crate::tune::snapshot();
-        let closable = fl::biggest(&procs, std::process::id())
+        let closable = crate::floor::biggest(&procs, std::process::id())
             .into_iter()
             .filter(|u| u.closable)
             .collect();
-        Some(fl::Facts {
+        Some(crate::floor::Facts {
             loaded: false,
             model,
             free_mb,
@@ -385,15 +384,15 @@ impl<'a> Daemon<'a> {
             return None;
         }
         let facts = self.floor_facts()?;
-        match fl::decide(&facts) {
-            fl::Choice::Proceed => None,
+        match crate::floor::decide(&facts) {
+            crate::floor::Choice::Proceed => None,
             // With the free online model standing in and labelled as such,
             // the existing path answers; only with nothing at all to answer
             // with is it said plainly here.
-            fl::Choice::NoModel => self.llm.is_none().then(fl::no_model_said),
-            fl::Choice::Low(ask) => {
-                let q = fl::say(&ask);
-                self.floor.pending = Some(fl::Pending::LowMemory {
+            crate::floor::Choice::NoModel => self.llm.is_none().then(crate::floor::no_model_said),
+            crate::floor::Choice::Low(ask) => {
+                let q = crate::floor::say(&ask);
+                self.floor.pending = Some(crate::floor::Pending::LowMemory {
                     request: said.to_string(),
                     online: ask.online,
                     need_mb: ask.need_mb,
@@ -408,7 +407,7 @@ impl<'a> Daemon<'a> {
     /// wasn't an answer, and is heard as a new request.
     pub(super) fn floor_answer(
         &mut self,
-        pending: fl::Pending,
+        pending: crate::floor::Pending,
         said: &str,
         t: u64,
         how: Arrival,
@@ -422,43 +421,43 @@ impl<'a> Daemon<'a> {
 
     fn floor_answer_at(
         &mut self,
-        pending: fl::Pending,
+        pending: crate::floor::Pending,
         said: &str,
         t: u64,
         how: Arrival,
     ) -> Option<String> {
         match pending {
-            fl::Pending::BackupDest { folder } => {
-                if matches!(fl::follow_up(said), fl::Follow::Cancel) {
+            crate::floor::Pending::BackupDest { folder } => {
+                if matches!(crate::floor::follow_up(said), crate::floor::Follow::Cancel) {
                     return Some("Alright, no backup.".into());
                 }
-                let words = fl::backup_destination(said)?;
-                Some(match fl::folder_named(&words) {
+                let words = crate::floor::backup_destination(said)?;
+                Some(match crate::floor::folder_named(&words) {
                     Some(dest) => self.start_folder_backup(folder, dest),
                     None => format!("I couldn't find a place called \"{words}\". Nothing was backed up."),
                 })
             }
-            fl::Pending::LowMemory {
+            crate::floor::Pending::LowMemory {
                 request,
                 online,
                 need_mb,
-            } => match fl::follow_up(said) {
-                fl::Follow::Online if online => Some(self.answer_online(&request, t, how)),
-                fl::Follow::Online => Some(
+            } => match crate::floor::follow_up(said) {
+                crate::floor::Follow::Online if online => Some(self.answer_online(&request, t, how)),
+                crate::floor::Follow::Online => Some(
                     "I can't answer online right now: the online fallback is off or I'm offline. Say \"close <app>\" from the list and I'll load the model, or free some memory yourself and ask again."
                         .into(),
                 ),
-                fl::Follow::Close(name) => Some(self.ask_to_close_for_memory(request, &name, online, need_mb)),
-                fl::Follow::Cancel => Some("Alright, I've dropped that question. Ask again whenever you like.".into()),
-                fl::Follow::Other => None,
+                crate::floor::Follow::Close(name) => Some(self.ask_to_close_for_memory(request, &name, online, need_mb)),
+                crate::floor::Follow::Cancel => Some("Alright, I've dropped that question. Ask again whenever you like.".into()),
+                crate::floor::Follow::Other => None,
             },
-            fl::Pending::CloseForMemory {
+            crate::floor::Pending::CloseForMemory {
                 request,
                 name,
                 mb,
                 need_mb,
             } => {
-                if !fl::yes(said) {
+                if !crate::floor::yes(said) {
                     return Some("Alright, I haven't closed anything.".into());
                 }
                 Some(self.close_for_memory(request, &name, mb, need_mb, t, how))
@@ -496,8 +495,8 @@ impl<'a> Daemon<'a> {
     ) -> String {
         // "close it" names nothing: ask which, never guess (closing the wrong
         // program loses its unsaved work).
-        if fl::names_nothing(name) {
-            self.floor.pending = Some(fl::Pending::LowMemory {
+        if crate::floor::names_nothing(name) {
+            self.floor.pending = Some(crate::floor::Pending::LowMemory {
                 request,
                 online,
                 need_mb,
@@ -507,27 +506,29 @@ impl<'a> Daemon<'a> {
         }
         // The programs that were offered are the ones that can be picked;
         // anything else running is looked up only to say why it isn't.
-        let offered: Vec<fl::Use> = match self.floor_facts() {
+        let offered: Vec<crate::floor::Use> = match self.floor_facts() {
             Some(f) => f.closable,
-            None => fl::biggest(&crate::tune::snapshot(), std::process::id())
+            None => crate::floor::biggest(&crate::tune::snapshot(), std::process::id())
                 .into_iter()
                 .filter(|u| u.closable)
                 .collect(),
         };
         // Matched by whole name, then whole words, then a prefix.
-        let all = if fl::pick_program(name, &offered).is_some() {
+        let all = if crate::floor::pick_program(name, &offered).is_some() {
             Vec::new()
         } else {
-            fl::biggest(&crate::tune::snapshot(), std::process::id())
+            crate::floor::biggest(&crate::tune::snapshot(), std::process::id())
         };
-        match fl::pick_program(name, &offered).or_else(|| fl::pick_program(name, &all)) {
+        match crate::floor::pick_program(name, &offered)
+            .or_else(|| crate::floor::pick_program(name, &all))
+        {
             Some(u) if u.closable => {
                 let q = format!(
                     "Closing {} ({}) closes all of its windows, and anything unsaved in them is lost. Go ahead?",
                     u.name,
-                    fl::mb_text(u.mb)
+                    crate::floor::mb_text(u.mb)
                 );
-                self.floor.pending = Some(fl::Pending::CloseForMemory {
+                self.floor.pending = Some(crate::floor::Pending::CloseForMemory {
                     request,
                     name: u.name.clone(),
                     mb: u.mb,
@@ -537,7 +538,7 @@ impl<'a> Daemon<'a> {
                 q
             }
             Some(u) => {
-                self.floor.pending = Some(fl::Pending::LowMemory {
+                self.floor.pending = Some(crate::floor::Pending::LowMemory {
                     request,
                     online,
                     need_mb,
@@ -549,7 +550,7 @@ impl<'a> Daemon<'a> {
                 )
             }
             None => {
-                self.floor.pending = Some(fl::Pending::LowMemory {
+                self.floor.pending = Some(crate::floor::Pending::LowMemory {
                     request,
                     online,
                     need_mb,
@@ -585,7 +586,7 @@ impl<'a> Daemon<'a> {
         );
         if !done.ok {
             // Still short, and the choice still stands.
-            self.floor.pending = Some(fl::Pending::LowMemory {
+            self.floor.pending = Some(crate::floor::Pending::LowMemory {
                 request,
                 online: self
                     .floor_facts()
@@ -598,10 +599,13 @@ impl<'a> Daemon<'a> {
             return format!("{} The model still isn't loaded.", done.said);
         }
         // Looked at again, not assumed.
-        match self.floor_facts().map(|f| (fl::decide(&f), f.free_mb)) {
-            Some((fl::Choice::Low(ask), free)) => {
-                let q = fl::say(&ask);
-                self.floor.pending = Some(fl::Pending::LowMemory {
+        match self
+            .floor_facts()
+            .map(|f| (crate::floor::decide(&f), f.free_mb))
+        {
+            Some((crate::floor::Choice::Low(ask), free)) => {
+                let q = crate::floor::say(&ask);
+                self.floor.pending = Some(crate::floor::Pending::LowMemory {
                     request,
                     online: ask.online,
                     need_mb: ask.need_mb,
@@ -610,7 +614,7 @@ impl<'a> Daemon<'a> {
                 format!(
                     "{} Memory free now: {}. That's still not enough. {q}",
                     done.said,
-                    fl::mb_text(free)
+                    crate::floor::mb_text(free)
                 )
             }
             _ => {
@@ -631,8 +635,8 @@ impl<'a> Daemon<'a> {
     /// so the choice is exercised without a real model, memory or program.
     pub fn floor_with_facts_for_test(
         &mut self,
-        facts: Arc<dyn Fn() -> fl::Facts + Send + Sync>,
-        closer: Arc<dyn Fn(&str) -> fl::Done + Send + Sync>,
+        facts: Arc<dyn Fn() -> crate::floor::Facts + Send + Sync>,
+        closer: Arc<dyn Fn(&str) -> crate::floor::Done + Send + Sync>,
         online: Option<Arc<dyn Llm>>,
     ) {
         self.floor.facts = Some(facts);
@@ -643,7 +647,7 @@ impl<'a> Daemon<'a> {
 
 /// Close one running program by name: refused for Windows and Atlas's own
 /// processes, asked to close politely, waited for, and looked for again.
-fn close_program(name: &str, mb: u64) -> fl::Done {
+fn close_program(name: &str, mb: u64) -> crate::floor::Done {
     let procs = crate::tune::snapshot();
     let family = crate::tune::atlas_family(&procs, std::process::id());
     let loads = crate::tune::sample_load(&procs, &procs, 1, 1);
@@ -651,7 +655,7 @@ fn close_program(name: &str, mb: u64) -> fl::Done {
         .into_iter()
         .find(|l| l.name.eq_ignore_ascii_case(name))
     else {
-        return fl::Done::no(format!(
+        return crate::floor::Done::no(format!(
             "{name} isn't running any more, so there was nothing to close."
         ));
     };
@@ -659,7 +663,7 @@ fn close_program(name: &str, mb: u64) -> fl::Done {
         || !crate::tune::may_close(&load.name, &[])
         || load.pids.iter().any(|p| family.contains(p))
     {
-        return fl::Done::no(format!(
+        return crate::floor::Done::no(format!(
             "I won't close {name}: it's part of Windows or Atlas itself."
         ));
     }
@@ -671,15 +675,15 @@ fn close_program(name: &str, mb: u64) -> fl::Done {
                 .filter(|p| p.name.eq_ignore_ascii_case(name))
                 .count();
             if left == 0 {
-                fl::Done::yes(format!("Closed {name} (it was holding about {}). Checked: no process of it is left.", fl::mb_text(mb)))
+                crate::floor::Done::yes(format!("Closed {name} (it was holding about {}). Checked: no process of it is left.", crate::floor::mb_text(mb)))
             } else {
-                fl::Done::no(format!("I asked {name} to close, but {left} of its processes are still running."))
+                crate::floor::Done::no(format!("I asked {name} to close, but {left} of its processes are still running."))
             }
         }
-        Some(crate::tune::Closed::LeftOpen) => fl::Done::no(format!(
+        Some(crate::tune::Closed::LeftOpen) => crate::floor::Done::no(format!(
             "{name} is still open -- it's probably asking whether to save. I left it rather than lose your work."
         )),
-        Some(crate::tune::Closed::Failed(e)) => fl::Done::no(format!("I couldn't close {name}: {e}.")),
-        None => fl::Done::no(format!("I couldn't close {name}.")),
+        Some(crate::tune::Closed::Failed(e)) => crate::floor::Done::no(format!("I couldn't close {name}: {e}.")),
+        None => crate::floor::Done::no(format!("I couldn't close {name}.")),
     }
 }

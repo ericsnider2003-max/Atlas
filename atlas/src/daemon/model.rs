@@ -2620,7 +2620,7 @@ impl<'a> Daemon<'a> {
             }
             return;
         }
-        if !crate::relief::due(true, crate::relief::since_last()) {
+        if !crate::relief::time_to_relieve(true, crate::relief::since_last()) {
             return;
         }
         crate::relief::note_ran();

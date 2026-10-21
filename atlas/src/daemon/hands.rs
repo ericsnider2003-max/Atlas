@@ -299,11 +299,7 @@ impl<'a> Daemon<'a> {
         // turned hand reading on (steering, or gestures answering). It was
         // said to an owner who never asked for it.
         let hands_wanted = reason.hands_may_steer() || tools.answering.accept_gestures;
-        if let Some(struggling) = self
-            .pace
-            .keeping_up(&tools.pace)
-            .filter(|_| hands_wanted)
-        {
+        if let Some(struggling) = self.pace.keeping_up(&tools.pace).filter(|_| hands_wanted) {
             // Once, not every look. `may_raise` is the same back-off every
             // other nudge obeys.
             if self.nudger.may_raise("hand tracking", t) {
@@ -2814,10 +2810,9 @@ fn look_on_its_own(
             Err(e) => {
                 let detail = e.to_string();
                 let detail = detail.strip_prefix("platform: ").unwrap_or(&detail);
-                done.printed = crate::vision::Sight::Unread(format!(
-                    "the camera wouldn't open: {detail}"
-                ))
-                .as_lines(&you);
+                done.printed =
+                    crate::vision::Sight::Unread(format!("the camera wouldn't open: {detail}"))
+                        .as_lines(&you);
                 done.spent_ms = began.elapsed().as_millis() as u64;
                 return done;
             }

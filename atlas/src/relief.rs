@@ -160,7 +160,7 @@ pub const MIN_GAP: Duration = Duration::from_secs(120);
 
 /// Whether to run a relief now: under pressure, and not within `MIN_GAP` of
 /// the last one (`since_last` is None before the first).
-pub fn due(pressure: bool, since_last: Option<Duration>) -> bool {
+pub fn time_to_relieve(pressure: bool, since_last: Option<Duration>) -> bool {
     pressure && since_last.is_none_or(|d| d >= MIN_GAP)
 }
 
@@ -318,10 +318,10 @@ mod tests {
 
     #[test]
     fn relief_is_rate_limited_and_needs_pressure() {
-        assert!(!due(false, None));
-        assert!(due(true, None));
-        assert!(!due(true, Some(Duration::from_secs(30))));
-        assert!(due(true, Some(MIN_GAP)));
+        assert!(!time_to_relieve(false, None));
+        assert!(time_to_relieve(true, None));
+        assert!(!time_to_relieve(true, Some(Duration::from_secs(30))));
+        assert!(time_to_relieve(true, Some(MIN_GAP)));
     }
 
     #[test]
