@@ -914,6 +914,8 @@ pub fn launch(
     let eyes = projector_args(model, cfg);
     let child = launch_with(model, cfg, gpu_layers, vars, "model-server.log", &eyes)?;
     LAUNCHED.store(crate::store::now(), std::sync::atomic::Ordering::Relaxed);
+    // A fresh log: what the last look found belonged to the old server.
+    forget_log_look();
     SEES.store(!eyes.is_empty(), std::sync::atomic::Ordering::Relaxed);
     Ok(child)
 }
@@ -1031,6 +1033,47 @@ pub fn model_server_log_says_device_lost() -> bool {
     crate::gpulost::log_tail().is_some_and(|t| crate::gpulost::device_lost_in(&t))
 }
 
+/// How often a request (or a health check) reads the log for a graphics
+/// reset. Same as the daemon's own look (`MODEL_LOG_LOOK`).
+const LOG_LOOK_EVERY: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// When the log was last read for a graphics reset, and what it said.
+static LOG_LOOK: std::sync::Mutex<Option<(std::time::Instant, bool)>> = std::sync::Mutex::new(None);
+
+fn forget_log_look() {
+    if let Ok(mut g) = LOG_LOOK.lock().or_else(crate::crash::unpoison) {
+        *g = None;
+    }
+}
+
+/// Is the server usable, given its `/health` answer and the end of its log
+/// (21 Oct 2026)? `/health` keeps saying ok after the graphics device is
+/// lost, so an ok that sits beside the device-lost text does not count.
+pub fn usable_given_log(health_ok: bool, log_tail: Option<&str>) -> bool {
+    health_ok && !log_tail.is_some_and(crate::gpulost::device_lost_in)
+}
+
+/// Read the server's log for a graphics reset, at most every few seconds
+/// (the last answer stands in between). Found, the live flag is raised, so
+/// the daemon's next pass takes the stop-and-restart-in-safe-mode path and
+/// calls are refused at once rather than sent to a broken server.
+pub fn log_shows_lost_graphics() -> bool {
+    let Ok(mut g) = LOG_LOOK.lock().or_else(crate::crash::unpoison) else {
+        return false;
+    };
+    if let Some((at, lost)) = *g {
+        if at.elapsed() < LOG_LOOK_EVERY {
+            return lost;
+        }
+    }
+    let lost = !usable_given_log(true, crate::gpulost::log_tail().as_deref());
+    *g = Some((std::time::Instant::now(), lost));
+    if lost && !crate::gpulost::flagged() {
+        crate::gpulost::flag();
+    }
+    lost
+}
+
 /// The telling line of a model server's log (see `model_server_last_words`).
 pub fn last_words_in(text: &str) -> Option<String> {
     let lines: Vec<&str> = text
@@ -1135,6 +1178,13 @@ impl WaitsForServer {
     /// its graphics (the daemon is starting a safe one; the rules-only path
     /// answers meanwhile), else wait for a server that is still loading.
     fn ready(&self) -> Result<()> {
+        // Our own server's log first (21 Oct 2026): the daemon reads it only
+        // between turns, and a long turn or job went on sending requests to a
+        // server whose graphics were gone. Raises the flag when it finds that.
+        if LAUNCHED.load(std::sync::atomic::Ordering::Relaxed) != 0 {
+            // unheard-ok: returns `bool`; a finding raises the flag checked next
+            let _ = log_shows_lost_graphics();
+        }
         if crate::gpulost::flagged() {
             return Err(crate::gpulost::unavailable());
         }
@@ -1677,7 +1727,9 @@ pub fn is_running(cfg: &ModelsConfig, http: &ExternalTool, vars: &Vars) -> bool 
         // (29 Sep 2026): any reply containing the letters "ok" -- "token",
         // "book" -- from some other program on the port counted as the model
         // being up, and Atlas never started its own.
-        Ok(body) => health_says_ok(&body),
+        // And its log must not show a graphics reset (21 Oct 2026): a server
+        // that lost its device still answers /health with ok.
+        Ok(body) => health_says_ok(&body) && !log_shows_lost_graphics(),
         Err(_) => false,
     }
 }

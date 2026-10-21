@@ -352,3 +352,41 @@ fn every_model_call_goes_through_the_guard() {
     }
     assert!(contains_code(&m, "if crate::gpulost::flagged() {"));
 }
+
+#[test]
+fn a_health_ok_beside_the_device_lost_text_is_not_a_usable_server() {
+    // 21 Oct 2026: /health says ok on a server whose graphics are gone.
+    assert!(!models::usable_given_log(true, Some(THE_LOG)));
+    assert!(!models::usable_given_log(false, Some(THE_LOG)));
+    // A healthy server with a clean log, or no log yet, is usable.
+    let clean = "load_tensors: loading model\nlistening on http://127.0.0.1:8080\n";
+    assert!(models::usable_given_log(true, Some(clean)));
+    assert!(models::usable_given_log(true, None));
+    assert!(!models::usable_given_log(false, Some(clean)));
+    // The finding is what the daemon's safe-mode path goes by: the same
+    // text, read as a log, is a reset.
+    assert!(gpulost::device_lost_in(THE_LOG));
+}
+
+#[test]
+fn the_log_is_consulted_before_a_request_and_with_the_health_check() {
+    let m = source("src/models.rs");
+    // The health check does not accept an ok that the log contradicts.
+    assert!(contains_code(
+        &m,
+        "Ok(body) => health_says_ok(&body) && !log_shows_lost_graphics(),"
+    ));
+    // The guard before a call reads the log before it looks at the flag.
+    let ready = m.find("fn ready(&self) -> Result<()> {").unwrap();
+    let body = &m[ready..];
+    let scan = body.find("log_shows_lost_graphics()").expect("scans");
+    let flag = body.find("if crate::gpulost::flagged() {").unwrap();
+    assert!(scan < flag);
+    // Finding it raises the flag, which the daemon's watch turns into the
+    // stop-and-restart-in-safe-mode path.
+    let finder = m.find("pub fn log_shows_lost_graphics()").unwrap();
+    assert!(m[finder..finder + 1200].contains("crate::gpulost::flag();"));
+    let model = source("src/daemon/model.rs");
+    let watch = model.find("fn watch_for_lost_graphics(").unwrap();
+    assert!(model[watch..].contains("crate::gpulost::flagged()"));
+}
