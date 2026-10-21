@@ -18,6 +18,7 @@ Dates are UTC. The card at the top of `AGENTS.md` holds the facts; this file hol
 - `next-chat-handoff` Full next-chat operational handoff — home: [docs/ATLAS_NEXT_CHAT_HANDOFF_2026-10-17.md](ATLAS_NEXT_CHAT_HANDOFF_2026-10-17.md) — open since 2026-10-17 (Codex)
 - `disposable-restore` Disposable installed restore evidence — home: [docs/ATLAS_DISPOSABLE_RESTORE_2026-10-17.md](ATLAS_DISPOSABLE_RESTORE_2026-10-17.md) — open since 2026-10-17 (Codex)
 - `llm-missing` Install a local language model on the laptop (owner approval: ~2.5 GB download) and decide online_second — home: [verification/runs/20261020T040916Z-claude-typed-acceptance/RESULTS.md](../verification/runs/20261020T040916Z-claude-typed-acceptance/RESULTS.md) — open since 2026-10-20 (claude)
+- `own-model` Own on-device language model: research and first measurable step (intent golden set baseline) — home: [docs/OWN_LANGUAGE_MODEL_OPTIONS_2026-10-20.md](OWN_LANGUAGE_MODEL_OPTIONS_2026-10-20.md) — open since 2026-10-21 (claude)
 
 ## Last session
 
@@ -118,6 +119,7 @@ One line per doc. "Last true" is the date the doc declares (`Last updated: YYYY-
 | [docs/OPERATING_FOUNDATION_TRACE_2026-10-18.md](OPERATING_FOUNDATION_TRACE_2026-10-18.md) | Operating-foundation trace — 2026-10-18 | — |
 | [docs/OUTSTANDING_2026-10-18.md](OUTSTANDING_2026-10-18.md) | Outstanding work — 2026-10-18 | — |
 | [docs/OWNER_READINESS_RESET_2026-10-16.md](OWNER_READINESS_RESET_2026-10-16.md) | Owner readiness reset — Atlas | 2026-10-20 |
+| [docs/OWN_LANGUAGE_MODEL_OPTIONS_2026-10-20.md](OWN_LANGUAGE_MODEL_OPTIONS_2026-10-20.md) | Building Atlas's own language model: options and recommendation | 2026-10-20 |
 | [docs/PLAN_COVERAGE_REGISTER_2026-10-18.md](PLAN_COVERAGE_REGISTER_2026-10-18.md) | Atlas plan coverage register — 2026-10-18 | 2026-10-20 |
 | [docs/PROJECT_FILE_INVENTORY_2026-10-17.md](PROJECT_FILE_INVENTORY_2026-10-17.md) | Atlas project file inventory — 2026-10-17 | — |
 | [docs/Q25_STARTUP_BACKUP_FIX_2026-10-15.md](Q25_STARTUP_BACKUP_FIX_2026-10-15.md) | Startup backup contention fix — 2026-10-15 | — |
