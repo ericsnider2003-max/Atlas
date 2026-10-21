@@ -352,3 +352,95 @@ fn every_model_call_goes_through_the_guard() {
     }
     assert!(contains_code(&m, "if crate::gpulost::flagged() {"));
 }
+
+#[test]
+fn a_health_ok_beside_the_device_lost_text_is_not_a_usable_server() {
+    // 21 Oct 2026: /health says ok on a server whose graphics are gone.
+    let lost = gpulost::device_lost_in(THE_LOG);
+    assert!(!models::usable_given_log(true, lost));
+    assert!(!models::usable_given_log(false, lost));
+    // A healthy server with a clean log, or no log yet, is usable.
+    let clean = "load_tensors: loading model\nlistening on http://127.0.0.1:8080\n";
+    let quiet = gpulost::device_lost_in(clean);
+    assert!(models::usable_given_log(true, quiet));
+    assert!(!models::usable_given_log(false, quiet));
+    // The finding is what the daemon's safe-mode path goes by: the same
+    // text, read as a log, is a reset.
+    assert!(gpulost::device_lost_in(THE_LOG));
+}
+
+#[test]
+fn the_log_is_consulted_before_a_request_and_with_the_health_check() {
+    let m = source("src/models.rs");
+    // The health check does not accept an ok that the log contradicts.
+    assert!(contains_code(
+        &m,
+        "usable_given_log(ok, ok && log_shows_lost_graphics())"
+    ));
+    // The guard before a call reads the log before it looks at the flag.
+    let ready = m.find("fn ready(&self) -> Result<()> {").unwrap();
+    let body = &m[ready..];
+    let scan = body.find("log_shows_lost_graphics()").expect("scans");
+    let flag = body.find("if crate::gpulost::flagged() {").unwrap();
+    assert!(scan < flag);
+    // Finding it raises the flag, which the daemon's watch turns into the
+    // stop-and-restart-in-safe-mode path.
+    let finder = m.find("pub fn log_shows_lost_graphics()").unwrap();
+    assert!(m[finder..finder + 1200].contains("crate::gpulost::flag();"));
+    let model = source("src/daemon/model.rs");
+    let watch = model.find("fn watch_for_lost_graphics(").unwrap();
+    assert!(model[watch..].contains("crate::gpulost::flagged()"));
+}
+
+#[test]
+fn a_loss_that_was_handled_is_not_found_again_in_the_same_log() {
+    // 21 Oct 2026: the old log stays until the next launch, so reading it
+    // again during the restart pause raised the flag again and looped.
+    let log = THE_LOG.as_bytes();
+    assert!(models::loss_after(log, 0));
+    // Handled at the log's current length: the same log says nothing new.
+    let handled = log.len() as u64;
+    assert!(!models::loss_after(log, handled));
+    // New loss text appended past the mark is found.
+    let mut more = THE_LOG.to_string();
+    more.push_str("0.57.000.000 E srv update_slots: decode() failed: ErrorDeviceLost\n");
+    assert!(models::loss_after(more.as_bytes(), handled));
+    // Clean text appended past the mark is not.
+    let mut clean = THE_LOG.to_string();
+    clean.push_str("0.57.000.000 I listening on http://127.0.0.1:8080\n");
+    assert!(!models::loss_after(clean.as_bytes(), handled));
+    // A mark beyond the log (it was replaced by a shorter one) is safe.
+    assert!(!models::loss_after(log, handled + 1000));
+}
+
+#[test]
+fn a_new_launch_reads_the_log_from_the_start_again() {
+    // Handled at the log's length, the old log says nothing new; a launch
+    // sets the mark back to 0, and then the same log is read from the start.
+    let handled = THE_LOG.len() as u64;
+    assert!(!models::loss_after(THE_LOG.as_bytes(), handled));
+    assert!(models::loss_after(THE_LOG.as_bytes(), 0));
+    let m = source("src/models.rs");
+    let launch = m.find("pub fn launch(").unwrap();
+    assert!(m[launch..launch + 1500].contains("LOSS_HANDLED_AT.store(0,"));
+}
+
+#[test]
+fn the_daemon_marks_the_loss_handled_and_ready_rechecks_the_flag_after_waiting() {
+    let model = source("src/daemon/model.rs");
+    let lost = model.find("fn graphics_were_lost(").unwrap();
+    let body = &model[lost..];
+    let marked = body
+        .find("crate::models::note_loss_handled()")
+        .expect("marked");
+    let detail = body.find("log_tail()").unwrap();
+    assert!(detail < marked, "the detail line is read before the mark");
+    let m = source("src/models.rs");
+    let ready = m.find("fn ready(&self) -> Result<()> {").unwrap();
+    let body = &m[ready..];
+    let waited = body.find("wait_until_up(").unwrap();
+    let after = body[waited..]
+        .find("crate::gpulost::flagged()")
+        .expect("rechecked");
+    assert!(after < 400);
+}

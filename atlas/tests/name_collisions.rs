@@ -175,6 +175,10 @@ const NAME_COLLISION_ONLY: &[&str] = &[
     // own module, which `atlas file` and "tidy my desktop" both reach by its
     // full name; `atlas file` used to call `suggest` itself. Verified by hand.
     "filing::suggest",
+    // 21 Oct 2026: still no production caller. The two real click sites call
+    // `finance::press_refusal` (window title + label, no URL), which shares
+    // `moves_money` with `allowed`. `allowed` is the URL-based gate for a
+    // browser driver Atlas does not have yet; kept, not wired by force.
     "finance::allowed",
     "fixtures::path",
     "flow::expand",

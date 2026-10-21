@@ -464,6 +464,12 @@ impl<'a> Daemon<'a> {
         match action {
             Action::Click(n) | Action::Choose(n) => {
                 let t = target(*n)?;
+                // 21 Oct 2026: charter section 8, checked where the click happens.
+                if let Some(refusal) =
+                    crate::finance::press_refusal(&view.title, t.name(), &self.tools_cfg().finance)
+                {
+                    return Err(refusal);
+                }
                 if let Target::Control { path, role, .. } = &t {
                     for act in operate::acts_for(action, *role) {
                         if let Ok(true) = self.plat.act_on(win, path, &act) {
@@ -475,6 +481,12 @@ impl<'a> Daemon<'a> {
             }
             Action::Type(n, text) => {
                 let t = target(*n)?;
+                // 21 Oct 2026: on a money window, only logins and date filters.
+                if let Some(refusal) =
+                    crate::finance::type_refusal(&view.title, t.name(), &self.tools_cfg().finance)
+                {
+                    return Err(refusal);
+                }
                 if let Target::Control { path, role, .. } = &t {
                     if let Ok(true) =
                         self.plat
@@ -497,6 +509,18 @@ impl<'a> Daemon<'a> {
                 self.plat.type_text(text).map_err(|e| e.to_string())
             }
             Action::Key(k) => {
+                // 21 Oct 2026: Enter or Space presses whatever has focus, and
+                // the view does not say what that is, so focus is unknown.
+                let labels: Vec<&str> = view.targets.iter().map(|t| t.name()).collect();
+                if let Some(refusal) = crate::finance::key_refusal(
+                    &view.title,
+                    k,
+                    None,
+                    &labels,
+                    &self.tools_cfg().finance,
+                ) {
+                    return Err(refusal);
+                }
                 crate::heard!(self.plat.focus(win));
                 self.plat.press(k).map_err(|e| e.to_string())
             }

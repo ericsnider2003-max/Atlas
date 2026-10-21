@@ -981,7 +981,12 @@ pub fn summary(rows: &[Row]) -> String {
 /// A scratch copy of the install at `real`, in `scratch`: settings and state
 /// copied, the big read-only folders linked. Returns what couldn't be linked.
 pub fn scratch_copy(real: &Path, scratch: &Path) -> std::io::Result<Vec<String>> {
-    crate::heard!(std::fs::remove_dir_all(scratch));
+    match remove_scratch(scratch) {
+        Ok(()) => {}
+        // Nothing left over from an earlier run: that is the normal case.
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => return Err(e),
+    }
     std::fs::create_dir_all(scratch.join("data"))?;
     copy_tree(&real.join("config"), &scratch.join("config"))?;
     let state = real.join("data").join("state");
@@ -1000,6 +1005,78 @@ pub fn scratch_copy(real: &Path, scratch: &Path) -> std::io::Result<Vec<String>>
         }
     }
     Ok(missed)
+}
+
+/// True when `meta` is a junction or symlink (never followed).
+fn is_link(meta: &std::fs::Metadata) -> bool {
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::MetadataExt;
+        // FILE_ATTRIBUTE_REPARSE_POINT
+        meta.file_attributes() & 0x400 != 0
+    }
+    #[cfg(not(windows))]
+    {
+        meta.file_type().is_symlink()
+    }
+}
+
+/// Removes only the link itself, never what it points at.
+fn remove_link_only(path: &Path) -> std::io::Result<()> {
+    #[cfg(windows)]
+    {
+        // remove_dir takes a junction away without touching its target.
+        std::fs::remove_dir(path).or_else(|_| std::fs::remove_file(path))
+    }
+    #[cfg(not(windows))]
+    {
+        std::fs::remove_file(path)
+    }
+}
+
+/// Deletes a scratch copy made by `scratch_copy`, 21 Oct 2026. The linked
+/// folders (models, tools, ...) point at the real install, so the links are
+/// taken off first, one by one, and only then is the copied rest deleted.
+/// Nothing here follows a link. Refuses any path that is not directly or
+/// deeper inside the temp folder, or whose name doesn't start with
+/// "atlas-selftest-". A scratch folder that doesn't exist returns NotFound.
+pub fn remove_scratch(scratch: &Path) -> std::io::Result<()> {
+    let refuse = |why: &str| {
+        Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            format!("won't delete {}: {}", scratch.display(), why),
+        ))
+    };
+    let named = scratch
+        .file_name()
+        .map(|n| n.to_string_lossy().starts_with("atlas-selftest-"))
+        .unwrap_or(false);
+    if !named {
+        return refuse("the folder name doesn't start with atlas-selftest-");
+    }
+    let parent = match scratch.parent() {
+        Some(p) => p,
+        None => return refuse("it has no parent folder"),
+    };
+    let parent = std::fs::canonicalize(parent)?;
+    let temp = std::fs::canonicalize(std::env::temp_dir())?;
+    if !parent.starts_with(&temp) {
+        return refuse("it is not inside the temp folder");
+    }
+    let meta = std::fs::symlink_metadata(scratch)?;
+    if is_link(&meta) {
+        // The scratch folder itself is a link: take the link off, nothing else.
+        return remove_link_only(scratch);
+    }
+    for e in std::fs::read_dir(scratch)?.flatten() {
+        let p = e.path();
+        if let Ok(m) = std::fs::symlink_metadata(&p) {
+            if is_link(&m) {
+                remove_link_only(&p)?;
+            }
+        }
+    }
+    std::fs::remove_dir_all(scratch)
 }
 
 fn copy_tree(from: &Path, to: &Path) -> std::io::Result<()> {
@@ -1048,6 +1125,57 @@ pub fn reports_dir(real_root: &Path) -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn removing_a_scratch_copy_leaves_the_real_install_alone() {
+        let pid = std::process::id();
+        let real = std::env::temp_dir().join(format!("atlas-real-test-{pid}"));
+        let scratch = std::env::temp_dir().join(format!("atlas-selftest-test-{pid}"));
+        let _ = std::fs::remove_dir_all(&real);
+        let _ = remove_scratch(&scratch);
+        std::fs::create_dir_all(&real).unwrap();
+        std::fs::write(real.join("model.bin"), "precious").unwrap();
+        std::fs::create_dir_all(scratch.join("data")).unwrap();
+        std::fs::write(scratch.join("data").join("copied.txt"), "x").unwrap();
+        link_dir(&real, &scratch.join("models")).unwrap();
+        assert!(scratch.join("models").join("model.bin").exists());
+
+        let result = remove_scratch(&scratch);
+        let survived = std::fs::read_to_string(real.join("model.bin"));
+        let _ = std::fs::remove_dir_all(&real);
+        result.unwrap();
+        assert!(!scratch.exists(), "scratch should be gone");
+        assert_eq!(survived.unwrap(), "precious");
+    }
+
+    #[test]
+    fn remove_scratch_refuses_wrong_places_and_names() {
+        let pid = std::process::id();
+        // Right name, outside the temp folder (the current folder's parent).
+        let cwd = std::env::current_dir().unwrap();
+        let outside = cwd.join(format!("atlas-selftest-refuse-{pid}"));
+        std::fs::create_dir_all(&outside).unwrap();
+        let e = remove_scratch(&outside).unwrap_err();
+        assert_eq!(e.kind(), std::io::ErrorKind::InvalidInput);
+        assert!(outside.exists());
+        std::fs::remove_dir(&outside).unwrap();
+
+        // In temp, wrong name.
+        let wrong = std::env::temp_dir().join(format!("not-a-scratch-{pid}"));
+        std::fs::create_dir_all(&wrong).unwrap();
+        let e = remove_scratch(&wrong).unwrap_err();
+        assert_eq!(e.kind(), std::io::ErrorKind::InvalidInput);
+        assert!(wrong.exists());
+        std::fs::remove_dir(&wrong).unwrap();
+    }
+
+    #[test]
+    fn remove_scratch_on_a_missing_folder_says_not_found() {
+        let missing =
+            std::env::temp_dir().join(format!("atlas-selftest-missing-{}", std::process::id()));
+        let e = remove_scratch(&missing).unwrap_err();
+        assert_eq!(e.kind(), std::io::ErrorKind::NotFound);
+    }
 
     #[test]
     fn a_pretend_start_gives_a_window_instead_of_a_false_alarm() {

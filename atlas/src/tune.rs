@@ -1338,14 +1338,40 @@ pub struct Cleared {
     pub skipped: u64,
 }
 
-/// Delete what in `dir` hasn't been touched for `older_than` seconds. Anything
-/// in use refuses and is skipped; folders left empty are removed. Only ever
-/// called on the temporary folder, and only on your yes.
-pub fn clear_old_files(dir: &std::path::Path, older_than: u64) -> Cleared {
+/// Move what in `dir` hasn't been touched for `older_than` seconds to Atlas's
+/// trash (21 Oct 2026: this used to delete for good). Anything in use, or that
+/// the trash can't take, is left where it is and counted as skipped; there is
+/// no fall-back to a permanent delete. Folders left empty are removed. Only
+/// ever called on the temporary folder, and only on your yes.
+pub fn clear_old_files(
+    dir: &std::path::Path,
+    older_than: u64,
+    trash: &crate::safety::Trash,
+) -> Cleared {
+    // One batch, so the trash ledger is written twice for the whole tidy-up
+    // rather than twice per file (21 Oct 2026).
+    clear_old_files_with(dir, older_than, |items| {
+        trash
+            .take_many(items)
+            .into_iter()
+            .map(|r| r.is_ok())
+            .collect()
+    })
+}
+
+/// The same, with the "put it somewhere safe" step passed in (a test can make
+/// it fail). `mover` gets every old file with its reason and returns, in
+/// order, whether each was moved away.
+pub fn clear_old_files_with(
+    dir: &std::path::Path,
+    older_than: u64,
+    mover: impl FnOnce(&[(std::path::PathBuf, String)]) -> Vec<bool>,
+) -> Cleared {
     let mut c = Cleared::default();
     let cutoff = std::time::SystemTime::now() - std::time::Duration::from_secs(older_than);
     let mut dirs = Vec::new();
     let mut stack = vec![dir.to_path_buf()];
+    let mut old: Vec<(std::path::PathBuf, u64)> = Vec::new();
     while let Some(d) = stack.pop() {
         let Ok(rd) = std::fs::read_dir(&d) else {
             continue;
@@ -1364,16 +1390,24 @@ pub fn clear_old_files(dir: &std::path::Path, older_than: u64) -> Cleared {
                 c.skipped += 1;
                 continue;
             }
-            match std::fs::remove_file(e.path()) {
-                Ok(()) => {
-                    c.files += 1;
-                    c.mb += m.len();
-                }
-                Err(_) => c.skipped += 1,
-            }
+            old.push((e.path(), m.len()));
         }
     }
-    // Deepest first, and only the empty ones (`remove_dir` refuses the rest).
+    let items: Vec<(std::path::PathBuf, String)> = old
+        .iter()
+        .map(|(p, _)| (p.clone(), "old temporary file (PC tidy-up)".to_string()))
+        .collect();
+    let moved = mover(&items);
+    for (i, (_, len)) in old.iter().enumerate() {
+        if moved.get(i).copied().unwrap_or(false) {
+            c.files += 1;
+            c.mb += len;
+        } else {
+            c.skipped += 1;
+        }
+    }
+    // Deepest first, and only the empty ones (`remove_dir` refuses the rest,
+    // so no file is ever lost here).
     dirs.sort_by_key(|d| std::cmp::Reverse(d.components().count()));
     for d in dirs {
         crate::heard!(std::fs::remove_dir(&d));
@@ -3273,5 +3307,31 @@ pub(crate) fn undo_tune_change_controlled(
         }
     } else {
         Err(format!("Put {back} of {total} back. Still pending: {}. Retry undo after clearing these obstructions.", not.join("; ")))
+    }
+}
+
+#[cfg(test)]
+mod clear_old_files_tests {
+    use super::*;
+
+    /// 21 Oct 2026: a file the trash can't take stays put and is counted as
+    /// skipped; it is never deleted instead.
+    #[test]
+    fn a_failed_take_skips_and_never_deletes() {
+        let dir = std::env::temp_dir().join(format!("atlas-clear-skip-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("sub")).unwrap();
+        std::fs::write(dir.join("sub").join("locked.tmp"), b"locked").unwrap();
+        std::fs::write(dir.join("ok.tmp"), b"fine").unwrap();
+        let c = clear_old_files_with(&dir, 0, |items| {
+            items
+                .iter()
+                .map(|(p, _)| p.file_name().unwrap() == "ok.tmp")
+                .collect()
+        });
+        assert_eq!((c.files, c.skipped), (1, 1));
+        assert!(dir.join("sub").join("locked.tmp").exists(), "not deleted");
+        assert!(dir.join("sub").exists(), "non-empty folder kept");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

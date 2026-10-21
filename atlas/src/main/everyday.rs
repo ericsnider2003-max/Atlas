@@ -2181,7 +2181,15 @@ pub(super) fn run_selftest(args: &[String]) {
             cmd.arg("--no-model");
         }
         let status = cmd.status();
-        atlas::heard!(std::fs::remove_dir_all(&tmp));
+        // Links to the real install are taken off first; see remove_scratch.
+        if let Err(e) = atlas::selftest::remove_scratch(&tmp) {
+            if e.kind() != std::io::ErrorKind::NotFound {
+                println!(
+                    "The test copy folder couldn't be removed: {} ({e})",
+                    tmp.display()
+                );
+            }
+        }
         // The test's failures become this install's cases (`regressions`):
         // read by self-repair as signals, and fixed ones taken off.
         if matches!(status, Ok(s) if s.success()) {

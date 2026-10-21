@@ -38,15 +38,16 @@ Dates are UTC. The card at the top of `AGENTS.md` holds the facts; this file hol
 ## Recently done
 
 - `desktop-e2e-1020` Desktop E2E acceptance run 2026-10-20: fix false progress claims, Hub failed/done states, restart reconciliation, backup, mic (2026-10-21)
+- `sec4-dns-q25` SEC4 residual: keyless peer name lookups moved off the tick to a background cache; Q25: Daemon::set_auto_backup switch for tests (2026-10-21)
+- `gpu1-health` GPU1: a model server whose log shows Vulkan device loss is not trusted even when /health says OK; checked before each request (2026-10-21)
+- `tune-trash` PC tidy-up moves old temp files to Atlas's trash (restorable, 30 days) instead of deleting them (2026-10-21)
+- `selftest-scratch` SELFTEST1: self-test scratch cleanup removes junction links only, guarded to temp atlas-selftest-* folders, failures reported (2026-10-21)
+- `click-gate` Charter §8 click gate: refuse buy/order buttons anywhere and money/confirm buttons on bank or broker windows, at press_button and the screen-operating step (2026-10-21)
 - `i217d` Complete singular-candidate workspace handoff and inventory (2026-10-18)
 - `verify-harness` Independent real-runtime verification harness (2026-10-18)
 - `i65c1` Canonical open-work audit (2026-10-16)
 - `filingbundle` Complete canonical Atlas filing bundle (2026-10-16)
 - `filingcheckpoint` Filing integrity checkpoint for canonical Atlas work (2026-10-15)
-- `f1jobcompile` F1 durable job task-loop compile boundary (2026-10-15)
-- `if821` F0 complete capability listing reads shared evidence record (2026-10-15)
-- `i0ca7` Q25 startup backup contention fix (2026-10-15)
-- `i495a` Foundation test failures and cleanup (2026-10-15)
 
 ## Docs
 

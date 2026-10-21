@@ -2151,13 +2151,35 @@ impl Trash {
 
     /// Move a file out of the way instead of deleting it.
     pub fn take(&self, path: &Path, why: &str) -> Result<Discarded> {
-        let _lock = self.lock()?;
-        if !path.exists() {
-            return Err(AtlasError::Platform(format!(
-                "{} isn't there",
-                path.display()
-            )));
+        self.take_batch(&[(path.to_path_buf(), why.to_string())])?
+            .pop()
+            .unwrap_or_else(|| Err(AtlasError::Platform("nothing was taken".into())))
+    }
+
+    /// Move several files to the trash with one ledger read and two ledger
+    /// writes, instead of two writes per file (21 Oct 2026). Write-ahead is
+    /// kept: every pending entry is saved before any file moves. An entry
+    /// whose move fails is taken back out of the ledger, so a locked file
+    /// leaves no phantom record behind. One result per input, in order.
+    pub fn take_many(&self, items_in: &[(PathBuf, String)]) -> Vec<Result<Discarded>> {
+        match self.take_batch(items_in) {
+            Ok(results) => results,
+            Err(e) => {
+                let message = e.to_string();
+                items_in
+                    .iter()
+                    .map(|_| Err(AtlasError::Platform(message.clone())))
+                    .collect()
+            }
         }
+    }
+
+    /// `Err` means the whole batch was refused before anything was touched.
+    fn take_batch(&self, items_in: &[(PathBuf, String)]) -> Result<Vec<Result<Discarded>>> {
+        if items_in.is_empty() {
+            return Ok(Vec::new());
+        }
+        let _lock = self.lock()?;
         std::fs::create_dir_all(&self.cfg.dir)?;
         // Refuse rather than guess. A new id derived from a ledger that could
         // not be read collides with what is already held.
@@ -2166,55 +2188,108 @@ impl Trash {
             LedgerState::Read(items) => items,
             LedgerState::Unreadable(why) | LedgerState::Corrupt(why) => {
                 return Err(AtlasError::Platform(format!(
-                    "I won't move {} to the trash: the trash record is unreadable ({why}). \
-                     Writing now would overwrite something already in there and lose the \
-                     record of the rest. Nothing has been touched.",
-                    path.display()
+                    "I won't move {} to the trash: the trash record is unreadable ({why}).                      Writing now would overwrite something already in there and lose the                      record of the rest. Nothing has been touched.",
+                    items_in[0].0.display()
                 )))
             }
         };
-        let mut id = items
-            .iter()
-            .map(|i| i.id)
-            .max()
-            .unwrap_or(0)
-            .checked_add(1)
-            .ok_or_else(|| AtlasError::Platform("the trash record has no unused ids".into()))?;
-        let name = path
-            .file_name()
-            .map(|n| n.to_string_lossy().to_string())
-            .unwrap_or_default();
-        // Id-prefixed, so two files with the same name don't collide.
-        let mut held = PathBuf::from(&self.cfg.dir).join(format!("{id}-{name}"));
-        while std::fs::symlink_metadata(&held).is_ok() {
-            id = id
-                .checked_add(1)
-                .ok_or_else(|| AtlasError::Platform("the trash record has no unused ids".into()))?;
-            held = PathBuf::from(&self.cfg.dir).join(format!("{id}-{name}"));
+        let mut next_id = items.iter().map(|i| i.id).max().unwrap_or(0);
+        let mut results: Vec<Option<Result<Discarded>>> = items_in.iter().map(|_| None).collect();
+        // (index into items_in, pending entry, held path)
+        let mut planned: Vec<(usize, Discarded, PathBuf)> = Vec::new();
+        for (n, (path, why)) in items_in.iter().enumerate() {
+            if !path.exists() {
+                results[n] = Some(Err(AtlasError::Platform(format!(
+                    "{} isn't there",
+                    path.display()
+                ))));
+                continue;
+            }
+            let name = path
+                .file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_default();
+            // Id-prefixed, so two files with the same name don't collide.
+            let mut held;
+            loop {
+                next_id = match next_id.checked_add(1) {
+                    Some(id) => id,
+                    None => {
+                        results[n] = Some(Err(AtlasError::Platform(
+                            "the trash record has no unused ids".into(),
+                        )));
+                        held = PathBuf::new();
+                        break;
+                    }
+                };
+                held = PathBuf::from(&self.cfg.dir).join(format!("{next_id}-{name}"));
+                if std::fs::symlink_metadata(&held).is_err() {
+                    break;
+                }
+            }
+            if results[n].is_some() {
+                continue;
+            }
+            let d = Discarded {
+                id: next_id,
+                original: path.display().to_string(),
+                held: held.display().to_string(),
+                why: why.clone(),
+                at: now(),
+                pending: true,
+                returning: false,
+            };
+            items.push(d.clone());
+            planned.push((n, d, held));
         }
-
-        let mut d = Discarded {
-            id,
-            original: path.display().to_string(),
-            held: held.display().to_string(),
-            why: why.to_string(),
-            at: now(),
-            pending: true,
-            returning: false,
-        };
-        // Write ahead: a failed save leaves the original untouched; a crash
+        if planned.is_empty() {
+            return Ok(results.into_iter().flatten().collect());
+        }
+        // Write ahead: a failed save leaves every original untouched; a crash
         // after moving leaves both paths in the ledger for undo to reconcile.
-        items.push(d.clone());
-        self.write_ledger(&items)?;
-        move_across(path, &held)?;
-        d.pending = false;
-        if let Some(entry) = items.last_mut() {
+        if let Err(e) = self.write_ledger(&items) {
+            for (n, _, _) in &planned {
+                results[*n] = Some(Err(AtlasError::Platform(format!(
+                    "couldn't save the trash record first, so nothing was moved ({e})"
+                ))));
+            }
+            return Ok(results.into_iter().flatten().collect());
+        }
+        let mut failed_ids: Vec<u64> = Vec::new();
+        for (n, d, held) in &planned {
+            let from = PathBuf::from(&d.original);
+            match move_across(&from, held) {
+                Ok(()) => {}
+                Err(e) => {
+                    // A failed move must not leave an intent entry behind.
+                    failed_ids.push(d.id);
+                    results[*n] = Some(Err(e));
+                }
+            }
+        }
+        let moved: Vec<u64> = planned
+            .iter()
+            .filter(|(n, _, _)| results[*n].is_none())
+            .map(|(_, d, _)| d.id)
+            .collect();
+        items.retain(|i| !failed_ids.contains(&i.id));
+        for entry in items.iter_mut().filter(|i| moved.contains(&i.id)) {
             entry.pending = false;
         }
-        if let Err(e) = self.write_ledger(&items) {
-            return Err(AtlasError::Platform(format!("The file is kept at {} and its recovery intent is saved, but I couldn't finish the trash record ({e}). Undo #{id} can put it back.", held.display())));
+        let saved = self.write_ledger(&items);
+        for (n, d, held) in planned {
+            if results[n].is_some() {
+                continue;
+            }
+            results[n] = Some(match &saved {
+                Ok(()) => Ok(Discarded {
+                    pending: false,
+                    ..d
+                }),
+                Err(e) => Err(AtlasError::Platform(format!("The file is kept at {} and its recovery intent is saved, but I couldn't finish the trash record ({e}). Undo #{} can put it back.", held.display(), d.id))),
+            });
         }
-        Ok(d)
+        Ok(results.into_iter().flatten().collect())
     }
 
     /// Put the last thing back.
@@ -2464,5 +2539,84 @@ mod resolved_dir_tests {
             a.dir, b.dir,
             "each install's backups must live under its own store root"
         );
+    }
+}
+
+#[cfg(all(test, windows))]
+mod failed_move_tests {
+    use super::*;
+    use std::os::windows::fs::OpenOptionsExt;
+
+    fn fresh(tag: &str) -> PathBuf {
+        let d = std::env::temp_dir().join(format!("atlas-take-{tag}-{}", std::process::id()));
+        crate::heard!(std::fs::remove_dir_all(&d));
+        std::fs::create_dir_all(&d).unwrap();
+        d
+    }
+
+    fn trash_in(d: &Path) -> Trash {
+        Trash::new(TrashConfig {
+            dir: d.join("trash").display().to_string(),
+            keep_days: 30,
+        })
+    }
+
+    /// Held open with no sharing, so it can be neither renamed nor copied.
+    fn lock(path: &Path) -> std::fs::File {
+        std::fs::OpenOptions::new()
+            .read(true)
+            .share_mode(0)
+            .open(path)
+            .unwrap()
+    }
+
+    /// 21 Oct 2026: a move that fails leaves no pending entry behind.
+    #[test]
+    fn a_take_whose_move_fails_leaves_no_pending_entry() {
+        let d = fresh("one");
+        let f = d.join("locked.tmp");
+        std::fs::write(&f, b"x").unwrap();
+        let trash = trash_in(&d);
+        let held = lock(&f);
+        assert!(trash.take(&f, "test").is_err());
+        drop(held);
+        assert!(f.exists());
+        assert!(trash.ledger().is_empty(), "{:?}", trash.ledger());
+        crate::heard!(std::fs::remove_dir_all(&d));
+    }
+
+    /// 21 Oct 2026: three files, one locked. Two are in the trash and can be
+    /// restored; the locked one stays put and has no entry.
+    #[test]
+    fn take_many_with_one_failure_keeps_two_and_no_phantom() {
+        let d = fresh("many");
+        let trash = trash_in(&d);
+        let names = ["a.tmp", "b.tmp", "c.tmp"];
+        for n in names {
+            std::fs::write(d.join(n), n.as_bytes()).unwrap();
+        }
+        let items: Vec<(PathBuf, String)> = names
+            .iter()
+            .map(|n| (d.join(n), "test".to_string()))
+            .collect();
+        let held = lock(&d.join("b.tmp"));
+        let results = trash.take_many(&items);
+        drop(held);
+        assert_eq!(results.len(), 3);
+        assert!(results[0].is_ok() && results[1].is_err() && results[2].is_ok());
+        assert!(!d.join("a.tmp").exists() && !d.join("c.tmp").exists());
+        assert!(d.join("b.tmp").exists());
+        let ledger = trash.ledger();
+        assert_eq!(ledger.len(), 2, "{ledger:?}");
+        assert!(ledger.iter().all(|e| !e.pending));
+        for e in &ledger {
+            assert!(Path::new(&e.held).exists());
+        }
+        for e in ledger {
+            trash.undo(e.id).unwrap();
+        }
+        assert!(d.join("a.tmp").exists() && d.join("c.tmp").exists());
+        assert!(trash.ledger().is_empty());
+        crate::heard!(std::fs::remove_dir_all(&d));
     }
 }

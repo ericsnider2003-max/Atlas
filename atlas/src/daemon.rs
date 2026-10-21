@@ -1697,6 +1697,9 @@ pub struct Daemon<'a> {
     /// When the backup schedule and the self-repair sweep are next looked
     /// at (2 Oct 2026: both were looked at every tick, from disk).
     next_backup_look: u64,
+    /// Resolved addresses of the named peers in `elsewhere.known`, kept
+    /// fresh off the tick thread (21 Oct 2026).
+    peer_names: tick::PeerNames,
     next_sweep_look: u64,
     /// When the current unbroken stretch of work started.
     ///
@@ -2395,6 +2398,7 @@ impl<'a> Daemon<'a> {
             last_backup: 0,
             last_backup_attempt: 0,
             next_backup_look: 0,
+            peer_names: tick::PeerNames::default(),
             next_sweep_look: 0,
             working_since: None,
         };
