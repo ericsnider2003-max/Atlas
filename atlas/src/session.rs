@@ -50,6 +50,35 @@ pub struct Session {
     /// unless it only reads or answers. Cleared only by your own words routed
     /// without the model (`run_command`); answering an approval does not.
     pub tainted_by_outside: bool,
+    /// Where that outside text came from, in words ("an email", "a web
+    /// page"), for the question that names it (SEC2, 21 Oct 2026). Only
+    /// meaningful while `tainted_by_outside` is set.
+    pub outside_source: Option<String>,
+    /// How many times something has been read from outside this session:
+    /// a turn that answered from what it read (a stored email, a research
+    /// write-up) without an intent of its own is told apart by this moving.
+    pub outside_reads: u64,
+    /// `owner_turns()` when outside text was last read: the taint stays while
+    /// that text can still be in what the model is shown (`outside_window`).
+    pub outside_read_at: u64,
+    /// Records made by the second and later parts of one spoken sentence
+    /// (`fold_into_one_turn`): they are not turns of their own, so they do not
+    /// age the taint.
+    extra_parts: u64,
+}
+
+/// How many extra turns past the thread's fold the text can still be in front
+/// of the model: crew reports are written into the thread too and fold it
+/// sooner, never later.
+pub const OUTSIDE_MARGIN_TURNS: u64 = 4;
+
+/// How many of your turns after a read the text can still be in front of the
+/// model: the thread keeps `fold_after` exchanges (`ThreadConfig::fold_after`)
+/// before folding the older ones into a summary. Derived from the setting
+/// rather than a fixed 24, which went wrong as soon as it was changed (21 Oct
+/// 2026).
+pub fn outside_window(fold_after: usize) -> u64 {
+    fold_after as u64 + OUTSIDE_MARGIN_TURNS
 }
 
 impl Default for Session {
@@ -65,6 +94,10 @@ impl Default for Session {
             recorded: 0,
             last_intent: None,
             tainted_by_outside: false,
+            outside_source: None,
+            outside_reads: 0,
+            outside_read_at: 0,
+            extra_parts: 0,
         }
     }
 }
@@ -89,8 +122,8 @@ impl Session {
             self.last_app = Some(app);
         }
         self.recorded += 1;
-        if crate::brain::reads_outside_text(intent) {
-            self.tainted_by_outside = true;
+        if let Some(source) = crate::brain::outside_source(intent) {
+            self.note_outside(source);
         }
         // Never the passphrase, even in memory.
         self.last_intent = (!matches!(intent, Intent::Unlock(_))).then(|| intent.clone());
@@ -103,6 +136,42 @@ impl Session {
         if self.turns.len() > self.max_turns {
             let drop = self.turns.len() - self.max_turns;
             self.turns.drain(0..drop);
+        }
+    }
+
+    /// Something someone else wrote has just been read into the session (SEC2):
+    /// what follows from it is asked about until your own words say otherwise.
+    pub fn note_outside(&mut self, source: &str) {
+        self.tainted_by_outside = true;
+        self.outside_source = Some(source.to_string());
+        self.outside_reads += 1;
+        self.outside_read_at = self.owner_turns();
+    }
+
+    /// Your turns so far: records, less the extra parts of sentences that
+    /// held several instructions. Aging the taint counts these, so one
+    /// "check my email, then ..." is one turn, not three.
+    pub fn owner_turns(&self) -> u64 {
+        self.recorded.saturating_sub(self.extra_parts)
+    }
+
+    /// `records` turns were recorded by parts of one sentence after its
+    /// first: they belong to the turn already counted.
+    pub fn fold_into_one_turn(&mut self, records: u64) {
+        self.extra_parts += records;
+    }
+
+    /// Let the taint go once what was read has aged out of the conversation
+    /// the model is shown (SEC2). Your own phrase turns do not wash it: the
+    /// text is still there for the model to act on in a later turn.
+    ///
+    /// `window` is `outside_window(ThreadConfig::fold_after)`.
+    pub fn age_outside(&mut self, window: u64) {
+        if self.tainted_by_outside
+            && self.owner_turns().saturating_sub(self.outside_read_at) > window
+        {
+            self.tainted_by_outside = false;
+            self.outside_source = None;
         }
     }
 
@@ -754,5 +823,66 @@ pub fn app_of(i: &Intent) -> Option<String> {
     match i {
         Intent::OpenApp(a) | Intent::CloseApp(a) | Intent::FocusApp(a) => Some(a.clone()),
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod outside_tests {
+    use super::*;
+
+    fn window() -> u64 {
+        outside_window(crate::thread::ThreadConfig::default().fold_after)
+    }
+
+    /// Crew news used to set the flag by hand, leaving the read stamp where
+    /// the last real read put it, so a long session cleared the taint on the
+    /// very next turn (21 Oct 2026).
+    #[test]
+    fn crew_news_in_a_long_session_keeps_its_taint() {
+        let mut s = Session::default();
+        for _ in 0..30 {
+            s.record("what time is it", &Intent::Clock, "noon");
+        }
+        assert_eq!(s.recorded, 30);
+        s.note_outside("a crew report");
+        s.age_outside(window());
+        assert!(s.tainted_by_outside, "the taint was cleared at once");
+        assert_eq!(s.outside_source.as_deref(), Some("a crew report"));
+        // And it still ages, from the read.
+        for _ in 0..window() {
+            s.record("what time is it", &Intent::Clock, "noon");
+        }
+        s.age_outside(window());
+        assert!(s.tainted_by_outside);
+        s.record("what time is it", &Intent::Clock, "noon");
+        s.age_outside(window());
+        assert!(!s.tainted_by_outside);
+    }
+
+    #[test]
+    fn a_sentence_of_several_parts_is_one_turn_for_aging() {
+        let mut s = Session::default();
+        s.record("read my email", &Intent::Mail(String::new()), "body");
+        // A sentence of five parts: five records, one turn of yours.
+        s.record("a", &Intent::Clock, "x");
+        for _ in 0..4 {
+            let before = s.recorded;
+            s.record("b", &Intent::Clock, "x");
+            s.fold_into_one_turn(s.recorded - before);
+        }
+        assert_eq!(s.owner_turns(), 2);
+        // The window is the thread's fold plus a margin, not a constant.
+        assert_eq!(outside_window(24), 24 + OUTSIDE_MARGIN_TURNS);
+        assert_eq!(outside_window(10), 10 + OUTSIDE_MARGIN_TURNS);
+        for _ in 0..8 {
+            s.record("c", &Intent::Clock, "x");
+        }
+        s.age_outside(outside_window(10));
+        assert!(s.tainted_by_outside);
+        for _ in 0..8 {
+            s.record("c", &Intent::Clock, "x");
+        }
+        s.age_outside(outside_window(10));
+        assert!(!s.tainted_by_outside);
     }
 }

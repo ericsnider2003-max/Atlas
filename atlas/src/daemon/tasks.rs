@@ -579,7 +579,9 @@ impl<'a> Daemon<'a> {
         let outcome = self.act_on_asking(intent, from_model, force_ask);
         if brain::reads_outside_text(intent) {
             *tainted = true;
-            self.session.tainted_by_outside = true;
+            // `note_outside` stamps the read so the taint ages from now.
+            self.session
+                .note_outside(brain::outside_source(intent).unwrap_or("something you had me read"));
         }
         outcome
     }
@@ -616,7 +618,17 @@ impl<'a> Daemon<'a> {
                     s if s.trim().is_empty() => format!("Just to check -- {}.", intent.plain()),
                     s => s,
                 };
-                let q = format!("{} Go ahead?", say.trim());
+                let q = if force_ask {
+                    // SEC2: asked because of what was read, so say where from.
+                    let source = self
+                        .session
+                        .outside_source
+                        .clone()
+                        .unwrap_or_else(|| "something you had me read".to_string());
+                    brain::instruction_from_outside(&source, &intent.plain())
+                } else {
+                    format!("{} Go ahead?", say.trim())
+                };
                 self.session.await_approval(intent.clone(), &q);
                 // Another was already waiting (30 Sep 2026): this one queues
                 // behind it, and is said as waiting, not as the question.

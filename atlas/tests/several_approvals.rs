@@ -463,7 +463,7 @@ fn a_single_turn_after_reading_mail_asks_before_acting() {
         d.session.pending,
         d.session.turns
     );
-    assert!(reply.ends_with("Go ahead?"), "{reply}");
+    assert!(reply.ends_with("Do you want me to do it?"), "{reply}");
     // Control: with no mail read just before, the same tool call is not held.
     let mut e = Daemon::new(
         &c,
@@ -474,7 +474,7 @@ fn a_single_turn_after_reading_mail_asks_before_acting() {
     );
     let reply = e.turn("deal with notepad", 1_790_740_000);
     assert!(
-        !reply.ends_with("Go ahead?") && !matches!(e.session.pending, Pending::Approval(..)),
+        !reply.ends_with("Do you want me to do it?") && !matches!(e.session.pending, Pending::Approval(..)),
         "{reply}"
     );
 }
@@ -515,7 +515,7 @@ fn the_taint_survives_a_harmless_turn_in_between() {
     let _ = d.turn("hello there, how are you", 1_790_740_010);
     assert!(d.session.tainted_by_outside, "a chat turn washed the taint");
     let reply = d.turn("deal with notepad", 1_790_740_020);
-    assert!(reply.ends_with("Go ahead?"), "{reply}");
+    assert!(reply.ends_with("Do you want me to do it?"), "{reply}");
     assert!(
         matches!(&d.session.pending, Pending::Approval(Intent::OpenApp(_), _)),
         "{:?}",
@@ -551,7 +551,7 @@ fn answering_an_approval_does_not_lift_the_taint() {
             "{tag}: the answer lifted the taint"
         );
         let reply = d.turn("deal with notepad", 1_790_740_010);
-        assert!(reply.ends_with("Go ahead?"), "{tag}: {reply}");
+        assert!(reply.ends_with("Do you want me to do it?"), "{tag}: {reply}");
         assert!(
             matches!(&d.session.pending, Pending::Approval(Intent::OpenApp(_), _)),
             "{tag}: {:?}",

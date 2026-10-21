@@ -2925,26 +2925,67 @@ pub fn parse_decision(reply: &str) -> Result<Decision> {
 /// been read into a run of several steps, the run is tainted
 /// (`daemon::tasks`, Q2).
 pub fn reads_outside_text(i: &Intent) -> bool {
-    matches!(
-        i,
+    outside_source(i).is_some()
+}
+
+/// What an intent that reads outside text reads, in words for a question
+/// ("an email", "a web page"); `None` for one that reads nothing of the kind.
+/// The one list `reads_outside_text` and the question that names its source
+/// share (SEC2, 21 Oct 2026). `ReadFile` (the floor's read), `TravelPrep`,
+/// `MeetingPrep` and `NoteReview` (drawn from your mail) were missing from
+/// it, so reading them left the session untainted.
+///
+/// Also (21 Oct 2026), the ones that read third-party text back though they
+/// look like your own data: `Agenda` (the titles and notes of calendar
+/// invites anyone can send you), `WaitingFor` and `People` about someone
+/// (subjects and lines drawn from your mail), and ending a call's notes (what
+/// the other side said). Not listed, having checked what each says:
+/// `MarketDay` and `TradeDay` (a fixed market calendar and your own journal),
+/// `Recommend` (your own timings), `Updates` (versions and status) and
+/// `Recap` (the conversation already in front of the model, whose taint
+/// stands on its own). All of these may still run unasked after a read; see
+/// `safe_after_outside_text`.
+pub fn outside_source(i: &Intent) -> Option<&'static str> {
+    Some(match i {
         Intent::Mail(..)
-            | Intent::Research(..)
-            | Intent::ReadDocument(..)
-            | Intent::Pdf(..)
-            | Intent::Unzip(..)
-            | Intent::Files(..)
-            | Intent::FindFile(..)
-            | Intent::Feeds(..)
-            | Intent::Social(..)
-            | Intent::Opportunities(..)
-            | Intent::Messages
-            | Intent::ScreenText(..)
-            | Intent::WhatsThere
-            | Intent::WhatsThis
-            | Intent::ClipHistory(..)
-            | Intent::UseClipboard(..)
-            | Intent::BriefOn(..)
-            | Intent::McpTool(..)
+        | Intent::TravelPrep
+        | Intent::MeetingPrep(..)
+        | Intent::NoteReview(..)
+        | Intent::WaitingFor(..) => "an email",
+        Intent::People(said)
+            if matches!(
+                crate::people::read(said),
+                Some(crate::people::Asked::About { .. })
+            ) =>
+        {
+            "an email"
+        }
+        Intent::Agenda(..) => "a calendar invite",
+        Intent::CallNotes(what) if what == "stop" => "call notes",
+        Intent::Research(..) => "a web page",
+        Intent::ReadDocument(..)
+        | Intent::Pdf(..)
+        | Intent::Unzip(..)
+        | Intent::Files(..)
+        | Intent::FindFile(..)
+        | Intent::ReadFile(..) => "a document",
+        Intent::Feeds(..) | Intent::Social(..) | Intent::Opportunities(..) => "a feed",
+        Intent::Messages => "a message",
+        Intent::ScreenText(..) | Intent::WhatsThere | Intent::WhatsThis => "the screen",
+        Intent::ClipHistory(..) | Intent::UseClipboard(..) => "the clipboard",
+        Intent::BriefOn(..) => "a briefing",
+        Intent::McpTool(..) => "another program's answer",
+        _ => return None,
+    })
+}
+
+/// The question put when something Atlas read, not you, is where an action
+/// came from (SEC2): it names the source and the action, and only your next
+/// direct reply answers it.
+pub fn instruction_from_outside(source: &str, phrase: &str) -> String {
+    format!(
+        "That instruction came from {source}, not from you: '{}'. Do you want me to do it?",
+        phrase.trim().trim_end_matches('.')
     )
 }
 
@@ -2965,6 +3006,8 @@ pub fn safe_after_outside_text(i: &Intent) -> bool {
             | Intent::History(..)
             | Intent::Agenda(..)
             | Intent::MachineHealth
+            | Intent::WhatsUsingMemory
+            | Intent::ReadFile(..)
             | Intent::Explain(..)
             | Intent::Why(..)
             | Intent::ReadDocument(..)
@@ -3412,5 +3455,45 @@ mod bounded_chat_capability {
             .is_err());
         assert!(start.elapsed() < std::time::Duration::from_millis(300));
         assert_eq!(calls.load(Ordering::SeqCst), 0);
+    }
+}
+
+#[cfg(test)]
+mod outside_labels {
+    use super::*;
+
+    /// What surfaces third-party text is labelled, and still reads without
+    /// asking after a read (21 Oct 2026).
+    #[test]
+    fn invites_notes_and_mail_derived_lists_name_their_source() {
+        for (i, label) in [
+            (Intent::Agenda("what's on today".into()), "a calendar invite"),
+            (Intent::CallNotes("stop".into()), "call notes"),
+            (Intent::WaitingFor(String::new()), "an email"),
+            (
+                Intent::People("what do I know about Sam".into()),
+                "an email",
+            ),
+        ] {
+            assert_eq!(outside_source(&i), Some(label), "{i:?}");
+            assert!(reads_outside_text(&i));
+        }
+        // Reads nothing from outside: a fixed market calendar, your own
+        // journal, your own timings, Atlas's versions, a call being started.
+        for i in [
+            Intent::MarketDay(String::new()),
+            Intent::TradeDay(String::new()),
+            Intent::Recommend,
+            Intent::Updates("status".into()),
+            Intent::Recap,
+            Intent::CallNotes("status".into()),
+            Intent::People("who should I catch up with".into()),
+        ] {
+            assert_eq!(outside_source(&i), None, "{i:?}");
+        }
+        // Read-only running stays allowed after a read.
+        assert!(safe_after_outside_text(&Intent::Agenda(String::new())));
+        assert!(safe_after_outside_text(&Intent::WaitingFor(String::new())));
+        assert!(safe_after_outside_text(&Intent::People(String::new())));
     }
 }

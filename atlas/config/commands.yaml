@@ -1057,7 +1057,7 @@ commands:
   - intent: mail
     describe: "Check the user's email inbox, or unsubscribe from what they don't read. arg: what, optional."
     # "has anybody written to me" (1 Oct 2026: went to your notes).
-    phrases: ["what's in my inbox", "check my email", "clear out my email", "has anybody written to me",
+    phrases: ["what's in my inbox", "check my email", "read my latest email", "read my last email", "read my newest email", "clear out my email", "has anybody written to me",
               "has anyone written to me", "has anyone emailed me", "has anybody emailed me", "did anyone email me",
               "any new emails", "any new email", "any emails",
               "unsubscribe from what i don't read", "unsubscribe from those"]

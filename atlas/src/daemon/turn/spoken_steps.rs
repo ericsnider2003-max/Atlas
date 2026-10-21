@@ -19,13 +19,11 @@
 //!   sorting or deleting, shutting the workspace, a text, and the like. NOT
 //!   held: reading, answering, opening an app, moving a window, a reminder of
 //!   your own -- whatever is neither destructive nor refers back.
-//!   `run_command` clears the flag for your own words, which is right for a
-//!   sentence said on its own and wrong inside one: the part after a mail
-//!   read is still part of the sentence. So the run keeps its own `tainted`,
-//!   started from the session's flag and set by any part that reads outside
-//!   text, checks that (never the session flag a harmless part in between
-//!   just cleared), and writes it back to the session after every part, so a
-//!   mail read inside a compound still counts for the turns after it.
+//!   Your own words in the sentence run unasked, so the run keeps its own
+//!   `tainted`: set only by a part of THIS sentence that reads outside text
+//!   (the session flag, which persists across turns for the model's picks,
+//!   is not what holds your own later parts), and written to the session so
+//!   a mail read inside a compound still counts for the turns after it.
 //! - **Stopping.** Each part ends in a `PartOutcome`, read from what the
 //!   turn actually did (an approval or question left pending, the typed
 //!   receipt `execute` leaves, whether `execute` was reached at all) and only
@@ -80,7 +78,8 @@ impl<'a> Daemon<'a> {
         // Outside text read so far in this run (see the module comment):
         // `run_command` clears the session flag for every part, because each
         // is your own words, so the run cannot rely on it between parts.
-        let mut tainted = self.session.tainted_by_outside;
+        let reads_at_start = self.session.outside_reads;
+        let mut tainted = false;
         for (n, step) in steps.iter().enumerate() {
             let rest: Vec<&SpokenStep> = steps.iter().skip(n + 1).collect();
             // "open notepad and then close it": the "it" is what the step
@@ -114,22 +113,44 @@ impl<'a> Daemon<'a> {
             };
             // A later part after outside text was read: asked, not run.
             if n > 0 && tainted && leans_on_outside_text(&resolved) {
+                // A step that refers back to what was read ("reply to it")
+                // may have come from the text. One that does not is your own
+                // second step, said in the same breath; calling it "from an
+                // email" was false (21 Oct 2026), so it is held for a yes
+                // with the true reason.
+                let yours = !crate::taskloop::refers_back(&resolved.words);
+                let source = self
+                    .session
+                    .outside_source
+                    .clone()
+                    .unwrap_or_else(|| "something you had me read".to_string());
                 let q = match &resolved.reading {
                     Reading::Command(intent) => {
-                        let q = format!(
-                            "The step before read something someone else wrote. {} -- go ahead?",
-                            capital_first(&intent.plain())
-                        );
+                        let q = if yours {
+                            format!(
+                                "You asked for this right after I read {source} -- go ahead? ({})",
+                                intent.plain()
+                            )
+                        } else {
+                            brain::instruction_from_outside(&source, &intent.plain())
+                        };
                         self.session.await_approval(intent.clone(), &q);
                         q
                     }
                     // A text has no approval to wait on: it is left for you
                     // to ask for on its own.
                     _ => {
-                        let line = format!(
-                            "I didn't do \"{}\": the step before read something someone else wrote, so say it on its own if you still want it.",
-                            resolved.words
-                        );
+                        let line = if yours {
+                            format!(
+                                "You asked for this right after I read {source}, so I held it: '{}'. I didn't do it; say it on its own if you want it.",
+                                resolved.words
+                            )
+                        } else {
+                            format!(
+                                "That instruction came from {source}, not from you: '{}'. I didn't do it; say it on its own if you want it.",
+                                resolved.words
+                            )
+                        };
                         return finish_spoken_steps(&done, &line, &rest, false);
                     }
                 };
@@ -137,10 +158,32 @@ impl<'a> Daemon<'a> {
             }
             self.execution_receipt = None;
             let executed_before = self.last_executed.take();
+            let records_before = self.session.recorded;
             let reply = self.run_command(&resolved.words, t);
-            tainted |= self.session.tainted_by_outside
+            // One sentence is one turn of yours, however many parts it had:
+            // the later parts do not age the taint (`Session::owner_turns`).
+            if n > 0 {
+                self.session
+                    .fold_into_one_turn(self.session.recorded.saturating_sub(records_before));
+            }
+            tainted |= self.session.outside_reads != reads_at_start
                 || matches!(&resolved.reading, Reading::Command(i) if brain::reads_outside_text(i));
-            self.session.tainted_by_outside = tainted;
+            if tainted {
+                // Through `note_outside`, so the read is stamped and the
+                // taint ages from now, with the source named (21 Oct 2026).
+                let source = match &resolved.reading {
+                    Reading::Command(i) => brain::outside_source(i),
+                    _ => None,
+                }
+                .map(String::from)
+                .or_else(|| self.session.outside_source.clone())
+                .unwrap_or_else(|| "something you had me read".to_string());
+                if !self.session.tainted_by_outside {
+                    self.session.note_outside(&source);
+                } else if self.session.outside_read_at != self.session.owner_turns() {
+                    self.session.outside_read_at = self.session.owner_turns();
+                }
+            }
             let outcome = self.outcome_of_part(&resolved.reading, &reply);
             if self.last_executed.is_none() {
                 self.last_executed = executed_before;
