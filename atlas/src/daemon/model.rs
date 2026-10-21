@@ -526,6 +526,9 @@ impl<'a> Daemon<'a> {
         }
         // The graphics reset under a server before: start with the safe
         // settings while that stands, so it doesn't happen again (`gpulost`).
+        // The small model's context follows the memory free now (4K, 2K when
+        // tight; 21 Oct 2026).
+        let cfg = crate::models::tuned_for(&model, &cfg, &machine);
         let cfg = crate::gpulost::apply(cfg, &crate::gpulost::load(), crate::store::now());
         let safe = cfg.gpu_safe;
         let layers = crate::models::layers_here(&model, &cfg, &machine);

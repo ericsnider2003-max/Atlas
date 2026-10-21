@@ -1347,6 +1347,11 @@ pub fn pick<'a>(
     cfg: &ModelsConfig,
     m: &crate::fit::Machine,
 ) -> Option<&'a Model> {
+    // The smaller core set's tiers, when both of its talking models are here
+    // (21 Oct 2026): what is available now decides 4B, 1.7B or neither.
+    if let Some(tiered) = pick_by_tier(registry, cfg, m) {
+        return tiered;
+    }
     let chosen = pick_by_budget(registry, cfg, m);
     // The bigger talking model, when it's here and this machine has room for
     // it beside the helpers installed (2 Oct 2026).
@@ -1373,6 +1378,88 @@ pub fn pick<'a>(
         }
         _ => chosen,
     }
+}
+
+/// The small talking model beside the 4B (`getpieces::small_talk_model`):
+/// Qwen3-1.7B at 8-bit, the file name without its extension.
+pub const SMALL_TALK: &str = "Qwen3-1.7B-Q8_0";
+
+/// Memory Atlas leaves free for the PC whatever it loads (the owner's 2 GB
+/// floor rule, `docs/OFFLINE_ASSISTANT_DESIGN_2026-10-20.md`).
+pub const FLOOR_FREE_MB: u64 = 2048;
+
+/// Context for the small model when memory is comfortable, and when tight.
+pub const SMALL_CONTEXT: u64 = 4096;
+pub const SMALL_TIGHT_CONTEXT: u64 = 2048;
+
+/// What the memory available right now allows (21 Oct 2026, the design's RAM
+/// table): the 4B from 6.5 GB; the 1.7B at 4K context from 4.5 GB; the 1.7B
+/// at 2K from 3.7 GB; below that no model (the floor: phrase table and plain
+/// tools, labelled online replies). Whether the chosen model also leaves
+/// `FLOOR_FREE_MB` is checked against its real size in `pick_by_tier`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MemoryTier {
+    Full,
+    Small,
+    SmallTight,
+    Floor,
+}
+
+pub fn memory_tier(available_mb: u64) -> MemoryTier {
+    match available_mb {
+        6656.. => MemoryTier::Full,
+        4608..=6655 => MemoryTier::Small,
+        3789..=4607 => MemoryTier::SmallTight,
+        _ => MemoryTier::Floor,
+    }
+}
+
+/// `pick` by tier: `None` when tiers do not apply (a memory limit you set, a
+/// model you named, or either talking model missing) and `Some(choice)` when
+/// they do. `Full` is left to the ordinary pick, which takes the 4B (or the
+/// bigger one where the machine has room).
+fn pick_by_tier<'a>(
+    registry: &'a Registry,
+    cfg: &ModelsConfig,
+    m: &crate::fit::Machine,
+) -> Option<Option<&'a Model>> {
+    if cfg.memory_budget_mb != 0 || !bigger_talk_wanted(cfg) {
+        return None;
+    }
+    registry.get(crate::deepbrain::FASTER_TALK)?;
+    let small = registry.get(SMALL_TALK)?;
+    let context = match memory_tier(m.free_ram_mb) {
+        MemoryTier::Full => return None,
+        MemoryTier::Small => SMALL_CONTEXT,
+        MemoryTier::SmallTight => SMALL_TIGHT_CONTEXT,
+        MemoryTier::Floor => return Some(None),
+    };
+    // The floor rule beside the model's real size: a model that would leave
+    // the PC under 2 GB is not loaded. `estimate_memory` runs about 14-19%
+    // under what the server's working set came to on the laptop (21 Oct
+    // 2026, Vulkan build b10456, `-ctk/-ctv q8_0`: the 1.7B at 2K 2,394 MB
+    // against an estimate of 2,021; at 4K 2,517 against 2,116; the 4B at 4K
+    // 3,275 against 2,882), so 20% goes on top here.
+    let takes_mb = estimate_memory(small, context) / (1024 * 1024) * 6 / 5;
+    if m.free_ram_mb < takes_mb + FLOOR_FREE_MB {
+        return Some(None);
+    }
+    Some(Some(small))
+}
+
+/// The settings to start `model` with on this machine: the tier's context
+/// when the small model was picked by tier (4K, or 2K when tight), the
+/// configured context otherwise.
+pub fn tuned_for(model: &Model, cfg: &ModelsConfig, m: &crate::fit::Machine) -> ModelsConfig {
+    let mut out = cfg.clone();
+    if model.id == SMALL_TALK && cfg.memory_budget_mb == 0 {
+        let cap = match memory_tier(m.free_ram_mb) {
+            MemoryTier::SmallTight => SMALL_TIGHT_CONTEXT,
+            _ => SMALL_CONTEXT,
+        };
+        out.context = if cfg.context == 0 { cap } else { cfg.context.min(cap) };
+    }
+    out
 }
 
 /// Whether the settings leave the choice of talking model to Atlas: nothing
@@ -3279,6 +3366,123 @@ mod bounded_chat_cancellation {
         .is_err());
         assert!(
             matches!(listener.accept(), Err(error) if error.kind() == std::io::ErrorKind::WouldBlock)
+        );
+    }
+}
+
+#[cfg(test)]
+mod memory_tiers {
+    use super::*;
+
+    fn model(id: &str, params: u64, bytes: u64) -> Model {
+        Model {
+            path: PathBuf::from(format!("/nowhere/{id}.gguf")),
+            id: id.into(),
+            architecture: "qwen3".into(),
+            quant: "Q4_K_M".into(),
+            parameters: params,
+            weight_bytes: bytes,
+            max_context: 32_768,
+            chat_template: None,
+        }
+    }
+
+    fn both() -> Registry {
+        Registry {
+            models: vec![
+                model(crate::deepbrain::FASTER_TALK, 4_000_000_000, 2_497_281_664),
+                model(SMALL_TALK, 1_700_000_000, 1_834_426_016),
+            ],
+        }
+    }
+
+    fn laptop(free_mb: u64) -> crate::fit::Machine {
+        crate::fit::Machine {
+            total_ram_mb: 16_384,
+            free_ram_mb: free_mb,
+            cpu_cores: 8,
+            ..Default::default()
+        }
+    }
+
+    fn picked(r: &Registry, free_mb: u64) -> Option<String> {
+        pick(r, &ModelsConfig::default(), &laptop(free_mb)).map(|m| m.id.clone())
+    }
+
+    #[test]
+    fn the_tiers_follow_the_designs_ram_table() {
+        assert_eq!(memory_tier(8_000), MemoryTier::Full);
+        assert_eq!(memory_tier(6_656), MemoryTier::Full);
+        assert_eq!(memory_tier(6_655), MemoryTier::Small);
+        assert_eq!(memory_tier(4_608), MemoryTier::Small);
+        assert_eq!(memory_tier(4_607), MemoryTier::SmallTight);
+        assert_eq!(memory_tier(3_789), MemoryTier::SmallTight);
+        assert_eq!(memory_tier(3_788), MemoryTier::Floor);
+        assert_eq!(memory_tier(0), MemoryTier::Floor);
+    }
+
+    #[test]
+    fn with_both_here_the_free_memory_picks_the_model() {
+        let r = both();
+        let four = crate::deepbrain::FASTER_TALK.to_string();
+        let small = SMALL_TALK.to_string();
+        assert_eq!(picked(&r, 12_000), Some(four.clone()));
+        assert_eq!(picked(&r, 6_700), Some(four));
+        // 5 GB and 6.5 GB (just under): the 1.7B.
+        assert_eq!(picked(&r, 6_600), Some(small.clone()));
+        assert_eq!(picked(&r, 5_000), Some(small.clone()));
+        assert_eq!(picked(&r, 4_608), Some(small.clone()));
+        // Under 4.5 GB the 1.7B at 2K, while it leaves the PC 2 GB (its
+        // measured working set at 2K is about 2.4 GB).
+        assert_eq!(picked(&r, 4_500), Some(small));
+        // The 1.7B's 8-bit file would leave the PC under 2 GB: the floor.
+        assert_eq!(picked(&r, 4_400), None);
+        assert_eq!(picked(&r, 3_900), None);
+        assert_eq!(picked(&r, 2_500), None);
+        assert_eq!(picked(&r, 500), None);
+    }
+
+    #[test]
+    fn the_small_models_context_follows_the_tier() {
+        let r = both();
+        let small = r.get(SMALL_TALK).unwrap();
+        let four = r.get(crate::deepbrain::FASTER_TALK).unwrap();
+        let cfg = ModelsConfig::default();
+        assert_eq!(tuned_for(small, &cfg, &laptop(5_500)).context, 4_096);
+        assert_eq!(tuned_for(small, &cfg, &laptop(4_300)).context, 2_048);
+        // The 4B is left as configured.
+        assert_eq!(tuned_for(four, &cfg, &laptop(8_000)).context, cfg.context);
+        // Never raised past what is configured.
+        let low = ModelsConfig {
+            context: 1_024,
+            ..ModelsConfig::default()
+        };
+        assert_eq!(tuned_for(small, &low, &laptop(5_500)).context, 1_024);
+    }
+
+    #[test]
+    fn tiers_do_not_override_a_choice_the_owner_made() {
+        let r = both();
+        let named = ModelsConfig {
+            prefer: crate::deepbrain::FASTER_TALK.into(),
+            ..ModelsConfig::default()
+        };
+        assert_eq!(
+            pick(&r, &named, &laptop(2_500)).map(|m| m.id.clone()),
+            Some(crate::deepbrain::FASTER_TALK.to_string())
+        );
+        let limited = ModelsConfig {
+            memory_budget_mb: 8_192,
+            ..ModelsConfig::default()
+        };
+        assert!(pick_by_tier(&r, &limited, &laptop(2_500)).is_none());
+        // With the small model not here, the ordinary pick is unchanged.
+        let only4 = Registry {
+            models: vec![r.models[0].clone()],
+        };
+        assert_eq!(
+            picked(&only4, 5_000),
+            Some(crate::deepbrain::FASTER_TALK.to_string())
         );
     }
 }

@@ -1401,6 +1401,16 @@ impl<'a> Daemon<'a> {
                     self.pending_backlog = None;
                     self.session.pending = Pending::Nothing;
                     self.backlog.dismiss(id);
+                    // A no to the download ask declines the pieces it named.
+                    let asked = self
+                        .backlog
+                        .items
+                        .iter()
+                        .find(|i| i.id == id)
+                        .map(|i| i.request.clone());
+                    if let Some(asked) = asked {
+                        self.decline_what_was_asked(&asked, t);
+                    }
                     crate::kept!(self.backlog.save(&self.store));
                     self.persist();
                     return "Alright, I'll leave that one off your list.".into();

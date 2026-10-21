@@ -426,3 +426,7 @@ path = "tests/a_misspelt_setting_is_reported.rs"
 [[test]]
 name = "the_floor_without_a_model"
 path = "tests/the_floor_without_a_model.rs"
+# Its own process: "quit Atlas" rings the process-wide stop flag.
+[[test]]
+name = "instructions_in_content_are_asked_about"
+path = "tests/instructions_in_content_are_asked_about.rs"

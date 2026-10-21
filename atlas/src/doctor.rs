@@ -1364,8 +1364,21 @@ pub fn hearing_finding(tools: Option<&ToolsConfig>) -> Finding {
         .map(|t| t.stt_engine.trim().to_lowercase())
         .unwrap_or_default();
     let parakeet = crate::parakeet::installed(&crate::roots::install_root()).is_some();
+    // 2026-10-21: `auto` takes the resident whisper when it is ready (see
+    // `voice::pick_ear`), so Parakeet is not what hears you then.
+    let resident = tools.is_some_and(|t| {
+        t.resident_asr.enabled
+            && t.stt.command.contains("{whisper}")
+            && t.vars
+                .get("stt_model")
+                .is_some_and(|m| std::path::Path::new(m).is_file())
+    });
     let (ok, detail) = match (engine.as_str(), parakeet) {
         ("whisper", _) => (true, "whisper (chosen in settings)".to_string()),
+        (e, _) if e != "parakeet" && resident => (
+            true,
+            "whisper, kept loaded (faster per clip than Parakeet; set stt_engine: parakeet to use Parakeet)".to_string(),
+        ),
         (_, true) => (
             true,
             "Parakeet TDT 0.6B v2 -- © NVIDIA, CC BY 4.0; see THIRD_PARTY_NOTICES.md".to_string(),

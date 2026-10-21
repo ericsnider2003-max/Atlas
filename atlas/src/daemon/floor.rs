@@ -367,7 +367,10 @@ impl<'a> Daemon<'a> {
         );
         let model = crate::models::pick(&registry, &tc.models, &machine)
             .or_else(|| registry.choose_for(&tc.models, u64::MAX))
-            .map(|m| (m.id.clone(), crate::models::footprint_mb(m, &tc.models)));
+            .map(|m| {
+                let tuned = crate::models::tuned_for(m, &tc.models, &machine);
+                (m.id.clone(), crate::models::footprint_mb(m, &tuned))
+            });
         let procs = crate::tune::snapshot();
         let closable = crate::floor::biggest(&procs, std::process::id(), &self.never_close())
             .into_iter()

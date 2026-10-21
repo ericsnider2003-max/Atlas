@@ -40,9 +40,13 @@ record:
          "-i", "audio={mic_device}", "-t", "{seconds}",
          "-ar", "16000", "-ac", "1", "-y", "{in_wav}"]
 
-# Which speech-to-text hears you: auto (Parakeet when `atlas get hearing`
-# has fetched it, whisper otherwise), parakeet, or whisper. Parakeet is
-# English; another language or translating goes to whisper either way.
+# Which speech-to-text hears you: auto (the resident whisper server when
+# resident_asr is on and the whisper model is here; Parakeet otherwise, when
+# `atlas get hearing` has fetched it), parakeet, or whisper. 21 Oct 2026: auto
+# stopped meaning Parakeet because Parakeet runs one process per clip (p50
+# 2.27 s) and the resident whisper measured p50 0.83 s. Pick parakeet to force
+# it. Parakeet is English; another language or translating goes to whisper
+# either way.
 stt_engine: auto
 
 # Whisper kept loaded between turns (20 Oct 2026). Without this every clip

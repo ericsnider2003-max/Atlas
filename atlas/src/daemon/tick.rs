@@ -1840,7 +1840,11 @@ impl<'a> Daemon<'a> {
         // An errand's result may be what a mail or a page said, now in what
         // the model reads: tainted until your own words say otherwise (Q2).
         if !news.is_empty() {
-            self.session.tainted_by_outside = true;
+            // Through `note_outside`, not the flag alone: that also stamps
+            // when it was read, so `age_outside` counts from now (21 Oct
+            // 2026: the flag set directly kept a stale stamp, and the next
+            // turn in a long session cleared the taint at once).
+            self.session.note_outside("a crew report");
         }
         if !news.is_empty() && self.quiet_for(t) > self.away_after {
             for line in news {
@@ -3907,6 +3911,28 @@ impl Daemon<'_> {
             .info("missing pieces are waiting on your yes before I download them");
     }
 
+    /// The owner dropped the download ask (the Hub's "Drop it") or said no to
+    /// it (2026-10-21): the pieces it named are declined, so they are neither
+    /// fetched nor asked about again until the owner asks for them ("finish
+    /// setting up", or the Connections Download button, which clears the
+    /// decline for what it grants). Anything that is not such an ask is left
+    /// alone. Returns whether anything was written down.
+    pub(crate) fn decline_what_was_asked(&mut self, request: &str, t: u64) -> bool {
+        if !request.starts_with(crate::getpieces::ASK_PREFIX) {
+            return false;
+        }
+        let named = crate::getpieces::pieces_named_in_ask(request);
+        if named.is_empty() {
+            return false;
+        }
+        let mut approved: crate::getpieces::Approved =
+            self.store.load(crate::getpieces::Approved::RECORD);
+        approved.decline(&named, t);
+        self.store
+            .save(crate::getpieces::Approved::RECORD, &approved)
+            .is_ok()
+    }
+
     /// The owner says yes to fetching what's missing (the Connections page's
     /// button, or "finish setting up"). The yes is kept, scoped to the pieces
     /// missing right now, the ask is cleared, and the next tick fetches
@@ -4460,6 +4486,54 @@ mod downloads_are_asked_for_first {
         assert!(!plan.is_empty());
         let approved: crate::getpieces::Approved = d.store.load(crate::getpieces::Approved::RECORD);
         assert!(plan.iter().all(|p| approved.covers(p)));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn dropping_the_ask_declines_its_pieces_and_finish_setting_up_grants_them() {
+        let cfg = crate::config::Config::load(std::path::Path::new("config")).unwrap();
+        let p = platform();
+        let root = root("drop");
+        let mut d = Daemon::new(
+            &cfg,
+            &p,
+            None,
+            crate::store::Store::new(&root),
+            crate::proactive::Proactive::new(crate::proactive::ProactiveConfig::default()),
+        );
+        d.last_top_up = 1;
+        assert!(d.top_up_plan(LATER).is_none());
+        assert_eq!(asks(&d), 1);
+        let (id, request) = {
+            let i = &d.backlog.items[0];
+            (i.id, i.request.clone())
+        };
+        let named = crate::getpieces::pieces_named_in_ask(&request);
+        assert!(!named.is_empty(), "{request}");
+        // "Drop it" in the Hub.
+        d.drop_outstanding(&format!("b:{id}"), LATER + 1)
+            .expect("the ask can be dropped");
+        let approved: crate::getpieces::Approved = d.store.load(crate::getpieces::Approved::RECORD);
+        assert!(named.iter().all(|p| approved.declines(p)));
+        // Never asked about again, and nothing is fetched.
+        d.last_top_up = 1;
+        assert!(d.top_up_plan(LATER + 10).is_none());
+        d.last_top_up = 1;
+        assert!(d.top_up_plan(LATER + 20).is_none());
+        assert_eq!(asks(&d), 0, "no new ask after the drop");
+        // The owner asks for them: granted, and the declines are cleared.
+        let said = d
+            .approve_missing_pieces(LATER + 30)
+            .expect("pieces missing");
+        assert!(said.starts_with("Downloading"), "{said}");
+        let approved: crate::getpieces::Approved = d.store.load(crate::getpieces::Approved::RECORD);
+        assert!(named
+            .iter()
+            .all(|p| approved.covers(p) && !approved.declines(p)));
+        let plan = d
+            .top_up_plan(LATER + 40)
+            .expect("granted pieces are fetched");
+        assert!(named.iter().all(|p| plan.contains(p)));
         let _ = std::fs::remove_dir_all(&root);
     }
 
