@@ -37,6 +37,7 @@ Dates are UTC. The card at the top of `AGENTS.md` holds the facts; this file hol
 
 ## Recently done
 
+- `current-state` Current-state consolidation doc (build, tests, readiness, vault, models, parked, historical) (2026-10-21)
 - `desktop-e2e-1020` Desktop E2E acceptance run 2026-10-20: fix false progress claims, Hub failed/done states, restart reconciliation, backup, mic (2026-10-21)
 - `sec4-dns-q25` SEC4 residual: keyless peer name lookups moved off the tick to a background cache; Q25: Daemon::set_auto_backup switch for tests (2026-10-21)
 - `gpu1-health` GPU1: a model server whose log shows Vulkan device loss is not trusted even when /health says OK; checked before each request (2026-10-21)
@@ -46,7 +47,6 @@ Dates are UTC. The card at the top of `AGENTS.md` holds the facts; this file hol
 - `i217d` Complete singular-candidate workspace handoff and inventory (2026-10-18)
 - `verify-harness` Independent real-runtime verification harness (2026-10-18)
 - `i65c1` Canonical open-work audit (2026-10-16)
-- `filingbundle` Complete canonical Atlas filing bundle (2026-10-16)
 
 ## Docs
 
@@ -116,6 +116,7 @@ One line per doc. "Last true" is the date the doc declares (`Last updated: YYYY-
 | [docs/CHAT_HANDOFF_2026-10-18.md](CHAT_HANDOFF_2026-10-18.md) | Atlas chat handoff — 2026-10-18 | — |
 | [docs/CLAUDE_DESKTOP_ATLAS_ACCEPTANCE_HANDOFF_2026-10-20.md](CLAUDE_DESKTOP_ATLAS_ACCEPTANCE_HANDOFF_2026-10-20.md) | Atlas desktop acceptance handoff — 2026-10-20 | — |
 | [docs/CREATIVE_WORKSPACE_CORE_SCOPE_2026-10-18.md](CREATIVE_WORKSPACE_CORE_SCOPE_2026-10-18.md) | Creative Workspace Core — scope and acceptance | — |
+| [docs/CURRENT_STATE_2026-10-21.md](CURRENT_STATE_2026-10-21.md) | Current state, 21 October 2026 | 2026-10-21 |
 | [docs/EXECUTION_EFFICIENCY_PLAN.md](EXECUTION_EFFICIENCY_PLAN.md) | Atlas execution-efficiency plan | — |
 | [docs/F0_SHARED_RECORD_WIRING_2026-10-15.md](F0_SHARED_RECORD_WIRING_2026-10-15.md) | F0 shared capability record wiring — 2026-10-15 | — |
 | [docs/F1_DURABLE_JOB_COMPILE_FIX_2026-10-15.md](F1_DURABLE_JOB_COMPILE_FIX_2026-10-15.md) | F1 durable job compile fix — 2026-10-15 | — |
@@ -140,7 +141,7 @@ One line per doc. "Last true" is the date the doc declares (`Last updated: YYYY-
 | [docs/REA_REPLICA_ADAPTATION_2026-10-16.md](REA_REPLICA_ADAPTATION_2026-10-16.md) | REA and replica adaptation notes — 2026-10-16 | — |
 | [docs/STALE_RECONCILIATION_2026-10-15.md](STALE_RECONCILIATION_2026-10-15.md) | Filing stale-reference reconciliation — 2026-10-15 | 2026-10-20 |
 | [docs/START_HERE.md](START_HERE.md) | Atlas — current starting point | 2026-10-20 |
-| [docs/STATUS.md](STATUS.md) | Status | 2026-10-20 |
+| [docs/STATUS.md](STATUS.md) | Status | 2026-10-21 |
 | [docs/TEST_COUNT_RECONCILIATION_2026-10-18.md](TEST_COUNT_RECONCILIATION_2026-10-18.md) | Test-count reconciliation — 2026-10-18 | — |
 | [docs/VERIFICATION_CAMPAIGN_2026-10-18.md](VERIFICATION_CAMPAIGN_2026-10-18.md) | Verification campaign — 2026-10-18 | — |
 | [docs/WORK_ITEMS_1_7_STATUS_2026-10-18.md](WORK_ITEMS_1_7_STATUS_2026-10-18.md) | Work Items 1–7 status — 2026-10-18 | — |
