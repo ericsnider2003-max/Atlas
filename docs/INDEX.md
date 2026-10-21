@@ -19,6 +19,7 @@ Dates are UTC. The card at the top of `AGENTS.md` holds the facts; this file hol
 - `disposable-restore` Disposable installed restore evidence — home: [docs/ATLAS_DISPOSABLE_RESTORE_2026-10-17.md](ATLAS_DISPOSABLE_RESTORE_2026-10-17.md) — open since 2026-10-17 (Codex)
 - `llm-missing` Install a local language model on the laptop (owner approval: ~2.5 GB download) and decide online_second — home: [verification/runs/20261020T040916Z-claude-typed-acceptance/RESULTS.md](../verification/runs/20261020T040916Z-claude-typed-acceptance/RESULTS.md) — open since 2026-10-20 (claude)
 - `own-model` Own on-device language model: research and first measurable step (intent golden set baseline) — home: [docs/OWN_LANGUAGE_MODEL_OPTIONS_2026-10-20.md](OWN_LANGUAGE_MODEL_OPTIONS_2026-10-20.md) — open since 2026-10-21 (claude)
+- `offline-assistant` Full offline assistant that keeps the PC usable: design (memory tiers, voice loop, governor) and benchmark plan — home: [docs/OFFLINE_ASSISTANT_DESIGN_2026-10-20.md](OFFLINE_ASSISTANT_DESIGN_2026-10-20.md) — open since 2026-10-21 (claude)
 
 ## Last session
 
@@ -115,6 +116,7 @@ One line per doc. "Last true" is the date the doc declares (`Last updated: YYYY-
 | [docs/GOALS_AND_VERIFICATION_2026-10-18.md](GOALS_AND_VERIFICATION_2026-10-18.md) | Atlas goals and verification order — 2026-10-18 | — |
 | [docs/HANDOFF_2026-10-19_CREATIVE_WORKSPACE.md](HANDOFF_2026-10-19_CREATIVE_WORKSPACE.md) | Atlas Creative Workspace Handoff — 2026-10-19 | — |
 | [docs/INTEGRATION_REVIEW_2026-10-15.md](INTEGRATION_REVIEW_2026-10-15.md) | Canonical integration review — 2026-10-15 | — |
+| [docs/OFFLINE_ASSISTANT_DESIGN_2026-10-20.md](OFFLINE_ASSISTANT_DESIGN_2026-10-20.md) | Atlas as a full offline assistant that keeps the PC usable | 2026-10-20 |
 | [docs/OPEN_WORK_AUDIT_2026-10-15.md](OPEN_WORK_AUDIT_2026-10-15.md) | Atlas open-work audit — 2026-10-15 | 2026-10-20 |
 | [docs/OPERATING_FOUNDATION_TRACE_2026-10-18.md](OPERATING_FOUNDATION_TRACE_2026-10-18.md) | Operating-foundation trace — 2026-10-18 | — |
 | [docs/OUTSTANDING_2026-10-18.md](OUTSTANDING_2026-10-18.md) | Outstanding work — 2026-10-18 | — |
