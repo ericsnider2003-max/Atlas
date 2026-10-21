@@ -391,7 +391,20 @@ pub fn run(cfg: &Config, tools: Option<&ToolsConfig>, plat: &dyn Platform) -> Ve
                 .map(|t| Path::new(&t.command).is_file() || which(&t.command).is_some())
                 .unwrap_or(false);
             match (model, server) {
-                (Some(m), true) => (true, format!("{m}, started when it's needed")),
+                // 21 Oct 2026: which tier is in use and why, or that there is
+                // no model right now and what it needs (memory tiers).
+                (Some(m), true) => match crate::models::tier_line(
+                    &registry,
+                    &mcfg,
+                    &crate::fit::measure(),
+                    &crate::models::ModelCosts::load(),
+                ) {
+                    Some(line) => (
+                        !line.starts_with("no model right now"),
+                        format!("{line} (started when it's needed)"),
+                    ),
+                    None => (true, format!("{m}, started when it's needed")),
+                },
                 (Some(m), false) => (
                     false,
                     format!("{m} is here but the program that runs it (llama-server) isn't — say \"finish setting up\" (or Download on the Connections page) and I'll fetch it"),

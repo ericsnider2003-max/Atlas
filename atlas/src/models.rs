@@ -1396,7 +1396,8 @@ pub const SMALL_TIGHT_CONTEXT: u64 = 2048;
 /// table): the 4B from 6.5 GB; the 1.7B at 4K context from 4.5 GB; the 1.7B
 /// at 2K from 3.7 GB; below that no model (the floor: phrase table and plain
 /// tools, labelled online replies). Whether the chosen model also leaves
-/// `FLOOR_FREE_MB` is checked against its real size in `pick_by_tier`.
+/// `FLOOR_FREE_MB` is checked against its real size (or the cost measured
+/// here) in `pick_by_tier`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MemoryTier {
     Full,
@@ -1414,6 +1415,231 @@ pub fn memory_tier(available_mb: u64) -> MemoryTier {
     }
 }
 
+/// The tier one step down: 4B, then the 1.7B at 4K, then the 1.7B at 2K, then
+/// the floor (no model).
+fn drop_tier(t: MemoryTier) -> MemoryTier {
+    match t {
+        MemoryTier::Full => MemoryTier::Small,
+        MemoryTier::Small => MemoryTier::SmallTight,
+        MemoryTier::SmallTight | MemoryTier::Floor => MemoryTier::Floor,
+    }
+}
+
+/// From `start`, the first tier whose model fits (`fits`), dropping one tier
+/// at a time; the floor always "fits" (21 Oct 2026).
+fn choose_tier(start: MemoryTier, fits: &dyn Fn(MemoryTier) -> bool) -> MemoryTier {
+    let mut t = start;
+    while t != MemoryTier::Floor && !fits(t) {
+        t = drop_tier(t);
+    }
+    t
+}
+
+// ---------------------------------------------------------------------------
+// What a model really costs on this machine (21 Oct 2026).
+//
+// The estimate under-counted on an integrated-graphics laptop: with 6.4 GB free
+// Atlas started the 1.7B (999 layers on the graphics) and available memory fell
+// to 1,160 MB, under the owner's 2 GB floor. Vulkan offload allocates shared
+// system memory the server's working set does not show, beside the daemon's
+// own growth and the resident hearing server. So every start is measured:
+// available memory before, and the lowest over a settle window afterwards. The
+// difference is the cost, kept per model file, context and graphics/processor
+// setting, and the tier decision uses the larger of the estimate and it.
+// ---------------------------------------------------------------------------
+
+/// The estimate's share on top when the server offloads every layer to
+/// integrated graphics (percent): their memory is the system's, and none of
+/// it shows in the server's working set. A first guess until the machine has
+/// measured its own (`ModelCosts`); the 1.2 factor already in the estimate
+/// stays, so the first load there is 1.5 times the raw estimate.
+pub const IGPU_OFFLOAD_PERCENT: u64 = 125;
+
+/// How long after the server is ready the lowest available memory is watched
+/// before the measured cost is recorded.
+pub const COST_SETTLE_SECS: u64 = 30;
+
+/// What one start was measured to cost, for one model file at one context and
+/// graphics setting.
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, Deserialize)]
+pub struct CostRecord {
+    pub key: String,
+    pub cost_mb: u64,
+    #[serde(default)]
+    pub at: u64,
+}
+
+/// The durable record of measured costs (store name `model_costs`).
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, Deserialize)]
+pub struct ModelCosts {
+    #[serde(default)]
+    pub records: Vec<CostRecord>,
+}
+
+impl ModelCosts {
+    const RECORD: &'static str = "model_costs";
+
+    pub fn load() -> ModelCosts {
+        crate::roots::store().load(Self::RECORD)
+    }
+
+    /// Keep what a start was measured to cost.
+    pub fn keep(key: &str, cost_mb: u64) -> Result<()> {
+        let costs = ModelCosts::load().with(key, cost_mb, crate::store::now());
+        crate::roots::store().save(Self::RECORD, &costs)
+    }
+
+    /// The key a measured cost is kept under: the model file, its context,
+    /// and whether layers went to the graphics.
+    pub fn key(model_id: &str, context: u64, offload: bool) -> String {
+        format!(
+            "{model_id}|ctx{context}|{}",
+            if offload { "gpu" } else { "cpu" }
+        )
+    }
+
+    pub fn cost_for(&self, key: &str) -> Option<u64> {
+        self.records.iter().find(|r| r.key == key).map(|r| r.cost_mb)
+    }
+
+    /// The latest measurement for `key` replaces the one before it.
+    pub fn with(mut self, key: &str, cost_mb: u64, at: u64) -> ModelCosts {
+        self.records.retain(|r| r.key != key);
+        self.records.push(CostRecord {
+            key: key.to_string(),
+            cost_mb,
+            at,
+        });
+        self
+    }
+}
+
+/// Whether every layer goes to integrated graphics here: layers offloaded and
+/// no dedicated memory of the graphics' own to put them in.
+fn integrated_offload(m: &Machine, layers: u32) -> bool {
+    layers > 0 && m.usable_vram_mb() == 0
+}
+
+/// What a model is expected to take, in megabytes: the estimate plus a fifth
+/// (the working set ran 14-19% over it), plus `IGPU_OFFLOAD_PERCENT` when it
+/// offloads to integrated graphics.
+fn estimated_need_mb(estimate_bytes: u64, integrated_offload: bool) -> u64 {
+    let mb = estimate_bytes / (1024 * 1024) * 6 / 5;
+    if integrated_offload {
+        mb * IGPU_OFFLOAD_PERCENT / 100
+    } else {
+        mb
+    }
+}
+
+/// The larger of the estimate and what was measured here.
+fn needed_mb(estimated_mb: u64, measured_mb: Option<u64>) -> u64 {
+    estimated_mb.max(measured_mb.unwrap_or(0))
+}
+
+/// What a start cost: available memory before it less the lowest reading
+/// after.
+pub fn measured_cost_mb(before_mb: u64, lowest_mb: u64) -> u64 {
+    before_mb.saturating_sub(lowest_mb)
+}
+
+/// Whether `needed_mb` fits in `available_mb` and still leaves the PC its
+/// floor (`FLOOR_FREE_MB`). Also the rule for loading the same model again:
+/// not until available memory is at least its measured cost plus 2 GB.
+fn fits_with_floor(available_mb: u64, needed_mb: u64) -> bool {
+    available_mb >= needed_mb + FLOOR_FREE_MB
+}
+
+/// The post-load guard: the lowest available memory seen is under the floor,
+/// so the server is stopped at once.
+pub fn guard_trips(lowest_mb: u64) -> bool {
+    lowest_mb < FLOOR_FREE_MB
+}
+
+/// The cost to keep when the guard trips: a cost already measured at the end
+/// of a clean settle window stands (a game opened later is not the model's
+/// doing); otherwise the difference seen.
+pub fn cost_to_record(before_mb: u64, lowest_mb: u64, settled_cost_mb: Option<u64>) -> u64 {
+    settled_cost_mb.unwrap_or_else(|| measured_cost_mb(before_mb, lowest_mb))
+}
+
+/// The one log line a settle or a guard trip writes, with the numbers.
+pub fn guard_line(
+    model_id: &str,
+    before_mb: u64,
+    lowest_mb: u64,
+    cost_mb: u64,
+    action: &str,
+) -> String {
+    format!(
+        "model memory: {model_id}: available before the start {before_mb} MB, lowest since \
+         {lowest_mb} MB, measured cost {cost_mb} MB, floor {FLOOR_FREE_MB} MB: {action}"
+    )
+}
+
+/// What `model` needs free to run at `context` here, in megabytes, before the
+/// PC's floor: the larger of the estimate and the measured cost.
+fn need_mb(
+    model: &Model,
+    context: u64,
+    cfg: &ModelsConfig,
+    m: &crate::fit::Machine,
+    costs: &ModelCosts,
+) -> u64 {
+    let layers = layers_here(model, cfg, m);
+    let estimated = estimated_need_mb(
+        estimate_memory(model, context),
+        integrated_offload(m, layers),
+    );
+    needed_mb(
+        estimated,
+        costs.cost_for(&ModelCosts::key(&model.id, context, layers > 0)),
+    )
+}
+
+/// The small model's context at a tier: the tier's, lowered to the configured
+/// one (`0` leaves the tier's).
+fn small_context_at(cfg: &ModelsConfig, cap: u64) -> u64 {
+    if cfg.context == 0 {
+        cap
+    } else {
+        cfg.context.min(cap)
+    }
+}
+
+/// The tier the tiers rule gives, or `None` when they do not apply (a memory
+/// limit's model, a model you named, or either talking model missing).
+fn tier_choice<'a>(
+    registry: &'a Registry,
+    cfg: &ModelsConfig,
+    m: &crate::fit::Machine,
+    costs: &ModelCosts,
+) -> Option<(MemoryTier, &'a Model, &'a Model)> {
+    if !bigger_talk_wanted(cfg) {
+        return None;
+    }
+    let four = registry.get(crate::deepbrain::FASTER_TALK)?;
+    let small = registry.get(SMALL_TALK)?;
+    let available_mb = tier_available_mb(cfg, m);
+    // The floor rule beside the model's real size: a model that would leave
+    // the PC under 2 GB is not loaded. `estimate_memory` runs about 14-19%
+    // under what the server's working set came to on the laptop (21 Oct
+    // 2026, Vulkan build b10456, `-ctk/-ctv q8_0`: the 1.7B at 2K 2,394 MB
+    // against an estimate of 2,021; at 4K 2,517 against 2,116; the 4B at 4K
+    // 3,275 against 2,882), so 20% goes on top, more on integrated graphics,
+    // and never less than a start here was measured to cost.
+    let fits = |t: MemoryTier| {
+        let (model, ctx) = match t {
+            MemoryTier::Full => (four, cfg.context),
+            MemoryTier::Small => (small, small_context_at(cfg, SMALL_CONTEXT)),
+            MemoryTier::SmallTight => (small, small_context_at(cfg, SMALL_TIGHT_CONTEXT)),
+            MemoryTier::Floor => return true,
+        };
+        fits_with_floor(available_mb, need_mb(model, ctx, cfg, m, costs))
+    };
+    Some((choose_tier(memory_tier(available_mb), &fits), four, small))
+}
+
 /// `pick` by tier: `None` when tiers do not apply (a memory limit you set, a
 /// model you named, or either talking model missing) and `Some(choice)` when
 /// they do. `Full` is left to the ordinary pick, which takes the 4B (or the
@@ -1423,29 +1649,21 @@ fn pick_by_tier<'a>(
     cfg: &ModelsConfig,
     m: &crate::fit::Machine,
 ) -> Option<Option<&'a Model>> {
-    if !bigger_talk_wanted(cfg) {
-        return None;
+    pick_by_tier_with(registry, cfg, m, &ModelCosts::load())
+}
+
+fn pick_by_tier_with<'a>(
+    registry: &'a Registry,
+    cfg: &ModelsConfig,
+    m: &crate::fit::Machine,
+    costs: &ModelCosts,
+) -> Option<Option<&'a Model>> {
+    let (tier, _, small) = tier_choice(registry, cfg, m, costs)?;
+    match tier {
+        MemoryTier::Full => None,
+        MemoryTier::Small | MemoryTier::SmallTight => Some(Some(small)),
+        MemoryTier::Floor => Some(None),
     }
-    registry.get(crate::deepbrain::FASTER_TALK)?;
-    let small = registry.get(SMALL_TALK)?;
-    let available_mb = tier_available_mb(cfg, m);
-    let context = match memory_tier(available_mb) {
-        MemoryTier::Full => return None,
-        MemoryTier::Small => SMALL_CONTEXT,
-        MemoryTier::SmallTight => SMALL_TIGHT_CONTEXT,
-        MemoryTier::Floor => return Some(None),
-    };
-    // The floor rule beside the model's real size: a model that would leave
-    // the PC under 2 GB is not loaded. `estimate_memory` runs about 14-19%
-    // under what the server's working set came to on the laptop (21 Oct
-    // 2026, Vulkan build b10456, `-ctk/-ctv q8_0`: the 1.7B at 2K 2,394 MB
-    // against an estimate of 2,021; at 4K 2,517 against 2,116; the 4B at 4K
-    // 3,275 against 2,882), so 20% goes on top here.
-    let takes_mb = estimate_memory(small, context) / (1024 * 1024) * 6 / 5;
-    if available_mb < takes_mb + FLOOR_FREE_MB {
-        return Some(None);
-    }
-    Some(Some(small))
 }
 
 /// What the tiers are measured against (21 Oct 2026): the memory free right
@@ -1465,26 +1683,94 @@ fn tier_available_mb(cfg: &ModelsConfig, m: &crate::fit::Machine) -> u64 {
 /// free against how much is needed and what to close. `None` when the tiers
 /// do not apply or a model fits.
 pub fn tier_no_fit(registry: &Registry, cfg: &ModelsConfig, m: &crate::fit::Machine) -> Option<(String, u64)> {
-    if !matches!(pick_by_tier(registry, cfg, m), Some(None)) {
+    let costs = ModelCosts::load();
+    if !matches!(pick_by_tier_with(registry, cfg, m, &costs), Some(None)) {
         return None;
     }
     let small = registry.get(SMALL_TALK)?;
-    let takes_mb = estimate_memory(small, SMALL_TIGHT_CONTEXT) / (1024 * 1024) * 6 / 5;
+    let takes_mb = need_mb(small, small_context_at(cfg, SMALL_TIGHT_CONTEXT), cfg, m, &costs);
     let need = (takes_mb + FLOOR_FREE_MB).max(m.free_ram_mb + 1);
     Some((small.id.clone(), need))
+}
+
+/// The "language model" line of the health report (21 Oct 2026): which tier
+/// is in use and why, or that there is no model right now and what it needs.
+/// `None` when the tiers do not apply (the plain line is used).
+pub fn tier_line(
+    registry: &Registry,
+    cfg: &ModelsConfig,
+    m: &crate::fit::Machine,
+    costs: &ModelCosts,
+) -> Option<String> {
+    let (tier, four, small) = tier_choice(registry, cfg, m, costs)?;
+    let free = tier_available_mb(cfg, m);
+    let gb = |mb: u64| format!("{:.1} GB", mb as f64 / 1024.0);
+    let by_table = memory_tier(free);
+    // Why, when the table alone would have said a bigger one: what it needs
+    // here, measured or estimated.
+    let higher_needs = |model: &Model, ctx: u64| {
+        format!(
+            "{} was free and the bigger one needs {} free",
+            gb(free),
+            gb(need_mb(model, ctx, cfg, m, costs) + FLOOR_FREE_MB)
+        )
+    };
+    let because = match tier {
+        MemoryTier::Full => format!("{} was free", gb(free)),
+        _ if tier == by_table => format!("{} was free", gb(free)),
+        MemoryTier::Small => higher_needs(four, cfg.context),
+        _ => higher_needs(small, small_context_at(cfg, SMALL_CONTEXT)),
+    };
+    Some(match tier {
+        MemoryTier::Full => format!("4B, because {because}"),
+        MemoryTier::Small => format!("1.7B, because {because}"),
+        MemoryTier::SmallTight => format!("1.7B at 2K context, because {because}"),
+        MemoryTier::Floor => {
+            let need = need_mb(small, small_context_at(cfg, SMALL_TIGHT_CONTEXT), cfg, m, costs)
+                + FLOOR_FREE_MB;
+            format!(
+                "no model right now: it needs {} and {} is free",
+                gb(need.max(free + 1)),
+                gb(free)
+            )
+        }
+    })
 }
 
 /// The settings to start `model` with on this machine: the tier's context
 /// when the small model was picked by tier (4K, or 2K when tight), the
 /// configured context otherwise.
 pub fn tuned_for(model: &Model, cfg: &ModelsConfig, m: &crate::fit::Machine) -> ModelsConfig {
+    tuned_for_with(model, cfg, m, &ModelCosts::load())
+}
+
+fn tuned_for_with(
+    model: &Model,
+    cfg: &ModelsConfig,
+    m: &crate::fit::Machine,
+    costs: &ModelCosts,
+) -> ModelsConfig {
     let mut out = cfg.clone();
     if model.id == SMALL_TALK {
-        let cap = match memory_tier(tier_available_mb(cfg, m)) {
-            MemoryTier::SmallTight => SMALL_TIGHT_CONTEXT,
-            _ => SMALL_CONTEXT,
+        let available_mb = tier_available_mb(cfg, m);
+        // The 4B's tier is not this model's: it starts at the 1.7B's.
+        let start = match memory_tier(available_mb) {
+            MemoryTier::Full => MemoryTier::Small,
+            t => t,
         };
-        out.context = if cfg.context == 0 { cap } else { cfg.context.min(cap) };
+        let tier = choose_tier(start, &|t| {
+            let ctx = match t {
+                MemoryTier::Small => small_context_at(cfg, SMALL_CONTEXT),
+                MemoryTier::SmallTight => small_context_at(cfg, SMALL_TIGHT_CONTEXT),
+                _ => return true,
+            };
+            fits_with_floor(available_mb, need_mb(model, ctx, cfg, m, costs))
+        });
+        let cap = match tier {
+            MemoryTier::Small => SMALL_CONTEXT,
+            _ => SMALL_TIGHT_CONTEXT,
+        };
+        out.context = small_context_at(cfg, cap);
     }
     out
 }
@@ -3597,5 +3883,153 @@ mod memory_tiers {
             picked(&only4, 5_000),
             Some(crate::deepbrain::FASTER_TALK.to_string())
         );
+    }
+
+    // ---- measured cost (21 Oct 2026) ----
+
+    fn four_key() -> String {
+        ModelCosts::key(crate::deepbrain::FASTER_TALK, ModelsConfig::default().context, false)
+    }
+
+    fn small_key(ctx: u64) -> String {
+        ModelCosts::key(SMALL_TALK, ctx, false)
+    }
+
+    fn by_tier(r: &Registry, free_mb: u64, costs: &ModelCosts) -> Option<Option<String>> {
+        pick_by_tier_with(r, &ModelsConfig::default(), &laptop(free_mb), costs)
+            .map(|c| c.map(|m| m.id.clone()))
+    }
+
+    #[test]
+    fn the_cost_arithmetic_is_the_larger_of_estimate_and_measured() {
+        let mb = 1024 * 1024;
+        assert_eq!(estimated_need_mb(2_000 * mb, false), 2_400);
+        // Integrated graphics offload: a quarter more on top, documented.
+        assert_eq!(estimated_need_mb(2_000 * mb, true), 3_000);
+        assert_eq!(needed_mb(2_400, None), 2_400);
+        assert_eq!(needed_mb(2_400, Some(5_200)), 5_200);
+        assert_eq!(needed_mb(6_000, Some(5_200)), 6_000);
+        assert_eq!(measured_cost_mb(6_400, 1_160), 5_240);
+        assert_eq!(measured_cost_mb(1_000, 1_200), 0);
+        assert!(fits_with_floor(4_048, 2_000));
+        assert!(!fits_with_floor(4_047, 2_000));
+        let igpu = crate::fit::Machine::default();
+        assert!(integrated_offload(&igpu, 999));
+        assert!(!integrated_offload(&igpu, 0));
+        let card = crate::fit::Machine {
+            vram_mb: 8_192,
+            ..Default::default()
+        };
+        assert!(!integrated_offload(&card, 999));
+    }
+
+    #[test]
+    fn the_records_keep_the_latest_per_key_and_survive_a_round_trip() {
+        let c = ModelCosts::default()
+            .with("a|ctx1|gpu", 100, 1)
+            .with("b|ctx1|cpu", 200, 2)
+            .with("a|ctx1|gpu", 300, 3);
+        assert_eq!(c.cost_for("a|ctx1|gpu"), Some(300));
+        assert_eq!(c.cost_for("b|ctx1|cpu"), Some(200));
+        assert_eq!(c.cost_for("nope"), None);
+        let json = serde_json::to_string(&c).unwrap();
+        let back: ModelCosts = serde_json::from_str(&json).unwrap();
+        assert_eq!(back, c);
+        assert_eq!(serde_json::from_str::<ModelCosts>("{}").unwrap(), ModelCosts::default());
+        assert_ne!(ModelCosts::key("m", 4096, true), ModelCosts::key("m", 4096, false));
+    }
+
+    #[test]
+    fn a_measured_cost_drops_the_tier_and_blocks_a_reload_until_there_is_headroom() {
+        let r = both();
+        let four = crate::deepbrain::FASTER_TALK.to_string();
+        let none = ModelCosts::default();
+        assert_eq!(by_tier(&r, 6_700, &none), None, "no cost known: the 4B as before");
+        // The 4B measured 5.2 GB here: 6.7 GB free is not 5.2 + 2.
+        let c4 = ModelCosts::default().with(&four_key(), 5_200, 1);
+        assert_eq!(by_tier(&r, 6_700, &c4), Some(Some(SMALL_TALK.to_string())));
+        // Not reloaded until available memory is cost + 2 GB.
+        assert_eq!(by_tier(&r, 7_247, &c4), Some(Some(SMALL_TALK.to_string())));
+        assert_eq!(by_tier(&r, 7_248, &c4), None);
+        // The 1.7B at 4K measured as dear: one more tier down, to 2K.
+        let c = c4.with(&small_key(4_096), 5_200, 2);
+        assert_eq!(by_tier(&r, 5_000, &c), Some(Some(SMALL_TALK.to_string())));
+        let small = r.get(SMALL_TALK).unwrap();
+        assert_eq!(
+            tuned_for_with(small, &ModelsConfig::default(), &laptop(5_000), &c).context,
+            2_048
+        );
+        // And the 2K one measured as dear: the floor, then back with headroom.
+        let c = c.with(&small_key(2_048), 4_000, 3);
+        assert_eq!(by_tier(&r, 5_000, &c), Some(None));
+        assert_eq!(by_tier(&r, 6_048, &c), Some(Some(SMALL_TALK.to_string())));
+        let _ = four;
+    }
+
+    #[test]
+    fn integrated_graphics_offload_raises_the_first_estimate() {
+        let r = both();
+        let gpu = ModelsConfig {
+            gpu_layers: "all".into(),
+            ..ModelsConfig::default()
+        };
+        let none = ModelCosts::default();
+        // The 4B fits at 6.7 GB on the processor; offloaded to integrated
+        // graphics it is estimated a quarter higher and does not.
+        let at = |cfg: &ModelsConfig| {
+            pick_by_tier_with(&r, cfg, &laptop(6_700), &none).map(|c| c.map(|m| m.id.clone()))
+        };
+        assert_eq!(at(&ModelsConfig::default()), None);
+        assert_eq!(at(&gpu), Some(Some(SMALL_TALK.to_string())));
+    }
+
+    #[test]
+    fn the_post_load_guard_trips_under_the_floor_and_keeps_the_settled_cost() {
+        // The 21 Oct evidence: 6.4 GB free before, 1,160 MB lowest.
+        assert!(guard_trips(1_160));
+        assert!(guard_trips(2_047));
+        assert!(!guard_trips(2_048));
+        assert_eq!(cost_to_record(6_400, 1_160, None), 5_240);
+        // A cost settled cleanly earlier stands against a later dip.
+        assert_eq!(cost_to_record(6_400, 1_160, Some(2_500)), 2_500);
+        let line = guard_line("Qwen3-1.7B-Q8_0", 6_400, 1_160, 5_240, "stopped it");
+        for part in ["6400 MB", "1160 MB", "5240 MB", "2048 MB", "stopped it"] {
+            assert!(line.contains(part), "{line}");
+        }
+    }
+
+    #[test]
+    fn the_health_line_says_which_tier_and_why() {
+        let r = both();
+        let cfg = ModelsConfig::default();
+        let none = ModelCosts::default();
+        let line = |free| tier_line(&r, &cfg, &laptop(free), &none).unwrap();
+        assert_eq!(line(8_000), "4B, because 7.8 GB was free");
+        assert_eq!(line(4_900), "1.7B, because 4.8 GB was free");
+        assert!(line(4_500).starts_with("1.7B at 2K context, because"), "{}", line(4_500));
+        let floor = line(2_150);
+        assert!(floor.starts_with("no model right now: it needs"), "{floor}");
+        assert!(floor.ends_with("and 2.1 GB is free"), "{floor}");
+        // A measured cost that pushed it down is named.
+        let c4 = ModelCosts::default().with(&four_key(), 5_200, 1);
+        let said = tier_line(&r, &cfg, &laptop(6_700), &c4).unwrap();
+        assert!(said.starts_with("1.7B, because 6.5 GB was free and the bigger one needs 7.1 GB"), "{said}");
+        // Tiers off: the plain line is used.
+        let named = ModelsConfig {
+            prefer: crate::deepbrain::FASTER_TALK.into(),
+            ..ModelsConfig::default()
+        };
+        assert!(tier_line(&r, &named, &laptop(2_500), &none).is_none());
+    }
+
+    #[test]
+    fn choose_tier_drops_one_at_a_time() {
+        let all = |_: MemoryTier| true;
+        let none = |t: MemoryTier| t == MemoryTier::Floor;
+        assert_eq!(choose_tier(MemoryTier::Full, &all), MemoryTier::Full);
+        assert_eq!(choose_tier(MemoryTier::Full, &none), MemoryTier::Floor);
+        let only_tight = |t: MemoryTier| t == MemoryTier::SmallTight;
+        assert_eq!(choose_tier(MemoryTier::Full, &only_tight), MemoryTier::SmallTight);
+        assert_eq!(drop_tier(MemoryTier::Floor), MemoryTier::Floor);
     }
 }

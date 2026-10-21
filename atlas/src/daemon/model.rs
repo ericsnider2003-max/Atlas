@@ -444,6 +444,7 @@ impl<'a> Daemon<'a> {
                 self.model_started = None;
                 self.model_deaths = 0;
             }
+            self.watch_model_memory();
             // Ours and running: a turn counts as using it. A pass of the loop
             // doesn't (29 Sep 2026: every pass counted, so the half-hour
             // keep-warm never ran out and the model held its memory all day).
@@ -533,8 +534,17 @@ impl<'a> Daemon<'a> {
         let safe = cfg.gpu_safe;
         let layers = crate::models::layers_here(&model, &cfg, &machine);
         let mb = crate::models::footprint_mb(&model, &cfg);
+        let before_mb = machine.free_ram_mb;
         let trouble = match self.start_model_server(&model, &cfg, layers, mb) {
             Ok(_) => {
+                self.model_settle = Some(Settle {
+                    key: crate::models::ModelCosts::key(&model.id, cfg.context, layers > 0),
+                    model_id: model.id.clone(),
+                    before_mb,
+                    lowest_mb: before_mb,
+                    settled_cost_mb: None,
+                    sampled: std::time::Instant::now(),
+                });
                 self.model_in_safe_mode = safe;
                 crate::gpulost::set_safe_running(safe);
                 self.log.info(&format!(
@@ -563,6 +573,71 @@ impl<'a> Daemon<'a> {
             ));
         }
         self.model_server_trouble = trouble;
+    }
+
+    /// The measured cost and the post-load floor guard (21 Oct 2026). The
+    /// server's start recorded the memory available before it; from then the
+    /// lowest available memory is kept. When the settle window after ready
+    /// ends, the difference is stored as this model's cost on this machine.
+    /// If available memory falls under the 2 GB floor, in the window or later
+    /// while the model sits idle, the server is stopped at once and the cost
+    /// is kept, so the next pick drops a tier and does not load this one again
+    /// until available memory is the cost plus 2 GB (`models::tier_choice`).
+    fn watch_model_memory(&mut self) {
+        let Some(mut s) = self.model_settle.take() else {
+            return;
+        };
+        // Read every couple of seconds, not on every pass of the loop.
+        if s.sampled.elapsed() < MODEL_MEMORY_LOOK {
+            self.model_settle = Some(s);
+            return;
+        }
+        s.sampled = std::time::Instant::now();
+        let Some(available) = crate::relief::available_mb() else {
+            self.model_settle = Some(s);
+            return;
+        };
+        s.lowest_mb = s.lowest_mb.min(available);
+        let ready_for = self.model_started.map(|t| t.elapsed());
+        let window = MODEL_SERVER_LOADING
+            + std::time::Duration::from_secs(crate::models::COST_SETTLE_SECS);
+        if s.settled_cost_mb.is_none() && ready_for.is_some_and(|d| d >= window) {
+            let cost = crate::models::measured_cost_mb(s.before_mb, s.lowest_mb);
+            s.settled_cost_mb = Some(cost);
+            crate::kept!(crate::models::ModelCosts::keep(&s.key, cost));
+            self.log.info(&crate::models::guard_line(
+                &s.model_id,
+                s.before_mb,
+                s.lowest_mb,
+                cost,
+                "settled, cost kept for the next tier choice",
+            ));
+        }
+        if crate::models::guard_trips(s.lowest_mb) && self.helpers.is_idle("model-server") {
+            let cost = crate::models::cost_to_record(s.before_mb, s.lowest_mb, s.settled_cost_mb);
+            crate::kept!(crate::models::ModelCosts::keep(&s.key, cost));
+            self.helpers.finished("model-server");
+            self.model_rested = true;
+            self.model_running_id = None;
+            self.model_started = None;
+            self.model_start_tried = None;
+            if let Ok(mut seen) = self
+                .model_server_seen
+                .lock()
+                .or_else(crate::crash::unpoison)
+            {
+                *seen = None;
+            }
+            self.log.warn(&crate::models::guard_line(
+                &s.model_id,
+                s.before_mb,
+                s.lowest_mb,
+                cost,
+                "under the floor, stopped the model server; the next start drops a tier",
+            ));
+            return;
+        }
+        self.model_settle = Some(s);
     }
 
     /// Our model server stopped on its own (not let go for being idle). One
@@ -2574,6 +2649,21 @@ fn capital(s: &str) -> String {
     }
 }
 
+/// One model-server start being measured (`Daemon::watch_model_memory`).
+pub(super) struct Settle {
+    pub(super) key: String,
+    pub(super) model_id: String,
+    /// Available memory in MB just before the start, and the lowest since.
+    pub(super) before_mb: u64,
+    pub(super) lowest_mb: u64,
+    /// The cost kept when the settle window ended cleanly.
+    pub(super) settled_cost_mb: Option<u64>,
+    pub(super) sampled: std::time::Instant,
+}
+
+/// How often available memory is read while a model server runs.
+const MODEL_MEMORY_LOOK: std::time::Duration = std::time::Duration::from_secs(2);
+
 /// What the daemon can let go for `relief::relieve`: the voice, and the
 /// talking model's server when it isn't answering.
 struct DaemonHolders<'h> {
@@ -2641,7 +2731,12 @@ impl<'a> Daemon<'a> {
             helpers: &mut self.helpers,
             server_let_go: false,
         };
-        let report = crate::relief::relieve(&mut holders, &mut crate::relief::private_bytes);
+        let report = crate::relief::relieve(
+            &mut holders,
+            &mut crate::relief::private_bytes,
+            &mut crate::relief::available_mb,
+            crate::relief::CHILD_SETTLE,
+        );
         let server_let_go = holders.server_let_go;
         if server_let_go {
             // Waits for the next question, as after an idle let-go.
@@ -2649,6 +2744,7 @@ impl<'a> Daemon<'a> {
             self.model_running_id = None;
             self.model_started = None;
             self.model_start_tried = None;
+            self.model_settle = None;
         }
         self.log.info(&report.line("memory is short"));
     }

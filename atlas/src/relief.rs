@@ -21,7 +21,9 @@
 //!
 //! The small essentials (the wake-word spotter, the hub, the microphone)
 //! stay. Every relief logs why and what it measured: the process's private
-//! bytes before and after, so the effect is a number and not a hope.
+//! bytes before and after, so the effect is a number and not a hope. For a
+//! separate server (the model, the recogniser) it is the system's available
+//! memory before and a few seconds after instead (21 Oct 2026).
 //!
 //! The order and the "idle only" rule are pure and tested here; what is
 //! actually released lives behind [`Holders`], which the daemon implements.
@@ -51,6 +53,15 @@ pub const ORDER: [Step; 6] = [
 ];
 
 impl Step {
+    /// Whether this is a separate process (a child server). Its memory is
+    /// not in the daemon's own private bytes, so what relief frees there is
+    /// read from the system's available memory instead (21 Oct 2026: "private
+    /// bytes 762 MB -> 762 MB (freed 0 MB)" was logged for a model server
+    /// that had in fact given back gigabytes).
+    pub fn is_child_process(self) -> bool {
+        matches!(self, Step::ModelServer | Step::Recogniser)
+    }
+
     pub fn name(self) -> &'static str {
         match self {
             Step::Kokoro => "Kokoro voice",
@@ -86,9 +97,24 @@ pub struct Report {
     pub kept_busy: Vec<Step>,
     pub before: Option<u64>,
     pub after: Option<u64>,
+    /// System available memory in MB before, and a few seconds after, when a
+    /// child process was let go (the effect of stopping a separate server).
+    pub available_before_mb: Option<u64>,
+    pub available_after_mb: Option<u64>,
 }
 
 impl Report {
+    /// Whether a separate process was let go, so the daemon's own private
+    /// bytes say nothing about the effect.
+    pub fn let_go_a_child(&self) -> bool {
+        self.released.iter().any(|s| s.is_child_process())
+    }
+
+    /// Megabytes of system memory that came back, when both readings exist.
+    pub fn available_gain_mb(&self) -> Option<u64> {
+        Some(self.available_after_mb?.saturating_sub(self.available_before_mb?))
+    }
+
     /// Bytes given back, when both readings exist.
     pub fn freed(&self) -> Option<u64> {
         Some(self.before?.saturating_sub(self.after?))
@@ -110,6 +136,15 @@ impl Report {
             format!("; kept (in use): {}", names.join(", "))
         };
         let measured = match (self.before, self.after) {
+            _ if self.let_go_a_child() => match (self.available_before_mb, self.available_after_mb)
+            {
+                (Some(b), Some(a)) => format!(
+                    "; system available memory {b} MB -> {a} MB (freed {} MB; a separate server's \
+                     memory is not in the daemon's own private bytes)",
+                    self.available_gain_mb().unwrap_or(0)
+                ),
+                _ => "; system available memory not readable".to_string(),
+            },
             (Some(b), Some(a)) => format!(
                 "; private bytes {} MB -> {} MB (freed {} MB)",
                 mb(b),
@@ -122,10 +157,22 @@ impl Report {
     }
 }
 
+/// How long to wait after stopping a child process before reading what came
+/// back: a stopped process gives its memory up within a moment, not at once.
+pub const CHILD_SETTLE: Duration = Duration::from_secs(3);
+
 /// Walk the order once. `measure` reads the process's private bytes (called
-/// before and after, so the effect is measured, not assumed).
-pub fn relieve(holders: &mut dyn Holders, measure: &mut dyn FnMut() -> Option<u64>) -> Report {
+/// before and after, so the effect is measured, not assumed); `available`
+/// reads the system's available memory in MB, sampled before and, when a
+/// child process was let go, `settle` after it.
+pub fn relieve(
+    holders: &mut dyn Holders,
+    measure: &mut dyn FnMut() -> Option<u64>,
+    available: &mut dyn FnMut() -> Option<u64>,
+    settle: Duration,
+) -> Report {
     let before = measure();
+    let available_before_mb = available();
     let mut released = Vec::new();
     let mut kept_busy = Vec::new();
     for step in ORDER {
@@ -145,12 +192,18 @@ pub fn relieve(holders: &mut dyn Holders, measure: &mut dyn FnMut() -> Option<u6
             released.push(step);
         }
     }
+    if released.iter().any(|s| s.is_child_process()) && !settle.is_zero() {
+        std::thread::sleep(settle);
+    }
     let after = measure();
+    let available_after_mb = available();
     Report {
         released,
         kept_busy,
         before,
         after,
+        available_before_mb,
+        available_after_mb,
     }
 }
 
@@ -179,6 +232,12 @@ pub fn since_last() -> Option<Duration> {
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner)
         .map(|t| t.elapsed())
+}
+
+/// The system's available memory in MB right now (None where unreadable).
+pub fn available_mb() -> Option<u64> {
+    let (total, free) = crate::floor::memory_now();
+    (total > 0).then_some(free)
 }
 
 /// This process's private bytes (committed memory only it uses), from
@@ -248,7 +307,12 @@ mod tests {
         };
         // The measure closure can't borrow `f`; feed it the two readings.
         let mut readings = vec![Some(700u64 << 20), Some(1000u64 << 20)];
-        let r = relieve(&mut f, &mut || readings.pop().unwrap());
+        let r = relieve(
+            &mut f,
+            &mut || readings.pop().unwrap(),
+            &mut || None,
+            Duration::ZERO,
+        );
         assert_eq!(f.order_seen, vec![Step::Kokoro, Step::ModelServer]);
         assert_eq!(r.released, vec![Step::Kokoro, Step::ModelServer]);
         assert_eq!(r.kept_busy, vec![Step::Vision]);
@@ -258,7 +322,9 @@ mod tests {
             line.contains("Kokoro voice, talking model's server"),
             "{line}"
         );
-        assert!(line.contains("freed 300 MB"), "{line}");
+        // The server is a child process: no private-bytes figure for it.
+        assert!(!line.contains("freed 300 MB"), "{line}");
+        assert!(line.contains("not readable"), "{line}");
         assert!(line.contains("kept (in use): picture reader"), "{line}");
     }
 
@@ -291,14 +357,60 @@ mod tests {
             short: false,
             released: vec![],
         };
-        relieve(&mut calm, &mut || None);
+        relieve(&mut calm, &mut || None, &mut || None, Duration::ZERO);
         assert_eq!(calm.released, vec![Step::ModelServer], "ears must stay");
         let mut dire = Ears {
             short: true,
             released: vec![],
         };
-        relieve(&mut dire, &mut || None);
+        relieve(&mut dire, &mut || None, &mut || None, Duration::ZERO);
         assert_eq!(dire.released, vec![Step::ModelServer, Step::Recogniser]);
+    }
+
+    /// 21 Oct 2026: letting go of the model server logged "private bytes 762
+    /// MB -> 762 MB (freed 0 MB)", the daemon's own, for a child process. The
+    /// effect of a child is the system's available memory before and after.
+    #[test]
+    fn a_child_server_is_measured_by_available_memory_not_the_daemons_bytes() {
+        let mut f = Fake {
+            loaded: vec![Step::ModelServer],
+            busy: vec![],
+            order_seen: vec![],
+            bytes: 1000 * 1024 * 1024,
+        };
+        let mut avail = vec![Some(3_600u64), Some(2_100u64)];
+        let r = relieve(
+            &mut f,
+            &mut || Some(762u64 << 20),
+            &mut || avail.pop().unwrap(),
+            Duration::ZERO,
+        );
+        assert!(r.let_go_a_child());
+        assert!(Step::Recogniser.is_child_process() && !Step::Kokoro.is_child_process());
+        assert_eq!(r.freed(), Some(0), "the daemon's own bytes did not move");
+        assert_eq!(r.available_gain_mb(), Some(1_500));
+        let line = r.line("memory is short");
+        assert!(
+            line.contains("system available memory 2100 MB -> 3600 MB (freed 1500 MB"),
+            "{line}"
+        );
+        assert!(!line.contains("private bytes 762"), "{line}");
+        // An in-process holder (the voice) is still measured by private bytes.
+        let mut v = Fake {
+            loaded: vec![Step::Kokoro],
+            busy: vec![],
+            order_seen: vec![],
+            bytes: 1000 * 1024 * 1024,
+        };
+        let mut readings = vec![Some(500u64 << 20), Some(800u64 << 20)];
+        let r = relieve(
+            &mut v,
+            &mut || readings.pop().unwrap(),
+            &mut || None,
+            Duration::ZERO,
+        );
+        assert!(!r.let_go_a_child());
+        assert!(r.line("x").contains("freed 300 MB"));
     }
 
     #[test]
@@ -309,7 +421,7 @@ mod tests {
             order_seen: vec![],
             bytes: 0,
         };
-        let r = relieve(&mut f, &mut || None);
+        let r = relieve(&mut f, &mut || None, &mut || None, Duration::ZERO);
         assert!(r.released.is_empty());
         assert_eq!(r.freed(), None);
         assert!(r.line("x").contains("nothing idle to let go"));
