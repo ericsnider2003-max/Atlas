@@ -335,8 +335,11 @@ impl Watcher {
     pub fn start(setup: Setup, secs: u64, until_stopped: bool, t: u64) -> Result<Watcher, String> {
         let secs = secs.clamp(10, MOST_SECS);
         // Opened here, so a camera that won't open is said now, not later.
-        let rolling = crate::frames::Rolling::start(&setup.feed)
-            .map_err(|e| format!("the camera wouldn't open: {e}"))?;
+        let rolling = crate::frames::Rolling::start(&setup.feed).map_err(|e| {
+            let detail = e.to_string();
+            let detail = detail.strip_prefix("platform: ").unwrap_or(&detail);
+            format!("the camera wouldn't open: {detail}")
+        })?;
         let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
         let (tx, news) = std::sync::mpsc::channel();
         let stop2 = stop.clone();

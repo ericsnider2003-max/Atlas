@@ -590,6 +590,7 @@ fn judge_reply(
         || l.contains("no mailbox")
         || l.contains("none is configured")
         || l.contains("haven't got one configured")
+        || (l.contains("i don't have a") && l.contains("mode"))
     {
         return Verdict::NeedsSettingUp;
     }

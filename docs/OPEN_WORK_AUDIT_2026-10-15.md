@@ -1,5 +1,7 @@
 # Atlas open-work audit — 2026-10-15
 
+Last updated: 2026-10-20
+
 ## Scope and authority
 
 This is a read-only inventory of work that can be continued in the canonical

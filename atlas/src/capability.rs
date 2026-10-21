@@ -2010,7 +2010,7 @@ pub fn claimed_modules() -> std::collections::BTreeSet<&'static str> {
 // 12 Oct 2026: + `gpulost` (graphics reset safe mode) = 493.
 // 15 Oct 2026: + `evidence` and `job`, bounded foundation journals used by
 // every capability rather than user-facing capabilities themselves = 495.
-pub const MODULES_IN_TREE: usize = 496;
+pub const MODULES_IN_TREE: usize = 497;
 
 /// Every module no capability claims, and why it is not one.
 ///
@@ -2028,6 +2028,7 @@ pub const MODULES_IN_TREE: usize = 496;
 /// a feature cannot be filed as plumbing without somebody writing down why it
 /// is not one.
 pub const PLUMBING: &[(&str, &str)] = &[
+    ("creative", "gated Creative Workspace Core slice retained for the post-foundation release; not claimed as a currently wired user capability"),
     ("artifact", "bounded durable-work artifact references used to connect receipts without exposing file paths"),
     ("evidence", "bounded immutable observation bundles and snapshot reuse shared by capability and job evidence; not a user-facing ability"),
     ("job", "the bounded durable lifecycle and receipt envelope shared by long-running work; not a user-facing ability"),

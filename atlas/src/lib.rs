@@ -113,6 +113,7 @@ pub mod consolidate;
 pub mod consult;
 pub mod contemplate;
 pub mod content;
+pub mod creative;
 pub mod coverage;
 pub mod cpuuse;
 pub mod craft;

@@ -3,6 +3,8 @@
 **Status:** active implementation register  
 **Rule:** no plan is deleted, silently superseded, or treated as complete because its document was moved. Every discovered plan remains either linked to implementation, preserved as history, or explicitly blocked.
 
+Last updated: 2026-10-20
+
 ## Current implementation lanes
 
 | Lane | Authority | Status | Implementation rule |

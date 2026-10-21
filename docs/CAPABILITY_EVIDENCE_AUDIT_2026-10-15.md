@@ -1,6 +1,6 @@
 # Capability evidence audit — 2026-10-15
 
-Last updated: 2026-10-15
+Last updated: 2026-10-20
 
 The generated catalog currently exposes 247 Windows capabilities through the
 shared `capability::records` projection:

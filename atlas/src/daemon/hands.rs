@@ -565,7 +565,9 @@ impl<'a> Daemon<'a> {
             Err(e) => {
                 // It never opened, so it must not stay on the books.
                 self.helpers.finished(name);
-                return Err(format!("the camera wouldn't open: {e}"));
+                let detail = e.to_string();
+                let detail = detail.strip_prefix("platform: ").unwrap_or(&detail);
+                return Err(format!("the camera wouldn't open: {detail}"));
             }
         };
         let (w, h) = cam.size();
@@ -2795,9 +2797,12 @@ fn look_on_its_own(
                 done.opened_camera = true;
             }
             Err(e) => {
-                done.printed =
-                    crate::vision::Sight::Unread(format!("the camera wouldn't open: {e}"))
-                        .as_lines(&you);
+                let detail = e.to_string();
+                let detail = detail.strip_prefix("platform: ").unwrap_or(&detail);
+                done.printed = crate::vision::Sight::Unread(format!(
+                    "the camera wouldn't open: {detail}"
+                ))
+                .as_lines(&you);
                 done.spent_ms = began.elapsed().as_millis() as u64;
                 return done;
             }

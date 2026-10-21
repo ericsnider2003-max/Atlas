@@ -1,0 +1,1 @@
+Atlas is already running. Close the other one first to prevent both copies writing over each other's state; its native running lock is held (lock acquisition failed because the operation would block). Talk to the running Atlas through its typing box or hub.

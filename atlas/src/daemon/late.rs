@@ -2742,7 +2742,13 @@ impl<'a> Daemon<'a> {
             .unwrap_or_else(|| "ffmpeg".into());
         let devices = match crate::audio::probe_devices(&ffmpeg) {
             Ok(d) => d,
-            Err(e) => return format!("I couldn't list the microphones: {e}"),
+            Err(e) => {
+                // Keep implementation/platform details out of the spoken reply. The
+                // detail is still retained in the daemon log for diagnosis, while
+                // the user gets a truthful, actionable result in plain language.
+                self.log.warn(&format!("microphone listing failed: {e}"));
+                return "I can't identify the microphones on this machine right now. Check that the audio device tool is installed, then try again.".into();
+            }
         };
         let camera = tc.vars.get("webcam_device").cloned().unwrap_or_default();
         let mics: Vec<&crate::audio::Device> = devices

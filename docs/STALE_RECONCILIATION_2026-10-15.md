@@ -1,5 +1,7 @@
 # Filing stale-reference reconciliation — 2026-10-15
 
+Last updated: 2026-10-20
+
 This is the first work item from the open-work audit. It records every
 warning emitted by the canonical cold filing check without treating historical
 documents as current instructions.

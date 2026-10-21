@@ -4,6 +4,8 @@
 **Scope:** current `candidate/2026-10-17-foundation` worktree  
 **Purpose:** define what belongs to the Atlas candidate without destroying preserved history or evidence.
 
+Last updated: 2026-10-20
+
 ## Candidate boundary
 
 The candidate consists of the tracked repository source, tests, required configuration/assets, the independent verification harness, and current authoritative documents:

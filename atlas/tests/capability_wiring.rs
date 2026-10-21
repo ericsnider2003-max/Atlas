@@ -72,6 +72,10 @@ use std::fs;
 /// only get shorter. Anything wired must be deleted from here, which is what
 /// makes the ratchet bite.
 const CAPABILITY_UNWIRED: &[&str] = &[
+    // creative is a real user-facing slice, deliberately deferred until the
+    // foundation is accepted. It must not be made to look wired by a test-only
+    // self-call.
+    "creative",
     // --- 18 Sep: mesh, exposed by wiring sync -------------------------------
     //
     // `mesh` is about reaching your laptop *directly* from another network --

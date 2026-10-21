@@ -38,6 +38,8 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
+use sha2::{Digest, Sha256};
+
 fn repo() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
@@ -95,6 +97,75 @@ fn has_fn(text: &str, name: &str) -> bool {
     defines(text, "fn", name)
 }
 
+/// Archive index rows: `from` -> (`to`, sha256 of the archived bytes).
+type ArchiveIndex = BTreeMap<String, (String, String)>;
+
+/// 20 Oct 2026: the filing system's `archive` command moves a file
+/// byte-for-byte into `docs/archive/` and records the move in
+/// `docs/archive/INDEX.tsv` (archived, from, to, superseded_by, who, sha256).
+/// An absent index is an empty map.
+fn archive_index(root: &Path) -> ArchiveIndex {
+    let mut map = ArchiveIndex::new();
+    let text = read(&root.join("docs/archive/INDEX.tsv"));
+    for l in text.lines() {
+        if l.trim().is_empty() || l.starts_with('#') || l.starts_with("archived\t") {
+            continue;
+        }
+        let c: Vec<&str> = l.split('\t').collect();
+        if c.len() >= 6 {
+            map.insert(
+                c[1].trim().to_string(),
+                (c[2].trim().to_string(), c[5].trim().to_lowercase()),
+            );
+        }
+    }
+    map
+}
+
+/// 20 Oct 2026: an archived file counts as moved, not lost, only when the
+/// index names it, the archived copy exists, and its SHA-256 matches the
+/// recorded one. A deleted or edited file still fails.
+fn archived_intact(root: &Path, index: &ArchiveIndex, place: &str) -> bool {
+    let Some((to, sha)) = index.get(place) else {
+        return false;
+    };
+    let Ok(bytes) = std::fs::read(root.join(to)) else {
+        return false;
+    };
+    let hex: String = Sha256::digest(&bytes)
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect();
+    !sha.is_empty() && hex == *sha
+}
+
+#[test]
+fn archived_intact_needs_the_recorded_hash_to_match() {
+    let root = repo();
+    let to = "docs/archive/NEW_CHAT_START_HERE_ARCHIVED_2026-10-19.md";
+    let bytes = std::fs::read(root.join(to)).expect("the archived file exists");
+    let good: String = Sha256::digest(&bytes)
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect();
+    let mut wrong = good.clone();
+    wrong.replace_range(0..1, if good.starts_with('0') { "1" } else { "0" });
+    let mut idx = ArchiveIndex::new();
+    idx.insert("A.md".into(), (to.into(), wrong));
+    assert!(
+        !archived_intact(&root, &idx, "A.md"),
+        "wrong hash must fail"
+    );
+    idx.insert("A.md".into(), (to.into(), good.clone()));
+    assert!(archived_intact(&root, &idx, "A.md"), "right hash must pass");
+    idx.insert("B.md".into(), ("docs/archive/no_such_file.md".into(), good));
+    assert!(
+        !archived_intact(&root, &idx, "B.md"),
+        "missing file must fail"
+    );
+    assert!(!archived_intact(&root, &idx, "C.md"), "unlisted must fail");
+}
+
 #[test]
 fn nothing_any_version_built_is_missing_from_the_merged_tree() {
     let root = repo();
@@ -133,6 +204,7 @@ fn nothing_any_version_built_is_missing_from_the_merged_tree() {
 
     let mut missing: BTreeMap<String, Vec<String>> = BTreeMap::new();
     let mut moved = 0usize;
+    let archive = archive_index(&root);
     for r in &inventory {
         let (version, kind, place) = (&r[0], &r[1], &r[2]);
         let name = r.get(3).cloned().unwrap_or_default();
@@ -175,7 +247,12 @@ fn nothing_any_version_built_is_missing_from_the_merged_tree() {
                         continue;
                     }
                 }
-                there
+                if !there && archived_intact(&root, &archive, place) {
+                    moved += 1;
+                    true
+                } else {
+                    there
+                }
             }
             "item" => {
                 let (k, n) = name.split_once(' ').unwrap_or(("fn", name.as_str()));

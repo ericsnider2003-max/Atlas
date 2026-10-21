@@ -1,5 +1,7 @@
 # Atlas — current starting point
 
+Last updated: 2026-10-20
+
 Use this page for a new session. Older root handoffs and gap registers are
 historical records, not current instructions.
 

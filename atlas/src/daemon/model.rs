@@ -1097,7 +1097,7 @@ impl<'a> Daemon<'a> {
         registry
             .choose_for(&tc.models, u64::MAX)
             .map(|m| m.id.clone())
-            .unwrap_or_else(|| "none".into())
+            .unwrap_or_else(|| label_without_local_model(tc.models.online_second).into())
     }
 
     /// Write down one model call: who asked, which model, how long, how big,
@@ -2580,5 +2580,28 @@ impl crate::coder::ChatRoom for DaemonRoom<'_> {
         if let Ok(mut s) = self.seen.lock().or_else(crate::crash::unpoison) {
             *s = None;
         }
+    }
+}
+
+/// What the model-call log says when the registry has no local model.
+/// 19 Oct 2026: with no local model installed, `crate::models` sends every
+/// call to the free online services when `online_second` is on, yet the log
+/// said "none" for calls that were in fact answered. Say who answered.
+fn label_without_local_model(online_second: bool) -> &'static str {
+    if online_second {
+        "free-online"
+    } else {
+        "none"
+    }
+}
+
+#[cfg(test)]
+mod model_label_tests {
+    use super::label_without_local_model;
+
+    #[test]
+    fn no_local_model_label_names_free_online_when_it_answers() {
+        assert_eq!(label_without_local_model(true), "free-online");
+        assert_eq!(label_without_local_model(false), "none");
     }
 }

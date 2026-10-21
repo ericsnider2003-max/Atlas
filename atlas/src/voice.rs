@@ -632,6 +632,21 @@ impl ToolsConfig {
     /// Called once, at load, so there is no second view of the
     /// configuration for anything downstream to disagree with.
     pub fn anchored(mut self) -> ToolsConfig {
+        // The installed bundle owns ffmpeg under its tools directory, but
+        // several older media/audio paths intentionally use the bare command
+        // name. Make the bundled executable visible to all of those paths
+        // after config anchoring, so starting Atlas from a shortcut or the
+        // Hub does not make its own dependency look absent.
+        let media_tools = crate::roots::under_install("tools/ffmpeg");
+        if media_tools.join("ffmpeg.exe").is_file() {
+            let mut paths = vec![media_tools];
+            if let Some(existing) = std::env::var_os("PATH") {
+                paths.extend(std::env::split_paths(&existing));
+            }
+            if let Ok(path) = std::env::join_paths(paths) {
+                std::env::set_var("PATH", path);
+            }
+        }
         if self.work_dir.trim().is_empty() {
             self.work_dir = crate::roots::tmp_dir().to_string_lossy().into_owned();
         } else {

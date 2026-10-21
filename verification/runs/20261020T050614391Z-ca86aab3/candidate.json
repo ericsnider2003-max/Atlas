@@ -1,0 +1,9 @@
+﻿{
+    "created_utc":  "2026-10-20T05:06:14.4073791Z",
+    "schema":  "atlas.verification.candidate.v1",
+    "evidence_boundary":  "real executable in disposable ATLAS_HOME",
+    "runner":  "Invoke-AtlasVerification.ps1",
+    "executable":  "C:\\Users\\erics\\AppData\\Local\\Atlas\\atlas.exe",
+    "candidate_hash":  "ACEF04E191EC1727E0D1C3852416EE32CCA4905498AC8A99BB375B0231FBA03D",
+    "run_id":  "20261020T050614391Z-ca86aab3"
+}

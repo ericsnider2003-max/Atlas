@@ -84,6 +84,10 @@ use std::path::Path;
 const UNWIRED_CEILING: usize = 3;
 
 const UNWIRED_BASELINE: &[&str] = &[
+    // creative was added as a gated workspace slice, but Goal 3 is frozen
+    // until Goal 2 has owner acceptance. Its tested helpers stay measured;
+    // no runtime caller is claimed in the current release.
+    "creative",
     // Landed tonight from an outside audit -- present, tested (28, 19, 13,
     // and 14 tests respectively), not yet wired to a caller. Each is a
     // standalone capability (question-parking that refuses shortcuts,
