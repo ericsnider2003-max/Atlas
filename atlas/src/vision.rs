@@ -1117,7 +1117,7 @@ impl Looking {
                 Ok(found) => scene.faces = found,
                 Err(e) => scene
                     .could_not
-                    .push(format!("I couldn't look for faces: {e}")),
+                    .push(format!("I couldn't look for faces: {}", plainly(&e))),
             }
         }
 
@@ -1157,7 +1157,7 @@ impl Looking {
                 Ok(found) => scene.things = found,
                 Err(e) => scene
                     .could_not
-                    .push(format!("I couldn't name what's there: {e}")),
+                    .push(format!("I couldn't name what's there: {}", plainly(&e))),
             }
         }
 
@@ -1168,7 +1168,9 @@ impl Looking {
                     Ok(reading) => {
                         match whole_picture(&out, cfg) {
                             Ok(found) => scene.whole = found,
-                            Err(e) => scene.could_not.push(format!("I couldn't describe it: {e}")),
+                            Err(e) => scene
+                                .could_not
+                                .push(format!("I couldn't describe it: {}", plainly(&e))),
                         }
                         // And what *he* calls it, which beats what the model
                         // calls it. Without this the album could be added to
@@ -1186,9 +1188,13 @@ impl Looking {
                             });
                         }
                     }
-                    Err(e) => scene.could_not.push(format!("I couldn't describe it: {e}")),
+                    Err(e) => scene
+                        .could_not
+                        .push(format!("I couldn't describe it: {}", plainly(&e))),
                 },
-                Err(e) => scene.could_not.push(format!("I couldn't describe it: {e}")),
+                Err(e) => scene
+                    .could_not
+                    .push(format!("I couldn't describe it: {}", plainly(&e))),
             }
         }
 
@@ -1288,5 +1294,48 @@ impl Looking {
         }
         let pixels = crate::infer::prepare_crop(rgb, w, h, cut, Kind::FaceId);
         Ok(model.run(&pixels)?.only()?.to_vec())
+    }
+}
+
+/// A seeing model's failure in words a person can use (21 Oct 2026). The
+/// helper's own reasons ("platform: inference shape exceeds its element
+/// budget") went straight into the reply. They go to the log instead, and the
+/// reply says what failed and what to do.
+fn plainly(e: &impl std::fmt::Display) -> String {
+    let raw = e.to_string();
+    let inner = raw.strip_prefix("platform: ").unwrap_or(&raw);
+    let internal = [
+        "inference",
+        "budget",
+        "helper",
+        "frame",
+        "tensor",
+        "onnx",
+        "session",
+    ]
+    .iter()
+    .any(|w| inner.to_ascii_lowercase().contains(w));
+    if !internal {
+        return inner.to_string();
+    }
+    crate::heard!(Err::<(), _>(format!("seeing model: {inner}")));
+    "the model that does it failed to run on this machine (the reason is in my log); asking again usually works, and if it doesn't, \"system status\" says more"
+        .into()
+}
+
+#[cfg(test)]
+mod plainly_tests {
+    #[test]
+    fn helper_reasons_stay_out_of_the_reply() {
+        let said = super::plainly(&"platform: inference shape exceeds its element budget");
+        assert!(
+            !said.contains("platform") && !said.contains("budget"),
+            "{said}"
+        );
+        assert!(said.contains("log"), "{said}");
+        assert_eq!(
+            super::plainly(&"no camera is connected"),
+            "no camera is connected"
+        );
     }
 }
