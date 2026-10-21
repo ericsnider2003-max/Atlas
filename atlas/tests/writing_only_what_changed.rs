@@ -179,7 +179,11 @@ fn the_write_that_does_happen_is_still_atomic() {
     // whose answer depends on how much prose is above the line it checks
     // teaches its reader to delete the prose.
     let src = std::fs::read_to_string("src/store.rs").expect("store.rs");
-    let at = src.find("pub fn save").expect("save is gone");
+    // `save` delegates (`save_bounded`, `save_in`) to `save_unrecorded`, which
+    // is where the file is written; the check follows it there (20 Oct 2026).
+    let at = src
+        .find("fn save_unrecorded")
+        .expect("the function that writes a save is gone");
     let rest = &src[at..];
     // The next function at the same indentation ends this one.
     let end = rest[1..]

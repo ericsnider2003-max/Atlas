@@ -377,6 +377,9 @@ const ORDINARY: &[&str] = &[
     // your data, so the same as "self_check" and "machine_health" beside it.
     "shakedown",
     "which_model",
+    // Which programs are using the memory is the same kind of reading as
+    // "machine_health": about the machine, not about you.
+    "whats_using_memory",
     "recommend",
     // Troubleshooting a symptom reads only Atlas's shipped procedures -- the
     // same generic how-to knowledge behind "how do I do X", none of the
@@ -415,7 +418,9 @@ const ORDINARY: &[&str] = &[
     "scene3d",
     "explain_code",
     "plain_change",
-    // Stopping and starting.
+    // Stopping and starting. Quitting Atlas is the tray's Quit by voice:
+    // anyone at the laptop can click that, and nothing of yours is read.
+    "quit_atlas",
     "pause",
     "resume",
     // The way out. Refusing this one would close the door -- see

@@ -321,6 +321,20 @@ impl Daemon<'_> {
                 };
                 hub::back_with(Page::Give.href(), "", &said)
             }
+            // The window's Quit (20 Oct 2026: the only way to stop Atlas was
+            // the icon by the clock, which wasn't showing). The token and the
+            // form check were made by the server before this was reached, as
+            // for every post. Exactly the icon's Quit: Atlas is asked to stop,
+            // and the run loop saves everything and lets go of its lock
+            // (`goodbye`); the page is answered first, so the window has
+            // something to show while that happens.
+            "/hub/quit" => {
+                crate::goodbye::please_stop_because(crate::goodbye::Why::YouClosedIt);
+                Reply::html(hub::shell(
+                    "Atlas is stopping",
+                    "<p role=status>Atlas is stopping. Everything's written down.</p>",
+                ))
+            }
             "/hub/talk" => {
                 let text = field_of(f, "text").unwrap_or_default();
                 let spoken = field_of(f, "spoken").as_deref() == Some("1");

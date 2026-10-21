@@ -553,10 +553,17 @@ pub struct PublicFile {
 /// comes back on its own (30 Sep 2026: the thirty seconds were promised here
 /// and only the `online` event was listened for; and a laptop whose Atlas is
 /// down answers through Tailscale with a 502, which now counts as away too).
+/// 20 Oct 2026: on the real laptop the window opened on this page while Atlas
+/// was still binding its port and then sat there for 30 to 45 seconds, though
+/// the hub was up within two. The page now asks `/hub/ping` (which answers
+/// with no token) every second for the first minute, every five seconds for
+/// the next two and a half minutes, then every fifteen, and reloads the moment
+/// it answers; the window itself also waits for the hub before it navigates
+/// (`setupwin`).
 /// A form post is never touched. A laptop that's asleep can leave the
 /// request hanging rather than refused, so a page that hasn't answered in
 /// twelve seconds counts as away too (research report, Stage 1 item 10).
-pub const SERVICE_WORKER: &str = r#"const OFFLINE="<!doctype html><html lang=en><head><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'><title>Atlas — can't reach Atlas</title><style>body{margin:0;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#ffffff;color:#37352f;font:17px/1.5 system-ui,sans-serif}p{max-width:22em;padding:0 24px}button{font:inherit;padding:12px 20px;min-height:44px;border-radius:10px;border:0;background:#b26206;color:#fff}</style></head><body><main><p role=status>I can't reach Atlas from here right now. This page comes back by itself when it can.</p><p><button onclick='location.reload()'>Try again</button></p></main><script>addEventListener('online',function(){location.reload()});setTimeout(function(){location.reload()},30000)</script></body></html>";
+pub const SERVICE_WORKER: &str = r#"const OFFLINE="<!doctype html><html lang=en><head><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'><title>Atlas — can't reach Atlas</title><style>body{margin:0;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#ffffff;color:#37352f;font:17px/1.5 system-ui,sans-serif}p{max-width:22em;padding:0 24px}button{font:inherit;padding:12px 20px;min-height:44px;border-radius:10px;border:0;background:#b26206;color:#fff}</style></head><body><main><p role=status>I can't reach Atlas from here right now. This page comes back by itself when it can.</p><p><button onclick='location.reload()'>Try again</button></p></main><script>addEventListener('online',function(){location.reload()});var n=0;function next(){n++;setTimeout(poll,n<60?1000:n<90?5000:15000)}function poll(){fetch('/hub/ping',{cache:'no-store'}).then(function(r){if(r.ok)location.reload();else next()}).catch(next)}poll()</script></body></html>";
 function underHub(u){return u.origin===location.origin&&(u.pathname==='/hub'||u.pathname.startsWith('/hub/'));}
 self.addEventListener('install',()=>self.skipWaiting());
 self.addEventListener('activate',e=>e.waitUntil(caches.keys().then(ks=>Promise.all(ks.map(k=>caches.delete(k)))).then(()=>self.clients.claim())));
@@ -772,6 +779,26 @@ pub struct Open {
     /// does nothing. (2 Oct 2026: "Can't remove things from the outstanding
     /// list" -- the page said "tell me to drop it" and had no way to.)
     pub drops: Drops,
+    /// Work that ended badly in the last day and has not been dismissed
+    /// (20 Oct 2026: a failed backup or housekeeping run appeared nowhere).
+    pub failed: Vec<Ended>,
+    /// Work a restart cut off. Not known to have failed and not known to
+    /// have finished, so it is its own lane rather than a kind of failure.
+    pub interrupted: Vec<Ended>,
+    /// What finished today, newest first, a handful.
+    pub done: Vec<Ended>,
+}
+
+/// One thing that has ended, for the Failed, Interrupted and Done lanes.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Ended {
+    pub what: String,
+    /// Why it failed, or what it came to.
+    pub detail: String,
+    /// When, on your clock ("14:05"), or empty when it isn't known.
+    pub when: String,
+    /// When, as seconds, so lanes can be ordered; not shown.
+    pub at: u64,
 }
 
 /// The keys behind the remove buttons on Outstanding. A key is
@@ -785,6 +812,8 @@ pub struct Drops {
     pub blocked: Vec<Option<String>>,
     pub in_progress: Vec<Option<String>>,
     pub carried: Vec<Option<String>>,
+    pub failed: Vec<Option<String>>,
+    pub interrupted: Vec<Option<String>>,
 }
 
 /// A step in Atlas's thought process, named the way the design names them.
@@ -930,3 +959,39 @@ mod status;
 pub use status::*;
 mod vault_sync;
 pub use vault_sync::*;
+
+#[cfg(test)]
+mod offline_page_tests {
+    use super::SERVICE_WORKER;
+
+    /// 20 Oct 2026: the offline page reloaded only on `online` or after 30 s, so a
+    /// window that opened a moment before the hub bound its port sat on it.
+    #[test]
+    fn the_offline_page_asks_the_hub_every_second_and_reloads_when_it_answers() {
+        assert!(
+            SERVICE_WORKER.contains("fetch('/hub/ping',{cache:'no-store'})"),
+            "it asks the token-free ping"
+        );
+        assert!(
+            SERVICE_WORKER.contains("if(r.ok)location.reload()"),
+            "and reloads when it answers"
+        );
+        assert!(
+            SERVICE_WORKER.contains("n<60?1000"),
+            "every second for the first minute"
+        );
+        assert!(SERVICE_WORKER.contains("n<90?5000:15000"), "then backs off");
+        assert!(
+            SERVICE_WORKER.contains("poll()</script>"),
+            "and starts at once, not after a delay"
+        );
+        assert!(
+            !SERVICE_WORKER.contains("},30000)"),
+            "the thirty-second wait is gone"
+        );
+        assert!(
+            SERVICE_WORKER.contains("addEventListener('online'"),
+            "the online event still reloads"
+        );
+    }
+}

@@ -2,8 +2,13 @@ use atlas::answering::{describe, Answer, AnsweringConfig, Channel, Question, Ste
 use atlas::consent::{who_gets_told, Scope};
 use atlas::presence::Gesture;
 
+// These tests are about how gestures answer, so gestures are switched on here:
+// since 20 Oct 2026 the default is off (see the last test in this file).
 fn cfg() -> AnsweringConfig {
-    AnsweringConfig::default()
+    AnsweringConfig {
+        accept_gestures: true,
+        ..AnsweringConfig::default()
+    }
 }
 fn ordinary() -> Question {
     Question::new("Open Chrome?", false, 0)
@@ -162,4 +167,17 @@ fn there_are_two_different_announcements_and_they_are_not_the_same_thing() {
 fn recording_only_yourself_involves_telling_nobody_else() {
     let told = who_gets_told(Scope::YouOnly);
     assert!(told.contains("captures you and nobody else"));
+}
+
+// 20 Oct 2026: the camera opened by itself every two seconds while any question
+// waited, because gestures answering was on by default. Off until turned on.
+#[test]
+fn gestures_and_watching_the_room_are_off_by_default_in_code_and_in_the_shipped_config() {
+    assert!(!atlas::answering::AnsweringConfig::default().accept_gestures);
+    assert!(!atlas::gaze::GazeConfig::default().enabled);
+    let cfg = atlas::config::Config::load(std::path::Path::new("config")).unwrap();
+    let tools = cfg.tools.expect("tools.yaml loads");
+    assert!(!tools.answering.accept_gestures);
+    assert!(!tools.gaze.enabled);
+    assert!(!tools.vision.enabled);
 }

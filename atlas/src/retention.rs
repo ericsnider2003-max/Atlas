@@ -376,14 +376,45 @@ fn inside(root: &Path, path: &Path) -> bool {
     path.starts_with(&root)
 }
 
+/// What a cleanup pass did.
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct Applied {
+    /// Bytes actually deleted.
+    pub freed: u64,
+    /// Files another process (or Atlas itself, e.g. the voice file being
+    /// played) had open without delete sharing. Left for the next pass.
+    pub in_use: Vec<PathBuf>,
+}
+
+/// A file that is open elsewhere is not a failed cleanup (20 Oct 2026).
+///
+/// Windows refuses to delete a file another handle holds without delete
+/// sharing: sharing violation (32), or lock violation (33) for a held byte
+/// range. The real log showed "housekeeping failed ... os error 32" about every
+/// twelve minutes, because one such file (a scratch recording still playing)
+/// aborted the whole pass and everything after it in the plan was never
+/// reached. Being in use is the normal answer for a file in use; it is counted
+/// and retried next pass. Any other error is still a failure.
+fn file_in_use(error: &std::io::Error) -> bool {
+    cfg!(windows) && matches!(error.raw_os_error(), Some(32) | Some(33))
+}
+
+/// Same error kind, but saying which file. "(os error 32)" alone gave the
+/// owner nothing to act on.
+fn naming(path: &Path, error: std::io::Error) -> std::io::Error {
+    std::io::Error::new(error.kind(), format!("{}: {error}", path.display()))
+}
+
 /// Worker-only cleanup: contention retains the current attempt, while stop
 /// and changed file metadata prevent a delayed plan deleting fresh output.
-pub fn apply_until(
+/// Files in use are skipped and reported in `Applied`.
+pub fn apply_report(
     plans: &[Plan],
     root: &Path,
     stopped: &dyn Fn() -> bool,
-) -> std::io::Result<u64> {
+) -> std::io::Result<Applied> {
     let mut freed = 0;
+    let mut in_use = Vec::new();
     for plan in plans {
         let Plan::Delete { path, .. } = plan else {
             continue;
@@ -430,7 +461,11 @@ pub fn apply_until(
                 {
                     std::thread::sleep(std::time::Duration::from_millis(20))
                 }
-                Err(error) => return Err(error),
+                Err(error) if file_in_use(&error) => {
+                    in_use.push(path.clone());
+                    break;
+                }
+                Err(error) => return Err(naming(path, error)),
                 Ok(deleted) => {
                     if deleted {
                         freed += original.len();
@@ -440,7 +475,7 @@ pub fn apply_until(
             }
         }
     }
-    Ok(freed)
+    Ok(Applied { freed, in_use })
 }
 
 #[cfg(test)]
@@ -467,7 +502,7 @@ mod contended_cleanup {
         let worker_file = file.clone();
         let worker = std::thread::spawn(move || {
             let notified = std::cell::Cell::new(false);
-            apply_until(
+            apply_report(
                 &[Plan::Delete {
                     path: worker_file,
                     why: "expired scratch fixture".into(),
@@ -498,7 +533,7 @@ mod contended_cleanup {
             drop(guard);
         } else {
             drop(guard);
-            let freed = worker.join().unwrap().unwrap();
+            let freed = worker.join().unwrap().unwrap().freed;
             if replace {
                 assert_eq!(freed, 0);
                 assert_eq!(
@@ -523,6 +558,43 @@ mod contended_cleanup {
     #[test]
     fn a_delayed_cleanup_does_not_delete_new_owner_output() {
         exercise(false, true);
+    }
+}
+
+#[cfg(all(test, windows))]
+mod files_in_use {
+    use super::*;
+    use std::os::windows::fs::OpenOptionsExt;
+
+    /// 20 Oct 2026: a scratch file still open without delete sharing used to
+    /// fail the whole pass with "(os error 32)". It is now counted, and the
+    /// files after it are still cleaned.
+    #[test]
+    fn a_file_in_use_is_left_for_later_and_the_pass_succeeds() {
+        let area =
+            std::env::temp_dir().join(format!("atlas-retention-inuse-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&area); // unheard-ok: scratch test directory, may not exist
+        let root = area.join("data");
+        std::fs::create_dir_all(root.join("tmp")).unwrap();
+        let busy = root.join("tmp/playing.wav");
+        let free = root.join("tmp/old.wav");
+        std::fs::write(&busy, b"being played").unwrap();
+        std::fs::write(&free, b"finished").unwrap();
+        let _held = std::fs::OpenOptions::new()
+            .read(true)
+            .share_mode(1 | 2) // FILE_SHARE_READ | FILE_SHARE_WRITE, no delete
+            .open(&busy)
+            .unwrap();
+        let del = |p: &Path| Plan::Delete {
+            path: p.to_path_buf(),
+            why: "test".into(),
+        };
+        let applied = apply_report(&[del(&busy), del(&free)], &root, &|| false)
+            .expect("in use is not a failure");
+        assert_eq!(applied.in_use, vec![busy.clone()]);
+        assert_eq!(applied.freed, 8);
+        assert!(busy.exists() && !free.exists());
+        let _ = std::fs::remove_dir_all(&area); // unheard-ok: scratch test directory, may not exist
     }
 }
 

@@ -139,6 +139,22 @@ impl Session {
     pub fn over(&self, now: u64) -> bool {
         now >= self.until
     }
+
+    /// When the tick next has something to do for this session: the halfway
+    /// check-in if it hasn't been said and is still ahead, else the end.
+    /// Seconds from `now` (21 Oct 2026, so the main loop doesn't sleep past
+    /// either). A check-in time that has passed unsaid (you were away) isn't
+    /// counted: the tick can't act on it again, and counting it would keep
+    /// the loop awake for nothing.
+    pub fn next_due_in(&self, now: u64) -> u64 {
+        let halfway = self.started + (self.until - self.started) / 2;
+        let at = if !self.checked_in && halfway > now {
+            halfway
+        } else {
+            self.until
+        };
+        at.saturating_sub(now)
+    }
 }
 
 /// What Atlas says on starting.

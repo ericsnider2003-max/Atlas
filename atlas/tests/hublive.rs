@@ -1424,3 +1424,58 @@ fn a_signed_in_calendar_can_choose_which_of_its_calendars_are_read() {
         "the choice was not shown back"
     );
 }
+
+/// 20 Oct 2026: the window's Quit button posts here. It must stop Atlas by the
+/// same door the icon by the clock's Quit uses (`goodbye`), say why it stopped
+/// as "you closed it", and answer with a page that says what is happening.
+#[test]
+fn the_window_quit_asks_atlas_to_stop_the_way_the_icon_does() {
+    atlas::goodbye::reset_for_test();
+    let (c, p) = (cfg(), plat());
+    let mut d = daemon(&c, &p, "window-quit");
+    assert!(
+        !atlas::goodbye::asked_to_stop(),
+        "not asked to stop before the button"
+    );
+    let reply = atlas::hublive::reply(
+        &mut d,
+        Action::HubPost {
+            path: "/hub/quit".into(),
+            fields: vec![],
+        },
+    );
+    let stopped = atlas::goodbye::asked_to_stop();
+    let why = atlas::goodbye::why();
+    atlas::goodbye::reset_for_test();
+    assert!(stopped, "Quit asks Atlas to stop");
+    assert_eq!(
+        why,
+        atlas::goodbye::Why::YouClosedIt,
+        "and says you closed it"
+    );
+    assert_eq!(reply.status, 200, "{}", reply.body);
+    assert!(
+        reply
+            .body
+            .contains("Atlas is stopping. Everything's written down."),
+        "the page says what is happening: {}",
+        reply.body
+    );
+}
+
+/// The route is wired: a POST to /hub/quit reaches the handler, not a 404.
+#[test]
+fn a_post_to_hub_quit_is_routed() {
+    let r = atlas::server::Request {
+        method: "POST".into(),
+        path: "/hub/quit".into(),
+        query: String::new(),
+        token: None,
+        token_from_url: false,
+        body: "token=x".into(),
+    };
+    match atlas::server::route(&r) {
+        Some(Action::HubPost { path, .. }) => assert_eq!(path, "/hub/quit"),
+        other => panic!("not routed: {other:?}"),
+    }
+}

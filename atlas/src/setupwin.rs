@@ -550,6 +550,99 @@ fn fit_height(want: f32, screen: f32) -> f32 {
     want.min(screen * 0.9).max(480.0)
 }
 
+/// A window of outer `size` at `pos`, brought inside `work` (x, y, width,
+/// height): no bigger than the work area, and slid in so no edge is under the
+/// taskbar or off the screen. Pure, so it is tested without a screen.
+pub(crate) fn within_work_area(
+    pos: (f32, f32),
+    size: (f32, f32),
+    work: (f32, f32, f32, f32),
+) -> ((f32, f32), (f32, f32)) {
+    let (wx, wy, ww, wh) = work;
+    let size = (size.0.min(ww), size.1.min(wh));
+    let x = pos.0.min(wx + ww - size.0).max(wx);
+    let y = pos.1.min(wy + wh - size.1).max(wy);
+    ((x, y), size)
+}
+
+/// The work area (the screen less the taskbar) of the monitor nearest
+/// `outer`, in points: (x, y, width, height). `None` where there is no way to
+/// ask (not Windows, or Windows wouldn't say).
+#[cfg(windows)]
+fn work_area_near(outer: eframe::egui::Rect, ppp: f32) -> Option<(f32, f32, f32, f32)> {
+    use windows::Win32::Foundation::RECT;
+    use windows::Win32::Graphics::Gdi::{
+        GetMonitorInfoW, MonitorFromRect, MONITORINFO, MONITOR_DEFAULTTONEAREST,
+    };
+    let r = RECT {
+        left: (outer.min.x * ppp) as i32,
+        top: (outer.min.y * ppp) as i32,
+        right: (outer.max.x * ppp) as i32,
+        bottom: (outer.max.y * ppp) as i32,
+    };
+    // SAFETY: both calls take plain values and a live struct that is filled in.
+    unsafe {
+        let monitor = MonitorFromRect(&r, MONITOR_DEFAULTTONEAREST);
+        let mut info = MONITORINFO {
+            cbSize: std::mem::size_of::<MONITORINFO>() as u32,
+            ..Default::default()
+        };
+        if !GetMonitorInfoW(monitor, &mut info).as_bool() {
+            return None;
+        }
+        let w = info.rcWork;
+        Some((
+            w.left as f32 / ppp,
+            w.top as f32 / ppp,
+            (w.right - w.left) as f32 / ppp,
+            (w.bottom - w.top) as f32 / ppp,
+        ))
+    }
+}
+
+#[cfg(not(windows))]
+fn work_area_near(_outer: eframe::egui::Rect, _ppp: f32) -> Option<(f32, f32, f32, f32)> {
+    None
+}
+
+/// Ask for an inner size of `want`, and have the whole window (title bar
+/// included) kept inside the work area of the screen it is on.
+fn place_within_work_area(ctx: &eframe::egui::Context, want: eframe::egui::Vec2) {
+    use eframe::egui;
+    let (inner, outer) = ctx.input(|i| (i.screen_rect().size(), i.viewport().outer_rect));
+    if let Some(outer) = outer {
+        if let Some(work) = work_area_near(outer, ctx.pixels_per_point()) {
+            let extra = outer.size() - inner;
+            let (pos, size) = within_work_area(
+                (outer.min.x, outer.min.y),
+                (want.x + extra.x, want.y + extra.y),
+                work,
+            );
+            ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(egui::vec2(
+                size.0 - extra.x,
+                size.1 - extra.y,
+            )));
+            if (pos.0 - outer.min.x).abs() > 0.5 || (pos.1 - outer.min.y).abs() > 0.5 {
+                ctx.send_viewport_cmd(egui::ViewportCommand::OuterPosition(egui::pos2(
+                    pos.0, pos.1,
+                )));
+            }
+            return;
+        }
+    }
+    ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(want));
+}
+
+/// Seconds between looks at whether Atlas and its hub answer: quick while the
+/// hub isn't up yet, relaxed once it is.
+fn poll_every(hub_answering: bool) -> f32 {
+    if hub_answering {
+        2.0
+    } else {
+        0.4
+    }
+}
+
 /// Left by a second "Open Atlas" for the open window to come forward.
 const RAISE_FILE: &str = "raise";
 
@@ -575,6 +668,7 @@ pub fn run(place: Place, first: First) -> Result<(), String> {
             .with_icon(crate::mark::window_icon())
             .with_inner_size([560.0, 860.0])
             .with_min_inner_size([420.0, 480.0])
+            .with_transparent(false)
             .with_title("Atlas"),
         ..Default::default()
     };
@@ -600,6 +694,7 @@ pub fn run(place: Place, first: First) -> Result<(), String> {
         opened: std::time::Instant::now(),
         running: false,
         last_poll: None,
+        hub_answering: false,
         with_windows: crate::startup::decided(&place_data.join("state")),
         note: None,
         voice: crate::speaking::Watch::new(place_data),
@@ -682,6 +777,9 @@ struct App {
     opened: std::time::Instant,
     running: bool,
     last_poll: Option<std::time::Instant>,
+    /// Whether the hub is answering on its port (not merely whether Atlas's
+    /// lock is held, which is true a moment before the hub binds).
+    hub_answering: bool,
     /// Whether the start-with-Windows task is on, once known.
     with_windows: Option<bool>,
     note: Option<String>,
@@ -694,6 +792,15 @@ struct App {
 }
 
 impl eframe::App for App {
+    /// An opaque ground. eframe's default clear colour is 12,12,12 at 180/255
+    /// alpha "so that if the user switches on `transparent()` they get
+    /// immediate results" -- and on the real laptop (20 Oct 2026) whatever the
+    /// panels didn't cover, the Atlas and Settings tabs filling a third of the
+    /// window, showed the desktop through. Nothing here is meant to be see-through.
+    fn clear_color(&self, _visuals: &eframe::egui::Visuals) -> [f32; 4] {
+        crate::window::opaque_ground()
+    }
+
     fn update(&mut self, ctx: &eframe::egui::Context, win: &mut eframe::Frame) {
         // The locked hub design's colourway, not egui's default grey.
         crate::look_paint::dress(ctx);
@@ -714,13 +821,30 @@ impl eframe::App for App {
             .map(|p| p.clone())
             .unwrap_or_default();
 
-        // Is Atlas answering? Asked every couple of seconds, not every frame.
+        // Is Atlas answering? Asked every couple of seconds, not every frame
+        // -- but twice a second while it is starting and the hub isn't up yet,
+        // so the hub appears the moment it answers (20 Oct 2026: asked every
+        // two seconds, with the hub then shown at once even if it hadn't
+        // bound its port, the window opened on the service worker's "can't
+        // reach Atlas" page and stayed there until that page's own timer).
         if self
             .last_poll
-            .map(|p| p.elapsed().as_secs_f32() > 2.0)
+            .map(|p| p.elapsed().as_secs_f32() > poll_every(self.hub_answering))
             .unwrap_or(true)
         {
             self.running = firstlaunch::atlas_running(&self.place.root);
+            // One slow ping while Atlas is still running isn't "gone": that
+            // would hide the page and reload it, losing your place.
+            let answering =
+                crate::server::atlas_hub_port(&self.place.root.join("data").join("state"))
+                    .is_some()
+                    || (self.hub_answering && self.running);
+            if answering && !self.hub_answering {
+                // It came up after the window was drawn: load the page afresh
+                // rather than leave whatever the web view showed meanwhile.
+                self.hub_go = true;
+            }
+            self.hub_answering = answering;
             // The hub's real port: it may have opened beside a taken one
             // (`server::open_hub`), or moved back.
             let port = firstlaunch::hub_port_at(&self.place.root, self.place.configured_port);
@@ -740,16 +864,16 @@ impl eframe::App for App {
         // 30 Sep 2026: the window opens 860 tall, which on a laptop screen
         // at 150% scaling runs past the taskbar with the buttons under it.
         // Once the screen is known, the window is brought within it.
+        // 20 Oct 2026: by the screen's size, not its work area (the screen
+        // less the taskbar), and the window's position was never looked at, so
+        // a window restored low on the screen still ran under the taskbar.
+        // Now brought inside the work area, position and size (`within_work_area`).
         if !self.fitted {
             let (now, screen) = ctx.input(|i| (i.screen_rect().size(), i.viewport().monitor_size));
             if let Some(room) = screen.filter(|r| r.y > 0.0) {
                 self.fitted = true;
                 let fits = fit_height(now.y, room.y);
-                if fits + 1.0 < now.y {
-                    ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(egui::vec2(
-                        now.x, fits,
-                    )));
-                }
+                place_within_work_area(ctx, egui::vec2(now.x, fits.min(now.y)));
             }
         }
         if self.view == View::Hub && !self.hub_sized {
@@ -762,12 +886,12 @@ impl eframe::App for App {
             );
             if now.x + 40.0 < want.x {
                 self.size_before_hub = Some(now);
-                ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(want));
+                place_within_work_area(ctx, want);
             }
         } else if self.view != View::Hub && self.hub_sized {
             self.hub_sized = false;
             if let Some(size) = self.size_before_hub.take() {
-                ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(size));
+                place_within_work_area(ctx, size);
             }
         }
 
@@ -785,6 +909,21 @@ impl eframe::App for App {
                         self.view = view;
                     }
                 }
+                // Quit Atlas, at the right of the tabs (20 Oct 2026: the only
+                // Quit was in the icon by the clock, which wasn't showing).
+                // Stops the background Atlas the way the icon's Quit does,
+                // then closes this window.
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    let q = egui::Button::new(
+                        RichText::new("Quit Atlas")
+                            .font(FontId::proportional(15.0))
+                            .color(crate::look_paint::colourway().soft),
+                    )
+                    .frame(false);
+                    if ui.add(q).clicked() {
+                        quit_atlas(&self.place, &self.restarting, ctx.clone());
+                    }
+                });
             });
             ui.add_space(6.0);
             let restart_note = self.restarting.lock().or_else(crate::crash::unpoison).ok().and_then(|n| n.clone());
@@ -1102,6 +1241,17 @@ impl App {
             }
             return;
         }
+        // Atlas has started but the hub isn't answering yet: wait for it
+        // rather than navigate into a refused connection.
+        if !self.hub_answering && crate::hubwin::Hub::can_embed() {
+            self.hub.hide();
+            ui.add_space(12.0);
+            say(
+                ui,
+                "Atlas is starting. The hub appears here the moment it answers.",
+            );
+            return;
+        }
         let url = crate::hubwin::page_url(self.place.port, &self.place.token, &self.hub_page);
         if !crate::hubwin::Hub::can_embed() {
             ui.add_space(12.0);
@@ -1148,6 +1298,28 @@ enum Dot {
     Ring,
     Pulse,
     Filled,
+}
+
+/// Stop the background Atlas for good (the window's Quit Atlas), off the
+/// window's thread, and close the window once it has stopped. If it doesn't
+/// stop, the window stays and says so.
+fn quit_atlas(place: &Place, note: &Arc<Mutex<Option<String>>>, ctx: eframe::egui::Context) {
+    let place = place.clone();
+    let note = Arc::clone(note);
+    let say = move |s: &str| {
+        if let Ok(mut n) = note.lock().or_else(crate::crash::unpoison) {
+            *n = Some(s.to_string());
+        }
+    };
+    say("Closing Atlas, saving your things first…");
+    std::thread::spawn(move || {
+        if firstlaunch::ask_atlas_to_stop(&place.root, std::time::Duration::from_secs(20)) {
+            ctx.send_viewport_cmd(eframe::egui::ViewportCommand::Close);
+        } else {
+            say("Atlas didn't stop when asked, so I left it running.");
+        }
+        ctx.request_repaint();
+    });
 }
 
 /// Stop the background Atlas and start it again, off the window's thread, so
@@ -1217,4 +1389,52 @@ pub fn here(root: &Path, exe: &Path, port: u16) -> Result<Place, String> {
         configured_port: port,
         token,
     })
+}
+
+#[cfg(test)]
+mod placement_tests {
+    use super::*;
+
+    const WORK: (f32, f32, f32, f32) = (0.0, 0.0, 1536.0, 824.0); // 1920x1080 at 125%, less the taskbar
+
+    #[test]
+    fn a_window_under_the_taskbar_is_slid_up() {
+        let (pos, size) = within_work_area((100.0, 300.0), (1240.0, 700.0), WORK);
+        assert_eq!(size, (1240.0, 700.0));
+        assert_eq!(pos, (100.0, 124.0), "bottom edge is now at the work area's");
+    }
+
+    #[test]
+    fn a_window_taller_or_wider_than_the_work_area_is_shrunk_to_it() {
+        let (pos, size) = within_work_area((50.0, 50.0), (2000.0, 900.0), WORK);
+        assert_eq!(size, (1536.0, 824.0));
+        assert_eq!(pos, (0.0, 0.0));
+    }
+
+    #[test]
+    fn a_window_off_the_left_or_top_is_brought_back_and_one_inside_is_left_alone() {
+        let (pos, _) = within_work_area((-300.0, -20.0), (600.0, 500.0), WORK);
+        assert_eq!(pos, (0.0, 0.0));
+        let (pos, size) = within_work_area((200.0, 100.0), (600.0, 500.0), WORK);
+        assert_eq!((pos, size), ((200.0, 100.0), (600.0, 500.0)));
+    }
+
+    #[test]
+    fn a_work_area_that_starts_below_the_origin_is_respected() {
+        // A taskbar along the top, or a second monitor to the right.
+        let work = (1920.0, 40.0, 1280.0, 960.0);
+        let (pos, _) = within_work_area((1900.0, 0.0), (500.0, 400.0), work);
+        assert_eq!(pos, (1920.0, 40.0));
+    }
+
+    #[test]
+    fn the_window_looks_quickly_until_the_hub_answers_then_relaxes() {
+        assert!(poll_every(false) < 1.0);
+        assert!(poll_every(true) >= 2.0);
+    }
+
+    #[test]
+    fn the_ground_is_opaque() {
+        assert_eq!(crate::window::opaque_ground()[3], 1.0);
+    }
 }

@@ -45,6 +45,22 @@ record:
 # English; another language or translating goes to whisper either way.
 stt_engine: auto
 
+# Whisper kept loaded between turns (20 Oct 2026). Without this every clip
+# started whisper-cli, which read the model off the disk again. With it,
+# whisper-server (beside whisper-cli) is started on the first clip, bound to
+# 127.0.0.1 on a free port, tied to Atlas so it ends with it, and stopped
+# after idle_minutes. If it cannot start or a request fails, that clip is
+# heard by whisper-cli and the server is retried after a growing wait.
+# Memory relief leaves it for last: it is what hears a command when the
+# talking model has been let go.
+resident_asr:
+  enabled: true
+  idle_minutes: 30
+  threads: 0            # 0 = half the machine's processors, at least 2
+  audio_ctx: 0          # 750 about halves the time per clip but cuts clips past 15 s
+  request_timeout_secs: 20
+  start_timeout_secs: 30
+
 stt:
   command: "{whisper}"
   # {hint_opt} {hint_val}: your own words (names, projects) as whisper's
@@ -934,7 +950,10 @@ trace:
 # anything ordinary, but it cannot approve something irreversible: a nod from
 # a webcam is not a signature.
 answering:
-  accept_gestures: true
+  # 20 Oct 2026: off. The owner did not ask for the camera to open by itself;
+  # with this on it opened every two seconds while any question was waiting.
+  # Turn it on in Settings -> Talking to it -> Gestures.
+  accept_gestures: false
   timeout_secs: 45          # silence is treated as no, never as yes
   repeat_after_secs: 15
   gestures_may_approve_anything: false
@@ -2433,8 +2452,11 @@ picture_talk:
 # type themselves in over whatever you're looking at, then fade. Clicks pass
 # straight through. Drawn by `atlas overlay`, which the background Atlas
 # starts on Windows. Settings: How it talks back -> Desktop captions.
+#
+# 20 Oct 2026: off by default. The captions sat always-on-top over pages and
+# buttons and captioned maintenance chatter too. Turn it on in Settings.
 overlay:
-  enabled: true
+  enabled: false
 
 # Atlas on the Windows desktop with no window open (28 Sep 2026).
 desktop:

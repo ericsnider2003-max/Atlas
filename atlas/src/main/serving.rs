@@ -58,6 +58,50 @@ pub(super) fn run_daemon(cfg: &Config, plat: &dyn Platform, unattended: bool) {
         }
     }
 
+    // Atlas's icon by the clock (Windows): with no window open, how you know
+    // it's running and where you open, pause or quit it (Eric, 28 Sep 2026).
+    // Held until the run loop ends; dropping it takes the icon away.
+    //
+    // 20 Oct 2026: put up here, straight after the lock, not after the
+    // microphone check, the model server, the hub and the key hooks as it was
+    // -- on the real laptop none of that was quick, and the icon is the one
+    // sign that Atlas is starting. The hub's address reaches it when the hub
+    // opens (`tray_hub_address`, in `on_open`). What happened -- the window
+    // made or not, Explorer taking the icon or not -- is written to
+    // `atlas.log`, not only printed to a console a Start-menu or sign-in
+    // launch doesn't have.
+    let _tray = if cfg!(windows) && tc.desktop.tray_icon {
+        match std::env::current_exe() {
+            Ok(exe) => {
+                let shown = atlas::notifyicon::show_icon(exe, String::new());
+                let (problem, words) = atlas::notifyicon::tray_window_line(
+                    &shown.as_ref().map(|_| ()).map_err(|e| e.clone()),
+                );
+                atlas::notifyicon::tray_note(problem, &words);
+                match shown {
+                    Ok(icon) => Some(icon),
+                    Err(e) => {
+                        println!("(no icon by the clock: {e})");
+                        None
+                    }
+                }
+            }
+            Err(e) => {
+                atlas::notifyicon::tray_note(
+                    true,
+                    &format!("no icon by the clock: couldn't find myself on disk: {e}"),
+                );
+                None
+            }
+        }
+    } else {
+        atlas::notifyicon::tray_note(
+            false,
+            "no icon by the clock: it is switched off (desktop.tray_icon) or this isn't Windows",
+        );
+        None
+    };
+
     // The microphone this machine really has, for the daemon too (29 Sep
     // 2026): everything below reads this one configuration.
     let tc_owned = pick_the_microphone(cfg, plat, tc);
@@ -198,7 +242,6 @@ pub(super) fn run_daemon(cfg: &Config, plat: &dyn Platform, unattended: bool) {
     // Where it really is, and which Atlas it is, goes in `data/state`
     // (`server::DOOR_FILE`) for `atlas hub`, the phone link, Setup and "Open
     // Atlas"; the icon by the clock is told too.
-    let mut hub_address: Option<String> = None;
     let configured_port = tc.server.port;
     match hub_token.and_then(|token| {
         // Your setting, not a copy of it with the answer changed. This used
@@ -246,7 +289,8 @@ pub(super) fn run_daemon(cfg: &Config, plat: &dyn Platform, unattended: bool) {
             let port = if server.port() != 0 { server.port() } else { configured_port };
             println!("your dashboard: {}", atlas::server::hub_url(port, &token, "/hub"));
             println!("  same address every time -- bookmark it. `atlas hub` prints it again.");
-            hub_address = Some(atlas::server::hub_url(port, &token, "/hub"));
+            // The icon was put up before the hub opened (see `_tray`).
+            atlas::notifyicon::tray_hub_address(&atlas::server::hub_url(port, &token, "/hub"));
             d.hub_server = Some(server);
         }
         Err(e) => {
@@ -305,26 +349,8 @@ pub(super) fn run_daemon(cfg: &Config, plat: &dyn Platform, unattended: bool) {
         }
     }
     println!("type at any time; Ctrl-C to stop — I'll save first and let go of the lock.");
-    // Atlas's icon by the clock (Windows): with no window open, how you know
-    // it's running and where you open, pause or quit it (Eric, 28 Sep 2026).
-    // Held until the run loop ends; dropping it takes the icon away.
-    let _tray = if cfg!(windows) && tc.desktop.tray_icon {
-        match std::env::current_exe() {
-            Ok(exe) => {
-                match atlas::notifyicon::show_icon(exe, hub_address.clone().unwrap_or_default()) {
-                    Ok(icon) => Some(icon),
-                    Err(e) => {
-                        println!("(no icon by the clock: {e})");
-                        d.log.warn(&format!("no icon by the clock: {e}"));
-                        None
-                    }
-                }
-            }
-            Err(_) => None,
-        }
-    } else {
-        None
-    };
+    // (Atlas's icon by the clock is put up near the top of this function,
+    // `_tray`, so it doesn't wait for everything above.)
     // A panic that gets past every `crash::caught` inside the loop used to
     // end the background Atlas with nothing said and nothing to bring it
     // back until the next sign-in -- and with its lock still held, so "Open
@@ -726,7 +752,7 @@ pub(super) fn handle(
     // Not understood, with no model to ask: said, not "blocked".
     if matches!(intent, Intent::Unknown(_)) {
         return "I can't answer that here — general questions need my language model, and there isn't one \
-                running. Start Atlas again and its setup fetches it (about 3 GB)."
+                running. Say \"finish setting up\" (or use Download on the Connections page) and I'll fetch it (about 3 GB)."
             .into();
     }
     if let Err(e) = gate_with_identity(cfg, &intent, approver) {

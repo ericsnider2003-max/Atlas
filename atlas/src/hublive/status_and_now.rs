@@ -10,9 +10,22 @@ impl Daemon<'_> {
     ///
     /// One number, visible from every page. Anything that needs you and is
     /// only discoverable by going looking for it will be found late.
+    ///
+    /// 20 Oct 2026: this was its own formula (needs-you + overdue + every
+    /// unfinished backlog item), so the pill said "1 waiting" over an
+    /// Outstanding page whose Waiting lane said 0. It is now the Waiting
+    /// lane's own count -- only what is waiting on you -- from the one model
+    /// (`open_work`) every other count reads. What else has stopped is
+    /// `pill_counts`' second part.
     pub fn waiting_count(&self, now: u64) -> usize {
-        let o = crate::workspace_view::overview(&self.workspace, now);
-        o.needs_you + o.overdue + self.backlog.items.iter().filter(|i| !i.done).count()
+        self.counts(now).waiting
+    }
+
+    /// The pill's two numbers from one build of the lanes, for the callers
+    /// that draw a page.
+    pub fn pill_counts(&self, now: u64) -> (usize, String) {
+        let c = self.counts(now);
+        (c.waiting, c.pill_extra())
     }
 
     pub(super) fn status_lines(&self) -> Vec<(String, String)> {

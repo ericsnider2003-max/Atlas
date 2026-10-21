@@ -48,7 +48,9 @@ impl Answer {
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
 pub struct AnsweringConfig {
-    /// Watch the camera for a thumb when a question is open.
+    /// Watch the camera for a thumb when a question is open. Off unless the
+    /// owner turns it on (20 Oct 2026): a camera that opens by itself on every
+    /// pending question was not something anyone asked for.
     pub accept_gestures: bool,
     /// Give up waiting after this long. Treated as no.
     pub timeout_secs: u64,
@@ -61,7 +63,7 @@ pub struct AnsweringConfig {
 impl Default for AnsweringConfig {
     fn default() -> Self {
         AnsweringConfig {
-            accept_gestures: true,
+            accept_gestures: false,
             timeout_secs: 45,
             repeat_after_secs: 15,
             gestures_may_approve_anything: false,

@@ -10,8 +10,17 @@ use std::{
     time::{Duration, Instant},
 };
 
-const FRAME: usize = 8 * 1024 * 1024;
-pub(super) const ELEMENTS: usize = 1_048_576;
+/// Budgets for one request to the helper (21 Oct 2026). They were 8 MiB and
+/// 1,048,576 values, and the seeing models are bigger than that: finding
+/// faces and naming things take 640x640x3 = 1,228,800 values and finding
+/// words 736x736x3 = 1,625,088. Every such look was refused before it ran
+/// ("inference shape exceeds its element budget"), so "can you see me" could
+/// never find a face on a machine that sends it to the helper. The budget now
+/// fits the largest model with room, and the frame fits that many values as
+/// the JSON the transport sends (about 11 bytes each). Still a bound: a
+/// runaway shape or a flood from the helper is refused, as before.
+const FRAME: usize = 64 * 1024 * 1024;
+pub(super) const ELEMENTS: usize = 4_194_304;
 const OPEN_TIME: Duration = Duration::from_secs(90);
 const RUN_TIME: Duration = Duration::from_secs(2);
 const HELPERS: usize = 3;
@@ -769,6 +778,27 @@ pub(super) fn serve() -> i32 {
         0
     } else {
         2
+    }
+}
+
+#[cfg(test)]
+mod budget_tests {
+    use super::{dimensions, ELEMENTS, FRAME};
+
+    /// Every seeing model's input fits one request, and that many values fit
+    /// one frame as JSON (11 bytes a value, with a sign and seven digits).
+    #[test]
+    fn every_seeing_models_input_fits_one_request() {
+        for (w, h) in [(640, 640), (736, 736), (224, 224), (192, 192), (112, 112)] {
+            let shape = [1, 3, h as i64, w as i64];
+            let n = dimensions(&shape).expect("a seeing model's input was refused");
+            assert!(n * 12 < FRAME, "{w}x{h} would not fit one frame");
+        }
+        assert!(
+            dimensions(&[1, 3, 4096, 4096]).is_err(),
+            "a runaway shape must still be refused"
+        );
+        assert!(ELEMENTS * 12 <= FRAME);
     }
 }
 

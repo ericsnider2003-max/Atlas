@@ -32,18 +32,18 @@ pub(super) fn pill(kind: &str, word: &str) -> String {
             "wait",
             "<circle cx=12 cy=12 r=9 /><path d='M12 8v4l2.5 1.5'/>",
         ),
-        "waiting" => (
-            "wait",
-            "<path d='M12 8v4M12 16h.01'/><circle cx=12 cy=12 r=9 />",
-        ),
+        // 20 Oct 2026: "waiting" and "stopped" were the same exclamation
+        // mark in two colours. Each state now has its own shape (`state_icon`)
+        // and its own colour class: waiting on you is the accent hand,
+        // stopped is the hot no-entry sign.
+        "waiting" => ("ask", state_icon("waiting")),
         "next" => (
             "info",
             "<rect x=3 y=4.5 width=18 height=16.5 rx=2.5 /><path d='M3 9.5h18'/>",
         ),
-        "stopped" => (
-            "stop",
-            "<path d='M12 8v4M12 16h.01'/><circle cx=12 cy=12 r=9 />",
-        ),
+        "stopped" => ("stop", state_icon("blocked")),
+        "failed" => ("stop", state_icon("failed")),
+        "interrupted" => ("wait", state_icon("interrupted")),
         "online" => (
             "ok",
             "<path d='M12 3a9 9 0 1 0 9 9'/><path d='M8 12l3 3 5-6'/>",

@@ -186,3 +186,79 @@ pub fn spoken(a: &Advice) -> String {
         },
     }
 }
+
+/// How often stale lessons are swept (20 Oct 2026): once a day. `forget_stale`
+/// had no caller at all, so aged-out lessons stayed in the file for good
+/// (they were already ignored by `advise`, so this is tidiness, not safety).
+pub const SWEEP_EVERY_SECS: u64 = 86_400;
+
+/// Whether a sweep is due: never run (`last` 0) or a full period ago.
+pub fn sweep_due(last: u64, now: u64) -> bool {
+    last == 0 || now.saturating_sub(last) >= SWEEP_EVERY_SECS
+}
+
+/// The daily sweep, called from the hourly tidy: at most once per
+/// `SWEEP_EVERY_SECS`, loads the lessons, forgets the stale ones and saves
+/// if any went. `Some(line)` for the log when it ran, `None` when not due.
+///
+/// Note: nothing in production records lessons into this store yet (only
+/// `route` does, on a throwaway copy), so today the sweep finds nothing; it
+/// is ready for when something does.
+pub fn sweep(store: &crate::store::Store, now: u64) -> Option<String> {
+    let last: u64 = store.load("learned_swept");
+    if !sweep_due(last, now) {
+        return None;
+    }
+    let mut learned: Learned = store.load("learned");
+    let kept_before = learned.lessons.len();
+    let gone = learned.forget_stale(now);
+    if gone > 0 {
+        if let Err(e) = store.save("learned", &learned) {
+            return Some(format!(
+                "lessons: could not save after forgetting {gone} ({e})"
+            ));
+        }
+    }
+    if let Err(e) = store.save("learned_swept", &now) {
+        return Some(format!("lessons: swept but could not note it ({e})"));
+    }
+    Some(format!(
+        "lessons: forgot {gone} stale of {kept_before}; next sweep in a day"
+    ))
+}
+
+#[cfg(test)]
+mod sweep_tests {
+    use super::*;
+
+    #[test]
+    fn due_once_per_period() {
+        assert!(sweep_due(0, 100));
+        assert!(!sweep_due(100, 100 + SWEEP_EVERY_SECS - 1));
+        assert!(sweep_due(100, 100 + SWEEP_EVERY_SECS));
+    }
+
+    #[test]
+    fn sweep_forgets_stale_once_a_day_and_says_so() {
+        let dir = std::env::temp_dir().join(format!("atlas-learned-sweep-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let store = crate::store::Store::new(&dir);
+        let day = 86_400u64;
+        let mut l = Learned::default();
+        l.record("a", "site", Cause::Outside, "blocked", 0); // keeps 21 days
+        l.record("b", "site", Cause::WrongIdea, "no", 0); // keeps ten years
+        store.save("learned", &l).unwrap();
+        let now = 30 * day;
+        let line = sweep(&store, now).expect("first call runs");
+        assert!(line.contains("forgot 1 stale of 2"), "{line}");
+        let after: Learned = store.load("learned");
+        assert_eq!(after.lessons.len(), 1);
+        assert_eq!(after.lessons[0].approach, "b");
+        // The same period: not again.
+        assert!(sweep(&store, now + 3600).is_none());
+        // A period later: runs again, finds nothing more.
+        let again = sweep(&store, now + day).expect("next period runs");
+        assert!(again.contains("forgot 0 stale of 1"), "{again}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}

@@ -1,0 +1,41 @@
+{
+    "old_hash":  "ACEF04E191EC1727E0D1C3852416EE32CCA4905498AC8A99BB375B0231FBA03D",
+    "rollback":  "C:\\Users\\erics\\AppData\\Local\\Atlas\\atlas.exe.before-e2e1020-20261021",
+    "rollback_hash":  "ACEF04E191EC1727E0D1C3852416EE32CCA4905498AC8A99BB375B0231FBA03D",
+    "new_hash":  "575B64E71BF07D346A5E93C0B8A634C3F3FC1B12808904A6402D068A18B292B3",
+    "overlay_setting":  "overlay.enabled: off",
+    "stt_model":  "stt_model: \"models/ggml-base.en-q5_1.bin\"",
+    "recycled":  [
+                     {
+                         "name":  "index.unreadable.1792223961.json.bak",
+                         "bytes":  17059148,
+                         "sha256":  "2621BA919DF9F8F1056DE448A148BC87DE77BACAEDECD8CCA18A799B7CE10520"
+                     },
+                     {
+                         "name":  "index.unreadable.1792226971.json.bak",
+                         "bytes":  17065868,
+                         "sha256":  "944D2416E1B77B672A82D2C4DA5316D8325AEF8905EC5A5F7B48DAB956A34791"
+                     },
+                     {
+                         "name":  "index.unreadable.1792227440.json.bak",
+                         "bytes":  18627948,
+                         "sha256":  "0423620A2038578D4D4667CB87A21EEAF7D33CD7C3FF316ED6E5C5B204C4DF25"
+                     },
+                     {
+                         "name":  "index.unreadable.1792372887.json.bak",
+                         "bytes":  18627948,
+                         "sha256":  "076F3DF3EC9FC5FCCE886A43DD9564CA99A41D702C39E23275EE084D562B8F62"
+                     },
+                     {
+                         "name":  "index.unreadable.1792464352.json.bak",
+                         "bytes":  17014180,
+                         "sha256":  "B4FEEB54A53702C63A6775AB8F58BE54ABD369B2AA809EC573FC89987D71AF0D"
+                     },
+                     {
+                         "name":  "index.unreadable.1792554587.json.bak",
+                         "bytes":  17014180,
+                         "sha256":  "6ADBBE1A6BF906A4E16CADC44FDBCEC24F927956007EB6EB796403BBE58743B1"
+                     }
+                 ],
+    "recycled_total_mb":  100.5
+}

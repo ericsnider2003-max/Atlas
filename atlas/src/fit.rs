@@ -474,7 +474,27 @@ pub fn describe(m: &Machine) -> String {
 /// budget and produce a plan the machine cannot actually run — the failure
 /// this module exists to avoid, arrived at from the other side.
 pub fn measure() -> Machine {
-    let r = crate::health::read_machine();
+    machine_from(
+        &crate::health::read_machine(),
+        graphics(),
+        crate::npu::has_intel_npu(),
+    )
+}
+
+/// The graphics adapter's memory, in megabytes (20 Oct 2026). Both numbers
+/// are kept: an integrated GPU has a small dedicated slice and borrows the
+/// rest of system memory, a discrete one has its own.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Graphics {
+    pub dedicated_mb: u64,
+    pub shared_mb: u64,
+}
+
+/// Build the machine from readings, graphics and NPU presence. Pure, so the
+/// mapping is tested with injected values; `measure` supplies the real ones.
+/// Before 20 Oct 2026 video memory was always 0 and the NPU always absent,
+/// so the larger tiers, vision and the NPU note never switched on.
+pub fn machine_from(r: &crate::health::Readings, gfx: Graphics, has_npu: bool) -> Machine {
     let total = (r.ram_total_gb * 1024.0) as u64;
     let used = (r.ram_used_gb * 1024.0) as u64;
     Machine {
@@ -483,14 +503,112 @@ pub fn measure() -> Machine {
         cpu_cores: std::thread::available_parallelism()
             .map(|n| n.get() as u32)
             .unwrap_or(1),
-        // Integrated graphics report shared memory as VRAM, which is not extra
-        // memory — `usable_vram_mb` already ignores anything under 4GB for
-        // this reason. Left at zero until Atlas can tell dedicated from shared.
-        vram_mb: 0,
-        has_npu: false,
+        // Dedicated only: shared graphics memory is the system's own and is
+        // not extra (`usable_vram_mb`), so it is not counted here.
+        vram_mb: gfx.dedicated_mb,
+        has_npu,
         disk_free_mb: (r.disk_free_gb * 1024.0) as u64,
         disk_is_spinning: false,
         reclaimable_mb: 0,
+    }
+}
+
+/// The best real graphics adapter (most dedicated memory; the software
+/// renderer skipped), read once from DXGI. Zeros where it can't be read.
+pub fn graphics() -> Graphics {
+    static GFX: std::sync::OnceLock<Graphics> = std::sync::OnceLock::new();
+    *GFX.get_or_init(read_graphics)
+}
+
+#[cfg(windows)]
+fn read_graphics() -> Graphics {
+    use windows::Win32::Graphics::Dxgi::{
+        CreateDXGIFactory1, IDXGIFactory1, DXGI_ADAPTER_FLAG_SOFTWARE,
+    };
+    let mut best = Graphics::default();
+    // SAFETY: plain DXGI enumeration; every interface is released on drop.
+    unsafe {
+        let Ok(factory) = CreateDXGIFactory1::<IDXGIFactory1>() else {
+            return best;
+        };
+        let mut i = 0;
+        while let Ok(adapter) = factory.EnumAdapters1(i) {
+            i += 1;
+            let Ok(d) = adapter.GetDesc1() else { continue };
+            if d.Flags & DXGI_ADAPTER_FLAG_SOFTWARE.0 as u32 != 0 {
+                continue;
+            }
+            let g = Graphics {
+                dedicated_mb: d.DedicatedVideoMemory as u64 / (1024 * 1024),
+                shared_mb: d.SharedSystemMemory as u64 / (1024 * 1024),
+            };
+            if g.dedicated_mb >= best.dedicated_mb {
+                best = g;
+            }
+        }
+    }
+    best
+}
+
+#[cfg(not(windows))]
+fn read_graphics() -> Graphics {
+    // No graphics query on this platform: both zero mean "unknown", which
+    // `machine_from` already treats as no budget rather than a guess.
+    Graphics {
+        dedicated_mb: 0,
+        shared_mb: 0,
+    }
+}
+
+#[cfg(test)]
+mod device_tests {
+    use super::*;
+
+    fn readings() -> crate::health::Readings {
+        crate::health::Readings {
+            ram_total_gb: 16.0,
+            ram_used_gb: 10.0,
+            disk_free_gb: 100.0,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn discrete_gpu_and_npu_are_recorded() {
+        let g = Graphics {
+            dedicated_mb: 8192,
+            shared_mb: 8000,
+        };
+        let m = machine_from(&readings(), g, true);
+        assert_eq!(m.vram_mb, 8192);
+        assert!(m.has_npu);
+        assert_eq!(m.usable_vram_mb(), 8192);
+    }
+
+    #[test]
+    fn integrated_gpu_is_recorded_but_adds_no_budget() {
+        let g = Graphics {
+            dedicated_mb: 128,
+            shared_mb: 8000,
+        };
+        let m = machine_from(&readings(), g, false);
+        assert_eq!(m.vram_mb, 128);
+        assert_eq!(m.usable_vram_mb(), 0);
+        assert!(!m.has_npu);
+        assert_eq!(m.total_ram_mb, 16 * 1024);
+        assert_eq!(m.free_ram_mb, 6 * 1024);
+    }
+
+    #[test]
+    fn unreadable_graphics_is_zero_not_a_guess() {
+        let m = machine_from(&readings(), Graphics::default(), false);
+        assert_eq!(m.vram_mb, 0);
+    }
+
+    #[test]
+    fn the_real_adapter_can_be_read_without_panicking() {
+        let g = graphics();
+        eprintln!("graphics here: {g:?}");
     }
 }
 

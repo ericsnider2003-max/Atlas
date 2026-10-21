@@ -1,0 +1,102 @@
+     Running unittests src\lib.rs (target\debug\deps\atlas-1e3f1dac26634254.exe)
+test result: FAILED. 1433 passed; 3 failed; 15 ignored; 0 measured; 0 filtered out; finished in 397.82s
+     Running unittests src\main.rs (target\debug\deps\atlas-e7e921fbc044364e.exe)
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+     Running tests\a_misspelt_setting_is_reported.rs (target\debug\deps\a_misspelt_setting_is_reported-5f4480bb7715c792.exe)
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.12s
+     Running tests\all.rs (target\debug\deps\all-917c9dabd9390cb8.exe)
+test result: FAILED. 7175 passed; 4 failed; 9 ignored; 0 measured; 0 filtered out; finished in 1255.99s
+     Running tests\atlas_on_a_friends_machine.rs (target\debug\deps\atlas_on_a_friends_machine-1ce7bfcfdde3eee4.exe)
+test result: FAILED. 9 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.59s
+     Running tests\capability_wiring.rs (target\debug\deps\capability_wiring-717b5693cb1f8bef.exe)
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 21.39s
+     Running tests\connecting_is_one_button.rs (target\debug\deps\connecting_is_one_button-2a8e905ccbb3fd3a.exe)
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 13.82s
+     Running tests\dead_capabilities.rs (target\debug\deps\dead_capabilities-831cd5b17242e7ae.exe)
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 8.00s
+     Running tests\editcraft.rs (target\debug\deps\editcraft-36d18e71508f5771.exe)
+test result: ok. 24 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+     Running tests\every_ability_answers.rs (target\debug\deps\every_ability_answers-f63c37747ec916a2.exe)
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 27.98s
+     Running tests\every_command_end_to_end.rs (target\debug\deps\every_command_end_to_end-76c4496b6fcb190d.exe)
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 31.50s
+     Running tests\google_data_stays_here.rs (target\debug\deps\google_data_stays_here-0123e80c43654436.exe)
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.28s
+     Running tests\guards.rs (target\debug\deps\guards-2b98db1f184cb4ab.exe)
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 95.47s
+     Running tests\guests_at_the_daemon.rs (target\debug\deps\guests_at_the_daemon-780ddb16759ec963.exe)
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.55s
+     Running tests\handed_over.rs (target\debug\deps\handed_over-29272a40f7a8a1af.exe)
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 6.84s
+     Running tests\hearing_by_what_is_said.rs (target\debug\deps\hearing_by_what_is_said-ddc8edfd9b08c092.exe)
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running tests\hub_settings.rs (target\debug\deps\hub_settings-20abaa70f7cd4427.exe)
+test result: ok. 39 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.30s
+     Running tests\hublive.rs (target\debug\deps\hublive-04ae46bbd740249e.exe)
+test result: ok. 61 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 9.32s
+     Running tests\losing_the_passphrase.rs (target\debug\deps\losing_the_passphrase-84a4e29c361446e0.exe)
+test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 88.69s
+     Running tests\mail_off_the_tick.rs (target\debug\deps\mail_off_the_tick-1c3a0254fc95fbf4.exe)
+test result: ok. 18 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 19.14s
+     Running tests\muse_and_thinking_hard.rs (target\debug\deps\muse_and_thinking_hard-6794b57ca283af5c.exe)
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.40s
+     Running tests\name_collisions.rs (target\debug\deps\name_collisions-94cd71a2b8b26a14.exe)
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.20s
+     Running tests\new_capabilities_are_wired.rs (target\debug\deps\new_capabilities_are_wired-3e7a9cb3f8e769bc.exe)
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5.25s
+     Running tests\one_install_root.rs (target\debug\deps\one_install_root-9c44a49a997a160f.exe)
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.61s
+     Running tests\one_word_is_not_an_address.rs (target\debug\deps\one_word_is_not_an_address-e6928108b431e872.exe)
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 51.28s
+     Running tests\pairing_wiring.rs (target\debug\deps\pairing_wiring-2e2271cd4efbf366.exe)
+test result: ok. 21 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.65s
+     Running tests\reliability_jobs.rs (target\debug\deps\reliability_jobs-884d50ad2c241385.exe)
+test result: ok. 68 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 57.12s
+     Running tests\saying_youre_back.rs (target\debug\deps\saying_youre_back-7e4a1f2649dd7e17.exe)
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 31.52s
+     Running tests\settings_that_do_something_now.rs (target\debug\deps\settings_that_do_something_now-1125486d82616e73.exe)
+test result: ok. 46 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 29.94s
+     Running tests\the_branches_that_do_damage.rs (target\debug\deps\the_branches_that_do_damage-6b2484da813e51e6.exe)
+test result: ok. 17 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.73s
+     Running tests\the_floor_without_a_model.rs (target\debug\deps\the_floor_without_a_model-df9bc25014e0fcd7.exe)
+test result: ok. 19 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 6.79s
+     Running tests\the_hub_holds_the_way_back.rs (target\debug\deps\the_hub_holds_the_way_back-4a8bdffd77f34e47.exe)
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 25.01s
+     Running tests\the_list_of_lies_is_measured.rs (target\debug\deps\the_list_of_lies_is_measured-80ab294418f635e2.exe)
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5.22s
+     Running tests\the_passphrase_is_never_written_down.rs (target\debug\deps\the_passphrase_is_never_written_down-9af784a159859181.exe)
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5.22s
+     Running tests\the_phone_stands_alone.rs (target\debug\deps\the_phone_stands_alone-45db7d795ecdc36a.exe)
+test result: ok. 15 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 28.09s
+     Running tests\the_self_test_never_starts_another_atlas.rs (target\debug\deps\the_self_test_never_starts_another_atlas-af269db830e1345d.exe)
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running tests\the_splitter_is_honest.rs (target\debug\deps\the_splitter_is_honest-82d7c3bdb8ebfefe.exe)
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.70s
+     Running tests\the_trading_numbers_are_yours.rs (target\debug\deps\the_trading_numbers_are_yours-53a2c533bf8b23d3.exe)
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.49s
+     Running tests\the_vault_relocks_itself.rs (target\debug\deps\the_vault_relocks_itself-cc7afc8804fca1f7.exe)
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.95s
+     Running tests\the_workspace_cannot_hold_the_tick.rs (target\debug\deps\the_workspace_cannot_hold_the_tick-3961134159ce422a.exe)
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.22s
+     Running tests\truthful_publication_and_calendars.rs (target\debug\deps\truthful_publication_and_calendars-5f6737a40d1f7640.exe)
+test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.52s
+     Running tests\truthful_replies.rs (target\debug\deps\truthful_replies-22a96fd160cddae6.exe)
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.75s
+     Running tests\updating_without_reinstalling.rs (target\debug\deps\updating_without_reinstalling-769550cdab4d75d0.exe)
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.10s
+     Running tests\vad_measured.rs (target\debug\deps\vad_measured-3ed7c9f695ac0681.exe)
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 157.88s
+     Running tests\voice_measured.rs (target\debug\deps\voice_measured-b3330274f9f34e43.exe)
+test result: ok. 4 passed; 0 failed; 3 ignored; 0 measured; 0 filtered out; finished in 49.21s
+     Running tests\what_a_stranger_gets.rs (target\debug\deps\what_a_stranger_gets-c2c075fc6cf0f18c.exe)
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 7.41s
+     Running unittests examples\rank.rs (target\debug\examples\rank-f75b86e0a37491db.exe)
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test crew::tests::a_failed_errand_that_was_not_asked_to_stop_reports_done_err ... FAILED
+test crew::tests::a_free_hand_starts_the_errand_immediately ... FAILED
+test crew::tests::ask_to_stop_on_queued_work_drops_it_before_it_ever_runs ... FAILED
+test atlas_looks_when_you_ask::it_asks_once_then_looks_says_so_and_keeps_no_picture ... FAILED
+test atlas_looks_when_you_ask::watching_for_a_while ... FAILED
+test audio_enumeration::asking_the_real_machine_answers_without_panicking_or_hanging ... FAILED
+test finishing_what_it_starts::declining_a_scan_exception_blocks_the_remaining_plan ... FAILED
+test doctor_says_when_there_is_no_language_model ... FAILED

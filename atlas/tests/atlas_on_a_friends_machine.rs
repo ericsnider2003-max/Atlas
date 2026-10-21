@@ -462,7 +462,7 @@ fn doctor_says_when_there_is_no_language_model() {
         .expect("doctor says nothing about the language model");
     assert!(!talking.ok);
     assert!(
-        talking.detail.contains("setup fetches it") && !talking.detail.contains("`atlas"),
+        talking.detail.contains("finish setting up") && !talking.detail.contains("`atlas"),
         "doesn't say how to get one, or says it with a command: {}",
         talking.detail
     );

@@ -20,21 +20,24 @@ Dates are UTC. The card at the top of `AGENTS.md` holds the facts; this file hol
 - `llm-missing` Install a local language model on the laptop (owner approval: ~2.5 GB download) and decide online_second — home: [verification/runs/20261020T040916Z-claude-typed-acceptance/RESULTS.md](../verification/runs/20261020T040916Z-claude-typed-acceptance/RESULTS.md) — open since 2026-10-20 (claude)
 - `own-model` Own on-device language model: research and first measurable step (intent golden set baseline) — home: [docs/OWN_LANGUAGE_MODEL_OPTIONS_2026-10-20.md](OWN_LANGUAGE_MODEL_OPTIONS_2026-10-20.md) — open since 2026-10-21 (claude)
 - `offline-assistant` Full offline assistant that keeps the PC usable: design (memory tiers, voice loop, governor) and benchmark plan — home: [docs/OFFLINE_ASSISTANT_DESIGN_2026-10-20.md](OFFLINE_ASSISTANT_DESIGN_2026-10-20.md) — open since 2026-10-21 (claude)
-- `desktop-e2e-1020` Desktop E2E acceptance run 2026-10-20: fix false progress claims, Hub failed/done states, restart reconciliation, backup, mic — home: [verification/runs/20261021T033717Z-claude-desktop-e2e/RESULTS.md](../verification/runs/20261021T033717Z-claude-desktop-e2e/RESULTS.md) — open since 2026-10-21 (claude)
 - `efficiency` Atlas-wide efficiency and device adaptation: tiers T0-T3, processing, memory, storage, learning budgets, acting ahead with guardrails, any-device platform record — home: [docs/ATLAS_EFFICIENCY_AND_ADAPTATION_DESIGN_2026-10-20.md](ATLAS_EFFICIENCY_AND_ADAPTATION_DESIGN_2026-10-20.md) — open since 2026-10-21 (claude)
 - `model-training` Train Atlas's own model: data from Eric's own messages, clean open datasets, REA/Replica/Atlas repo; stages, cost, first 3 steps — home: [docs/ATLAS_MODEL_TRAINING_PLAN_2026-10-21.md](ATLAS_MODEL_TRAINING_PLAN_2026-10-21.md) — open since 2026-10-21 (claude)
+- `owner-after-e2e1020` Owner decisions after e2e fixes: approve 16.2 GB pieces, program-copy cleanup (2.27 GB), self-audit act-without-asking runs cargo, panel outlives Atlas, owner desktop re-run — home: [verification/runs/20261021T110000Z-claude-e2e1020-fixes/RESULTS.md](../verification/runs/20261021T110000Z-claude-e2e1020-fixes/RESULTS.md) — open since 2026-10-21 (claude)
 
 ## Last session
 
-- 2026-10-21 by claude: Desktop E2E run on installed Atlas (real profile): 1 pass, 3 partial, 5 fail; report + 21 screenshots in verification/runs/20261021T033717Z-claude-desktop-e2e
-- Next command: `open verification/runs/20261021T033717Z-claude-desktop-e2e/RESULTS.md and start with Top fixes #1 (no false progress claims without a model)`
-- git at close: candidate/2026-10-17-foundation @ a634013bdd, 46 uncommitted file(s); fetch: skipped
-- Verified: window opens, context retained, missing-file cause stated, Hub pages load <2s — computer use + screenshots
-- **UNVERIFIED:** restore (no backup was produced); tray icon absent; owner acceptance
-- log: [docs/sessions/2026-10-20-desktop-e2e-run-on-installed-atlas-real-.md](sessions/2026-10-20-desktop-e2e-run-on-installed-atlas-real-.md)
+- 2026-10-21 by claude: Fixed every 2026-10-20 desktop-test issue at the root plus the no-model floor and efficiency defects on fix/desktop-e2e-1020; installed 3B38DE03 with rollback; results page published
+- Next command: `Owner: try Atlas for a real day, then decide the items in owner-after-e2e1020 (verification/runs/20261021T110000Z-claude-e2e1020-fixes/RESULTS.md)`
+- git at close: fix/desktop-e2e-1020 @ 70ec6296e6, 5 uncommitted file(s); fetch: skipped
+- Verified: Full suite 9138 pass, 3 env failures (system ffmpeg missing) — cargo test --all-targets twice
+- Verified: Installed verifier 14/14 on 3B38DE03 — verification/Invoke-AtlasVerification.ps1
+- Verified: Real profile: hub 7.6 s, index kept (17.0→13.9 MB, nothing set aside), 0 downloads, 0 camera frames, download ask filed, clean stop 2.4 s — realcheck.ps1 on 575B64E7
+- **UNVERIFIED:** Visual checks (Hub lanes, tray icon, Talk, tabs, overlay); live low-memory floor path; live camera look; owner acceptance
+- log: [docs/sessions/2026-10-21-fixed-every-2026-10-20-desktop-test-issu.md](sessions/2026-10-21-fixed-every-2026-10-20-desktop-test-issu.md)
 
 ## Recently done
 
+- `desktop-e2e-1020` Desktop E2E acceptance run 2026-10-20: fix false progress claims, Hub failed/done states, restart reconciliation, backup, mic (2026-10-21)
 - `i217d` Complete singular-candidate workspace handoff and inventory (2026-10-18)
 - `verify-harness` Independent real-runtime verification harness (2026-10-18)
 - `i65c1` Canonical open-work audit (2026-10-16)
@@ -131,6 +134,7 @@ One line per doc. "Last true" is the date the doc declares (`Last updated: YYYY-
 | [docs/OWN_LANGUAGE_MODEL_OPTIONS_2026-10-20.md](OWN_LANGUAGE_MODEL_OPTIONS_2026-10-20.md) | Building Atlas's own language model: options and recommendation | 2026-10-20 |
 | [docs/PLAN_COVERAGE_REGISTER_2026-10-18.md](PLAN_COVERAGE_REGISTER_2026-10-18.md) | Atlas plan coverage register — 2026-10-18 | 2026-10-20 |
 | [docs/PLATFORM.md](PLATFORM.md) | PLATFORM — Atlas | — |
+| [docs/PROGRAM_COPIES_CLEANUP_PROPOSAL_2026-10-21.md](PROGRAM_COPIES_CLEANUP_PROPOSAL_2026-10-21.md) | Old program copies: cleanup proposal, 2026-10-21 | — |
 | [docs/PROJECT_FILE_INVENTORY_2026-10-17.md](PROJECT_FILE_INVENTORY_2026-10-17.md) | Atlas project file inventory — 2026-10-17 | — |
 | [docs/Q25_STARTUP_BACKUP_FIX_2026-10-15.md](Q25_STARTUP_BACKUP_FIX_2026-10-15.md) | Startup backup contention fix — 2026-10-15 | — |
 | [docs/REA_REPLICA_ADAPTATION_2026-10-16.md](REA_REPLICA_ADAPTATION_2026-10-16.md) | REA and replica adaptation notes — 2026-10-16 | — |

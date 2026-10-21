@@ -360,6 +360,12 @@ impl Helpers {
         self.sup.is_running(name)
     }
 
+    /// Running and not answering anything right now (20 Oct 2026, for the
+    /// memory relief: only what is idle may be let go early).
+    pub fn is_idle(&self, name: &str) -> bool {
+        self.sup.running.iter().any(|h| h.name == name && !h.in_use)
+    }
+
     /// A one-shot model run (the picture reader, the picture maker): judged
     /// by what the machine has free (`room`), never by the helpers' budget.
     ///

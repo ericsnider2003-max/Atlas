@@ -350,6 +350,13 @@ pub fn need_of(intent: &Intent) -> Need {
         | Intent::Translate(_) => Need::Local,
         // Reading model files off this disk. The whole point is no network.
         Intent::WhichModel => Need::Local,
+        Intent::QuitAtlas => Need::Local,
+        // The floor (20 Oct 2026): nothing here touches the network.
+        Intent::CreateFile(_)
+        | Intent::ReadFile(_)
+        | Intent::MoveFile(_)
+        | Intent::BackUpFolder(_)
+        | Intent::WhatsUsingMemory => Need::Local,
         // Everything that makes Atlas an assistant rather than a search box.
         Intent::WorkspaceOn
         | Intent::WorkspaceOff

@@ -29,9 +29,19 @@ pub enum Kind {
     Offered,
     /// Tidying, reaping, compaction.
     Upkeep,
+    /// Atlas working on its own code: mutation sweeps, self-tests, proving
+    /// its own fixes. Kept in the journal for the record, but never shown in
+    /// the owner's Activity (20 Oct 2026: "mutation sweep of src/audio.rs"
+    /// was the first thing a non-developer read there).
+    SelfWork,
 }
 
 impl Kind {
+    /// Developer-facing work that has no place in the owner's Activity.
+    pub fn internal(&self) -> bool {
+        matches!(self, Kind::SelfWork)
+    }
+
     /// Did this change something outside Atlas?
     pub fn consequential(&self) -> bool {
         matches!(self, Kind::Published | Kind::Scheduled)
@@ -395,7 +405,10 @@ impl Journal {
     /// rotation.
     pub fn brief(&self, since: u64) -> String {
         let events = self.since(since);
-        let notable: Vec<&&Event> = events.iter().filter(|e| e.kind != Kind::Upkeep).collect();
+        let notable: Vec<&&Event> = events
+            .iter()
+            .filter(|e| e.kind != Kind::Upkeep && !e.kind.internal())
+            .collect();
         if notable.is_empty() {
             return "Nothing happened while you were away.".into();
         }

@@ -1409,3 +1409,203 @@ pub fn setup_pieces() -> Vec<Piece> {
         .chain(tor())
         .collect()
 }
+
+// ---------------------------------------------------------------- asking first
+
+/// Which pieces the owner has said yes to fetching on Atlas's own (20 Oct
+/// 2026). The running Atlas used to start fetching every missing piece about
+/// two minutes after each start -- ten pieces and some 3.6 GB the owner never
+/// agreed to. A yes is kept, scoped to the pieces that were listed in the ask
+/// (by the file that proves each is here): a piece that turns up missing later
+/// and was not in that list is asked about again, not fetched.
+#[derive(Debug, Clone, Default, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
+pub struct Approved {
+    /// `Piece::key_path` of each piece said yes to.
+    pub keys: Vec<String>,
+    /// When the yes was given.
+    pub at: u64,
+}
+
+impl Approved {
+    /// The store record this is kept in.
+    pub const RECORD: &'static str = "pieces_approved";
+
+    pub fn covers(&self, p: &Piece) -> bool {
+        self.keys.iter().any(|k| k == p.key_path())
+    }
+
+    /// Say yes to these pieces (and keep any yes already given).
+    pub fn grant(&mut self, pieces: &[Piece], t: u64) {
+        for p in pieces {
+            if !self.covers(p) {
+                self.keys.push(p.key_path().to_string());
+            }
+        }
+        self.at = t;
+    }
+}
+
+/// How every ask for missing pieces begins (so an open one can be found again).
+pub const ASK_PREFIX: &str = "Atlas can fetch ";
+
+/// What the pieces add up to on the wire.
+pub fn total_bytes(pieces: &[Piece]) -> u64 {
+    pieces.iter().map(|p| p.bytes).sum()
+}
+
+/// What the code checkers' own second step fetches, said in words for the ask
+/// (2026-10-21: it used to download Python, node packages and the Rust
+/// toolchain with no yes).
+const FINISH_STEP: &str = "the code checkers' own setup (Python through uv, the TypeScript and Prettier packages, and the Rust toolchain, each downloaded from its own site)";
+
+/// The one question put in front of the owner for these missing pieces: how
+/// many, how big all told, which, and how to say yes. Worked out from the
+/// catalogue's own sizes, so the number is the download, not a guess. The
+/// same words every time for the same list -- that is what keeps the ask to
+/// one (`Daemon::keep_everything_here` files it once). When
+/// `finish_code_tools`, the code checkers' second setup step is named in it,
+/// so the one yes covers what will be downloaded.
+fn ask_for_setup(missing: &[Piece], finish_code_tools: bool) -> String {
+    if missing.is_empty() {
+        return format!(
+            "{ASK_PREFIX}{FINISH_STEP}. Download them? Say \"finish setting up\", or press the Download button on the Connections page."
+        );
+    }
+    let names: Vec<&str> = missing.iter().map(|p| p.name).collect();
+    format!(
+        "{ASK_PREFIX}{} missing piece{} (about {}): {}{}. Download {}? Say \"finish setting up\", or press the Download button on the Connections page.",
+        missing.len(),
+        if missing.len() == 1 { "" } else { "s" },
+        gib_label(total_bytes(missing)),
+        names.join(", "),
+        if finish_code_tools {
+            format!(", and then {FINISH_STEP}")
+        } else {
+            String::new()
+        },
+        if missing.len() == 1 && !finish_code_tools {
+            "it"
+        } else {
+            "them"
+        },
+    )
+}
+
+/// Whether the owner has said yes to the code checkers' second setup step:
+/// every code-tool piece is in `approved` (the yes covers the pieces and what
+/// they go on to fetch). Never on a computer with no such pieces.
+pub fn code_tools_approved(approved: &Approved) -> bool {
+    let pieces = crate::codetools::tool_pieces();
+    !pieces.is_empty() && pieces.iter().all(|p| approved.covers(p))
+}
+
+/// What a top-up may do about `missing`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TopUp {
+    /// The pieces the owner has already said yes to: fetch these.
+    pub fetch: Vec<Piece>,
+    /// The pieces still to ask about (none approved yet, or new ones turned
+    /// up since the yes): the ask, in words. `None` when there's nothing to ask.
+    pub ask: Option<String>,
+}
+
+/// Split what's missing into what may be fetched now and what has to be asked
+/// about first, for a setup whose code checkers also have a second step
+/// still to run (`unfinished`). Pure: no disk, no network. The step runs only when the
+/// owner has said yes to the code-tool pieces; otherwise it is named in the ask. Returns the plan
+/// and whether the step may run now.
+pub fn decide_top_up_and_finish(
+    missing: Vec<Piece>,
+    approved: &Approved,
+    unfinished: bool,
+) -> (TopUp, bool) {
+    let finish_ok = unfinished && code_tools_approved(approved);
+    let (fetch, unasked): (Vec<Piece>, Vec<Piece>) =
+        missing.into_iter().partition(|p| approved.covers(p));
+    let finish_asked = unfinished && !finish_ok;
+    let ask = (!unasked.is_empty() || finish_asked).then(|| ask_for_setup(&unasked, finish_asked));
+    (TopUp { fetch, ask }, finish_ok)
+}
+
+#[cfg(test)]
+mod asking_first {
+    use super::*;
+
+    #[test]
+    fn nothing_approved_fetches_nothing_and_asks_with_the_catalogue_size() {
+        let missing = everything_else();
+        let total = total_bytes(&missing);
+        let d = decide_top_up_and_finish(missing.clone(), &Approved::default(), false).0;
+        assert!(d.fetch.is_empty());
+        let ask = d.ask.expect("an ask");
+        assert!(ask.contains(&format!("{} missing piece", missing.len())));
+        assert!(ask.contains(&gib_label(total)), "{ask}");
+        assert!(ask.contains(missing[0].name));
+        assert!(ask.contains("Download"));
+    }
+
+    #[test]
+    fn approval_is_scoped_to_the_listed_pieces() {
+        let all = everything_else();
+        let (first, rest) = all.split_at(2);
+        let mut a = Approved::default();
+        a.grant(first, 5);
+        let d = decide_top_up_and_finish(all.clone(), &a, false).0;
+        assert_eq!(d.fetch, first.to_vec());
+        let ask = d.ask.expect("the rest is asked about");
+        assert!(ask.contains(rest[0].name));
+        assert!(!ask.contains(first[0].name));
+        a.grant(rest, 6);
+        let n = first.len() + rest.len();
+        let d = decide_top_up_and_finish(all.clone(), &a, false).0;
+        assert!(d.ask.is_none());
+        assert_eq!(d.fetch.len(), n);
+    }
+
+    #[test]
+    fn the_ask_is_the_same_words_for_the_same_list() {
+        let m = everything_else();
+        assert_eq!(ask_for_setup(&m, false), ask_for_setup(&m, false));
+    }
+
+    #[cfg(all(windows, target_arch = "x86_64"))]
+    #[test]
+    fn the_code_checkers_second_step_waits_for_a_yes_and_is_in_the_ask() {
+        // Nothing missing, the second step still to run, no yes: it is asked
+        // about (named in the ask) and does not run.
+        let (plan, finish) = decide_top_up_and_finish(Vec::new(), &Approved::default(), true);
+        assert!(!finish);
+        assert!(plan.fetch.is_empty());
+        let ask = plan.ask.expect("an ask for the second step");
+        assert!(ask.starts_with(ASK_PREFIX), "{ask}");
+        assert!(
+            ask.contains("Python") && ask.contains("Rust toolchain"),
+            "{ask}"
+        );
+        assert!(ask.contains("finish setting up"), "{ask}");
+        // Missing pieces and the step: one ask that names both.
+        let m = everything_else();
+        let (plan, finish) = decide_top_up_and_finish(m.clone(), &Approved::default(), true);
+        assert!(!finish);
+        let ask = plan.ask.unwrap();
+        assert!(
+            ask.contains(m[0].name) && ask.contains("Rust toolchain"),
+            "{ask}"
+        );
+        // Only some code-tool pieces approved: still no.
+        let tools = crate::codetools::tool_pieces();
+        let mut some = Approved::default();
+        some.grant(&tools[..1], 1);
+        assert!(!code_tools_approved(&some));
+        assert!(!decide_top_up_and_finish(Vec::new(), &some, true).1);
+        // All approved: it runs, and there is nothing to ask.
+        let mut all = Approved::default();
+        all.grant(&tools, 2);
+        let (plan, finish) = decide_top_up_and_finish(Vec::new(), &all, true);
+        assert!(finish && plan.ask.is_none() && plan.fetch.is_empty());
+        // Nothing left to finish: no ask, no step, approved or not.
+        let (plan, finish) = decide_top_up_and_finish(Vec::new(), &Approved::default(), false);
+        assert!(!finish && plan.ask.is_none());
+    }
+}

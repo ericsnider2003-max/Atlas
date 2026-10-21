@@ -55,6 +55,7 @@ use crate::workspace;
 mod camera;
 mod conversation;
 mod errands;
+mod floor;
 mod hands;
 mod helping;
 mod late;
@@ -251,6 +252,11 @@ pub const PERSIST_SWEEP_SECS: u64 = 60;
 
 /// The tick's nap while the crew has something it could start.
 const CREW_NAP_MS: u64 = 100;
+
+/// How often an idle nap looks for the stop file (`goodbye::asked_by_file`),
+/// the one stop request that rings no doorbell because another process writes
+/// it. A single `stat`; everything else ends the nap by ringing.
+const STOP_FILE_LOOK_MS: u64 = 2_000;
 
 /// A hub request slower than this, from arriving to answered, gets a log line
 /// of its own (`Daemon::hub_timing`).
@@ -518,6 +524,10 @@ struct CrewLink {
     /// needs this; the housekeeping chores don't.
     topic: Option<String>,
     speak: SpeakPolicy,
+    /// The durable job record this errand writes (`job`), for the long
+    /// errands a restart must not make vanish: downloads, backups. `None`
+    /// for the many chores that don't need one.
+    job_id: Option<String>,
 }
 
 pub struct Daemon<'a> {
@@ -1173,6 +1183,9 @@ pub struct Daemon<'a> {
     last_run_left: Vec<running::LeftWaiting>,
     /// Whether the first-tick pick-up of what the last run left has happened.
     left_pickup_done: bool,
+    /// What the start-up job reconciliation found cut off by the last stop
+    /// (`cut_off_by_restart`), said on the first tick.
+    restart_cut_off: Vec<String>,
     /// Atlas's own CPU and where the loop's time goes, by window (`cpuuse`).
     cpu_meter: crate::cpuuse::Meter,
     /// `models.talk` as last followed (`follow_the_talk_setting`), and the
@@ -1304,6 +1317,9 @@ pub struct Daemon<'a> {
     /// Maps a crew errand's id to what it was for, so `take_crew_news` can
     /// update the right `long_work` job when it settles.
     crew_links: std::collections::HashMap<u64, CrewLink>,
+    /// The last failure announced for each kind of errand, with how many
+    /// times it has come round since (20 Oct 2026). See `repeat_failure`.
+    errand_failures: std::collections::HashMap<String, (String, u32)>,
     /// "Which one?" asked about errands and not yet answered: the verb, the
     /// ids it was asked about, and when. The next line answers it.
     errand_question: Option<(crate::which_errand::Verb, Vec<u64>, u64)>,
@@ -1485,6 +1501,9 @@ pub struct Daemon<'a> {
     pending_desktop: Option<crate::organize::SortPlan>,
     /// An undo asked about ("Undo X?"), waiting for your yes.
     pending_undo: Option<u64>,
+    /// The floor's question waiting on your answer, and its test seams
+    /// (`floor`, 20 Oct 2026).
+    floor: crate::floor::State,
     /// A dropped task you asked about: put back on the list on a yes (H8).
     pending_bring_back: Option<String>,
     /// A decision being worked over several turns (H9), kept across restarts.
@@ -2122,6 +2141,11 @@ impl<'a> Daemon<'a> {
             left_waiting_read: false,
             last_run_left: Vec::new(),
             left_pickup_done: false,
+            // Before anything can serve a page: jobs the last run left
+            // `Running` become `Uncertain` and are saved now, so the Hub's
+            // first view already shows them as cut off (20 Oct 2026: this
+            // happened on the first tick, after pages could be served).
+            restart_cut_off: errands::cut_off_by_restart(&store_for_load),
             cpu_meter: Default::default(),
             talk_setting_seen: None,
             model_running_id: None,
@@ -2175,6 +2199,7 @@ impl<'a> Daemon<'a> {
             tools_resolved,
             long_work: watching::Watcher::load(&store_for_load),
             crew_links: std::collections::HashMap::new(),
+            errand_failures: std::collections::HashMap::new(),
             errand_question: None,
             last_errand_pick: None,
             held_by_pause: Vec::new(),
@@ -2261,6 +2286,7 @@ impl<'a> Daemon<'a> {
             pending_optimize: None,
             pending_desktop: None,
             pending_undo: None,
+            floor: Default::default(),
             pending_media_keep: None,
             pending_unscanned: None,
             pending_bring_back: None,

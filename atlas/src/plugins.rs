@@ -124,6 +124,7 @@ pub const PERMISSIONS: &[Permission] = &[
             "how_am_i_doing",
             "model_trace",
             "machine_health",
+            "whats_using_memory",
             "self_check",
             "capabilities",
             "history",
@@ -225,6 +226,19 @@ pub const PERMISSIONS: &[Permission] = &[
 
 /// Commands no add-on may ever use, whatever it asks for, and why.
 pub const NEVER: &[(&str, &str)] = &[
+    // Stopping Atlas by voice (20 Oct 2026): the same as the tray's Quit.
+    (
+        "quit_atlas",
+        "stopping Atlas is the person's decision, not an add-on's",
+    ),
+    // The floor (20 Oct 2026): work on the person's own files.
+    ("create_file", "it writes files on the person's computer"),
+    ("read_file", "it reads the person's files back out loud"),
+    ("move_file", "it moves the person's files"),
+    (
+        "back_up_folder",
+        "it copies a whole folder of the person's to another place",
+    ),
     // Updates and feedback by voice (OPEN_GAPS 8.2, 8.14), decided when built.
     (
         "update_status",

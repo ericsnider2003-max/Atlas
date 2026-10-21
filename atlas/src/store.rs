@@ -325,6 +325,26 @@ fn remember_unknown<T: DeserializeOwned + Serialize>(path: &Path, text: &str) {
     }
 }
 
+/// Write `bytes` to the temp file `tmp` and flush them with `sync`. If any
+/// step fails the temp file is removed, not left beside the real one as a
+/// `<name>.<pid>.json.tmp` (2026-10-21).
+fn write_temp_and_sync(
+    tmp: &Path,
+    bytes: &[u8],
+    sync: &dyn Fn(&std::fs::File) -> std::io::Result<()>,
+) -> std::io::Result<()> {
+    use std::io::Write;
+    let written = std::fs::File::create(tmp).and_then(|mut f| {
+        f.write_all(bytes)?;
+        sync(&f)
+    });
+    // Nothing to take away when the create itself failed.
+    if written.is_err() && tmp.is_file() {
+        crate::heard!(std::fs::remove_file(tmp));
+    }
+    written
+}
+
 /// A file's size and modified time, or `None` when it isn't there.
 type Stamp = Option<(u64, Option<std::time::SystemTime>)>;
 
@@ -576,14 +596,38 @@ impl Store {
     /// Now: a file that exists and cannot be read is preserved before the
     /// default is returned, so the next save cannot land on it.
     pub fn load<T: DeserializeOwned + Default + Serialize>(&self, name: &str) -> T {
+        self.load_bounded(name, MAX_LOAD_BYTES)
+    }
+
+    /// `load` with a per-record read budget (20 Oct 2026).
+    ///
+    /// A store must never write a file its own load will refuse. The default
+    /// budget is 16 MiB, and the file index grew past it: 17 MB of perfectly
+    /// valid JSON was set aside as unreadable on every start, Atlas rescanned
+    /// from empty and wrote another 17 MB file. A record that is legitimately
+    /// large names its own budget here and must pass the same number to
+    /// `save_bounded`, so the two sides cannot disagree. A file refused only
+    /// for its size is set aside as `oversized`, not `unreadable`.
+    pub fn load_bounded<T: DeserializeOwned + Default + Serialize>(
+        &self,
+        name: &str,
+        max_bytes: u64,
+    ) -> T {
         let path = self.path(name);
         // Taken before reading: a write between the two leaves this older
         // than the file, so the change is seen as someone else's, never missed.
         let stamp = stamp_of(&path);
-        let text = match read_with_patience(&path) {
+        let text = match read_with_patience(&path, max_bytes) {
             Ok(text) => text,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
                 remember_seen(&path, None);
+                return T::default();
+            }
+            Err(e)
+                if e.kind() == std::io::ErrorKind::InvalidData
+                    && e.to_string() == OVERSIZED_MESSAGE =>
+            {
+                self.preserve(name, OVERSIZED);
                 return T::default();
             }
             Err(_) => {
@@ -600,7 +644,17 @@ impl Store {
         if let Ok(env) = serde_json::from_str::<Envelope<T>>(&text) {
             if env.schema == SCHEMA {
                 remember_seen(&path, stamp);
-                remember_unknown::<T>(&path, &text);
+                // Not for a record with its own large budget (the index): this
+                // is two more full parses and a JSON tree of the whole text,
+                // so near the cap the peak was gigabytes (2026-10-21). Such a
+                // record is rebuilt from the disk, so nothing unknown to keep.
+                if max_bytes > MAX_LOAD_BYTES {
+                    if let Ok(mut u) = UNKNOWN.lock().or_else(crate::crash::unpoison) {
+                        u.remove(&path);
+                    }
+                } else {
+                    remember_unknown::<T>(&path, &text);
+                }
                 return env.data;
             }
             // A future or older shape. Keep it; do not silently overwrite.
@@ -786,7 +840,35 @@ impl Store {
     }
 
     pub fn save<T: Serialize>(&self, name: &str, value: &T) -> Result<()> {
-        let r = self.save_unrecorded(name, value);
+        self.save_bounded(name, value, MAX_LOAD_BYTES)
+    }
+
+    /// `save` that refuses to write a record larger than `max_bytes` (20 Oct
+    /// 2026). Pair it with `load_bounded` and the same number.
+    fn save_bounded<T: Serialize>(&self, name: &str, value: &T, max_bytes: u64) -> Result<()> {
+        self.save_in(name, value, max_bytes, Layout::Pretty)
+    }
+
+    /// `save_bounded`, written as compact JSON rather than indented. For the
+    /// records that are large and only ever read by Atlas, where the
+    /// indentation is a fifth or more of the file for no reader.
+    pub fn save_compact_bounded<T: Serialize>(
+        &self,
+        name: &str,
+        value: &T,
+        max_bytes: u64,
+    ) -> Result<()> {
+        self.save_in(name, value, max_bytes, Layout::Compact)
+    }
+
+    fn save_in<T: Serialize>(
+        &self,
+        name: &str,
+        value: &T,
+        max_bytes: u64,
+        layout: Layout,
+    ) -> Result<()> {
+        let r = self.save_unrecorded(name, value, max_bytes, layout);
         if let Err(e) = &r {
             let transient = matches!(e, crate::error::AtlasError::Io(io) if io.kind() == std::io::ErrorKind::WouldBlock);
             record_failed_save(&self.root, name, &e.to_string(), transient);
@@ -796,7 +878,13 @@ impl Store {
         r
     }
 
-    fn save_unrecorded<T: Serialize>(&self, name: &str, value: &T) -> Result<()> {
+    fn save_unrecorded<T: Serialize>(
+        &self,
+        name: &str,
+        value: &T,
+        max_bytes: u64,
+        layout: Layout,
+    ) -> Result<()> {
         let _guard = self.transaction()?;
         let final_path = self.path(name);
         // Never `unwrap_or_default` here: a value that won't serialize wrote
@@ -818,15 +906,44 @@ impl Store {
             Some(u) => {
                 let mut data = serde_json::to_value(value).map_err(bad)?;
                 put_back_unknown(&u, &mut data);
-                serde_json::to_string_pretty(&serde_json::json!({ "schema": SCHEMA, "data": data }))
-                    .map_err(bad)?
+                let whole = serde_json::json!({ "schema": SCHEMA, "data": data });
+                match layout {
+                    Layout::Pretty => serde_json::to_string_pretty(&whole),
+                    Layout::Compact => serde_json::to_string(&whole),
+                }
+                .map_err(bad)?
             }
-            None => serde_json::to_string_pretty(&Envelope {
-                schema: SCHEMA,
-                data: value,
-            })
-            .map_err(bad)?,
+            None => {
+                let whole = Envelope {
+                    schema: SCHEMA,
+                    data: value,
+                };
+                match layout {
+                    Layout::Pretty => serde_json::to_string_pretty(&whole),
+                    Layout::Compact => serde_json::to_string(&whole),
+                }
+                .map_err(bad)?
+            }
         };
+
+        // Never write what this store's own load would refuse (20 Oct 2026).
+        //
+        // `load` set aside any file over its budget as unreadable, but `save`
+        // had no budget at all, so a record that grew past it was written
+        // happily and then discarded at the next start -- the file index did
+        // exactly that, 17 MB against a 16 MiB limit, every restart. The
+        // oversized body is not written; the previous good file stays where
+        // it is, and the error reaches `record_failed_save` so it is shown.
+        if body.len() as u64 > max_bytes {
+            return Err(crate::error::AtlasError::Io(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!(
+                    "{name} is {} bytes, past the {max_bytes}-byte budget for this record; \
+                     it was not written and the previous file was kept",
+                    body.len()
+                ),
+            )));
+        }
 
         // Unchanged content is not written.
         //
@@ -923,12 +1040,7 @@ impl Store {
         // zero-length file where a good one used to be. `save` already skips
         // writes whose content is unchanged, so this costs nothing on the
         // common tick where nothing moved.
-        {
-            use std::io::Write;
-            let mut f = std::fs::File::create(&tmp)?;
-            f.write_all(body.as_bytes())?;
-            f.sync_all()?;
-        }
+        write_temp_and_sync(&tmp, body.as_bytes(), &|f| f.sync_all())?;
 
         // On failure, take our own temp file with us. A hard kill still
         // leaves one behind, but it is named with the pid that made it rather
@@ -988,27 +1100,50 @@ const READ_TRIES: u32 = 5;
 const READ_PAUSE_MS: u64 = 100;
 const MAX_LOAD_BYTES: u64 = 16 * 1024 * 1024;
 
+/// How a record is laid out on disk. Pretty is the default, so a person can
+/// read and diff it; compact is for the large ones.
+#[derive(Clone, Copy)]
+enum Layout {
+    Pretty,
+    Compact,
+}
+
+/// `preserve` reason for a file refused only because of its size.
+const OVERSIZED: &str = "oversized";
+
+/// What `read_with_patience` says when a file is refused for size alone, so
+/// `load_bounded` can tell "too big for me" from "could not be read" and set
+/// it aside under the truthful name (20 Oct 2026).
+const OVERSIZED_MESSAGE: &str = "state file exceeds the load budget";
+
 /// `read_to_string`, tried again a few times when the file is there but
-/// locked. A missing file is answered at once.
-fn read_with_patience(path: &std::path::Path) -> std::io::Result<String> {
+/// locked. A missing file is answered at once. Refuses anything over `max`
+/// bytes without reading past it.
+fn read_with_patience(path: &std::path::Path, max: u64) -> std::io::Result<String> {
     let mut last = None;
     for attempt in 0..READ_TRIES {
         let result = (|| {
             let file = std::fs::File::open(path)?;
             let metadata = file.metadata()?;
-            if !metadata.is_file() || metadata.len() > MAX_LOAD_BYTES {
+            if !metadata.is_file() {
                 return Err(std::io::Error::new(
                     std::io::ErrorKind::InvalidData,
-                    "state file exceeds the load budget",
+                    "state path is not a regular file",
+                ));
+            }
+            if metadata.len() > max {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    OVERSIZED_MESSAGE,
                 ));
             }
             let mut text = String::new();
             use std::io::Read;
-            file.take(MAX_LOAD_BYTES + 1).read_to_string(&mut text)?;
-            if text.len() as u64 > MAX_LOAD_BYTES {
+            file.take(max + 1).read_to_string(&mut text)?;
+            if text.len() as u64 > max {
                 return Err(std::io::Error::new(
                     std::io::ErrorKind::InvalidData,
-                    "state file exceeds the load budget",
+                    OVERSIZED_MESSAGE,
                 ));
             }
             Ok(text)
@@ -1183,11 +1318,27 @@ pub fn set_aside_since(store: &Store, since: u64) -> Vec<SetAside> {
 
 /// The sentence for a set-aside file, in plain words.
 pub fn set_aside_sentence(names: &[String]) -> String {
+    set_aside_sentence_for(names, false)
+}
+
+/// The sentence for files that grew past what is read at start. Not damage,
+/// and not worded as damage (20 Oct 2026).
+pub fn oversized_sentence(names: &[String]) -> String {
+    set_aside_sentence_for(names, true)
+}
+
+fn set_aside_sentence_for(names: &[String], oversized: bool) -> String {
     let what = names
         .iter()
         .map(|n| n.replace('_', " "))
         .collect::<Vec<_>>()
         .join(", ");
+    if oversized {
+        return format!(
+            "My saved {what} had grown past what I read at start, so I put the file aside and started that part fresh -- \
+             nothing was deleted and nothing was damaged; the old file is kept beside the others in my state folder."
+        );
+    }
     format!(
         "I couldn't read my saved {what} just now, so I put the file aside and started that part fresh -- \
          nothing was deleted; the old file is kept beside the others in my state folder."
@@ -1200,10 +1351,13 @@ pub fn set_aside_sentence(names: &[String]) -> String {
 pub fn tell_set_aside(store: &Store) -> Option<String> {
     let mut v = SET_ASIDE.lock().unwrap_or_else(|p| p.into_inner());
     let (mut unreadable, mut theirs): (Vec<String>, Vec<String>) = (Vec::new(), Vec::new());
+    let mut oversized: Vec<String> = Vec::new();
     for s in v.iter_mut().filter(|s| !s.told && s.root == store.root) {
         s.told = true;
         let list = if s.why == THEIRS {
             &mut theirs
+        } else if s.why == OVERSIZED {
+            &mut oversized
         } else {
             &mut unreadable
         };
@@ -1214,6 +1368,9 @@ pub fn tell_set_aside(store: &Store) -> Option<String> {
     let mut said = Vec::new();
     if !unreadable.is_empty() {
         said.push(set_aside_sentence(&unreadable));
+    }
+    if !oversized.is_empty() {
+        said.push(oversized_sentence(&oversized));
     }
     if !theirs.is_empty() {
         said.push(theirs_sentence(&theirs));
@@ -1381,7 +1538,100 @@ mod read_json_tests {
         assert!(std::fs::read_dir(&dir).unwrap().flatten().any(|entry| entry
             .file_name()
             .to_string_lossy()
-            .starts_with("oversized.unreadable.")));
+            .starts_with("oversized.oversized.")));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_record_past_the_default_budget_is_refused_and_the_old_file_stays() {
+        let dir = std::env::temp_dir().join(format!("atlas-oversized-save-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let store = Store::new(&dir);
+        let small: Vec<String> = vec!["kept".to_string()];
+        store.save("big", &small).unwrap();
+        let before = std::fs::read(dir.join("big.json")).unwrap();
+
+        let huge: Vec<String> = vec!["x".repeat(1024 * 1024); 17];
+        let err = store.save("big", &huge).unwrap_err().to_string();
+
+        assert!(err.contains("big") && err.contains("budget"), "{err}");
+        assert_eq!(std::fs::read(dir.join("big.json")).unwrap(), before);
+        assert!(
+            super::take_failed_saves(&dir).iter().any(|f| f.0 == "big"),
+            "the refusal must be recorded as a failed save"
+        );
+        let back: Vec<String> = store.load("big");
+        assert_eq!(back, small);
+        assert!(store.preserved().is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_bounded_save_and_load_agree_on_a_large_record() {
+        let dir = std::env::temp_dir().join(format!("atlas-bounded-pair-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let store = Store::new(&dir);
+        let huge: Vec<String> = vec!["x".repeat(1024 * 1024); 17];
+        let budget = 64 * 1024 * 1024;
+        store.save_compact_bounded("big", &huge, budget).unwrap();
+        let back: Vec<String> = store.load_bounded("big", budget);
+        assert_eq!(back, huge);
+        assert!(store.preserved().is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_failed_temp_write_leaves_no_temp_file_behind() {
+        let dir = std::env::temp_dir().join(format!("atlas-temp-clean-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let tmp = dir.join("x.1.json.tmp");
+        let err = super::write_temp_and_sync(&tmp, b"data", &|_| {
+            Err(std::io::Error::other("disk said no"))
+        })
+        .unwrap_err();
+        assert!(err.to_string().contains("disk said no"));
+        assert!(
+            !tmp.exists(),
+            "the temp file must be removed on a failed sync"
+        );
+        // And the plain success leaves it for the rename.
+        super::write_temp_and_sync(&tmp, b"data", &|f| f.sync_all()).unwrap();
+        assert_eq!(std::fs::read(&tmp).unwrap(), b"data");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_record_with_its_own_large_budget_skips_the_unknown_field_round_trip() {
+        #[derive(Default, serde::Serialize, serde::Deserialize)]
+        struct Known {
+            a: u32,
+        }
+        let dir = std::env::temp_dir().join(format!("atlas-unknown-skip-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let store = Store::new(&dir);
+        let file = r#"{"schema":1,"data":{"a":1,"newer":"keep me"}}"#;
+        std::fs::write(dir.join("rec.json"), file).unwrap();
+        // The default budget keeps what it doesn't know across a save.
+        let k: Known = store.load("rec");
+        store.save("rec", &Known { a: 2 }).unwrap();
+        assert!(std::fs::read_to_string(dir.join("rec.json"))
+            .unwrap()
+            .contains("keep me"));
+        let _ = k;
+        // A large budget (the index) does not pay for that: nothing is kept.
+        std::fs::write(dir.join("big.json"), file).unwrap();
+        let k: Known = store.load_bounded("big", 64 * 1024 * 1024);
+        assert_eq!(k.a, 1);
+        store
+            .save_compact_bounded("big", &Known { a: 3 }, 64 * 1024 * 1024)
+            .unwrap();
+        assert!(!std::fs::read_to_string(dir.join("big.json"))
+            .unwrap()
+            .contains("keep me"));
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

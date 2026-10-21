@@ -453,6 +453,8 @@ pub fn route(r: &Request) -> Option<Action> {
             // The Workspace page's empty-state buttons (12 Oct 2026).
             | "/hub/workspace"
             | "/hub/back"
+            // The window's Quit button (20 Oct 2026).
+            | "/hub/quit"
             // Connect an account (2 Oct 2026, `connecting`).
             | "/hub/connect",
         ) => Some(Action::HubPost { path: r.path.clone(), fields: crate::hub::form_fields(&r.body) }),

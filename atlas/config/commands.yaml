@@ -80,6 +80,70 @@ commands:
     # mean" is a question and goes to the model.
     anchored: true
 
+  # Stopping Atlas itself, the same way the tray's Quit does (20 Oct 2026:
+  # "quit Atlas" got "Sure, taking a break" from the model and nothing
+  # stopped). Anchored so "quit smoking" and "stop listening" are untouched;
+  # "quit" alone is taken here because `close_app` needs an app named.
+  - intent: quit_atlas
+    describe: "Stop Atlas itself (the same as Quit in the tray icon)."
+    expose: never
+    # (A bare "quit" is read by `floor::read_spoken`: "quit" is also the opening
+    # of `close_app`'s "quit chrome", and no two commands share a phrase.)
+    phrases: ["quit atlas", "exit atlas", "close atlas", "stop atlas",
+              "shut down atlas", "shutdown atlas", "turn off atlas"]
+    anchored: true
+
+  # The floor (20 Oct 2026): what Atlas does with no language model loaded.
+  # Read from the words by `floor::read_spoken` (a file or folder after a
+  # verb, a place after a "to") as well as by these opening phrases, and done
+  # by plain code that checks its own result. Only phrases that cannot be
+  # about code or conversation are listed here ("write a file that renames
+  # photos" is a build request and stays one).
+  - intent: create_file
+    describe: "Make a new text file with the contents asked for, in a named folder, and read it back. Never replaces an existing file. arg: the whole request."
+    expose: never
+    phrases: ["create a text file", "create a new text file", "make a text file",
+              "make a new text file", "write a text file", "create a txt file",
+              "make a txt file"]
+    takes_argument: true
+    argument_optional: true
+    raw_argument: true
+
+  - intent: read_file
+    describe: "Read a plain-text file back: its size and what it says. arg: the whole request."
+    expose: never
+    phrases: ["read the file", "read file", "show me the file", "what's in the file",
+              "whats in the file", "what is in the file"]
+    takes_argument: true
+    argument_optional: true
+    raw_argument: true
+
+  - intent: move_file
+    describe: "Move one file into a folder, never replacing anything, and check it arrived. arg: the whole request."
+    expose: never
+    phrases: ["move the file", "move my file", "move file"]
+    takes_argument: true
+    argument_optional: true
+    raw_argument: true
+
+  - intent: back_up_folder
+    describe: "Copy a folder into a new timestamped folder at a destination, checked by file count and hashes. arg: the whole request."
+    expose: never
+    phrases: ["back up the folder", "back up my folder", "back up folder",
+              "backup the folder", "backup folder", "back up the directory"]
+    takes_argument: true
+    argument_optional: true
+    raw_argument: true
+
+  - intent: whats_using_memory
+    describe: "Say which programs are using the most memory right now (the five biggest) and how much memory is free."
+    phrases: ["what's using my memory", "whats using my memory", "what is using my memory",
+              "what's using all my memory", "whats using all my memory",
+              "what's taking up my memory", "whats taking up my memory",
+              "what's using my ram", "whats using my ram", "what is using my ram",
+              "which apps use the most memory", "which programs use the most memory",
+              "biggest memory users", "top memory users"]
+
   - intent: resume
     describe: "Carry on after a pause."
     expose: never
@@ -218,7 +282,6 @@ commands:
               "optimize my pc", "optimise my pc", "optimize my laptop", "optimise my laptop",
               "speed up my computer", "speed up my pc", "speed up my laptop", "tune up my computer",
               "what can be cleared", "what's eating the memory", "whats eating the memory",
-              "what's using my memory", "whats using my memory",
               # The self-test, 3 Oct 2026: "how much space have I got left on
               # this thing" reached the chat model, which answered with a joke.
               "how much space", "how much disk space", "how much storage", "space left",

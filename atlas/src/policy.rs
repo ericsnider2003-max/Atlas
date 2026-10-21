@@ -123,6 +123,17 @@ pub fn classify(intent: &Intent) -> Decision {
         Intent::AskTheRoom(_) => Decision::ProceedAndReport,
         // Recording a correction and reading the scoreboard change nothing.
         Intent::GotItWrong(_) | Intent::HowAmIDoing | Intent::WhichModel => Decision::AutoProceed,
+        // Stopping Atlas is asked for in so many words and is the same act as
+        // the tray's Quit; it says it is stopping rather than doing it silently.
+        Intent::QuitAtlas => Decision::ProceedAndReport,
+        // The floor (20 Oct 2026). Asked for in so many words, each says what
+        // it did and checks its own result: a new file never replaces one, a
+        // move never replaces one and says how to put it back, a folder backup
+        // is a copy into a new folder. Reading is silent and changes nothing.
+        Intent::CreateFile(_) | Intent::MoveFile(_) | Intent::BackUpFolder(_) => {
+            Decision::ProceedAndReport
+        }
+        Intent::ReadFile(_) | Intent::WhatsUsingMemory => Decision::AutoProceed,
         // Reading the work log changes nothing.
         Intent::TimeSpent(_) => Decision::AutoProceed,
         // Round 11: reading and keeping your own things -- a note about a

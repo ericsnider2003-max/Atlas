@@ -1138,6 +1138,61 @@ fn overlapping_output_roots_refuse_an_ambiguous_backup() {
     assert!(!PathBuf::from(&cfg.dir).join("state-60").exists());
 }
 
+/// 20 Oct 2026: "backup failed ... (os error 33)" on every start. Tor's own
+/// lock under `state/tor/data` is held with an exclusive range lock while Tor
+/// runs; the backup read it and failed whole. Volatile files are now left out
+/// by name and counted, and a genuine file held the same way is retried, then
+/// listed as skipped, making a partial backup that says so.
+#[cfg(windows)]
+#[test]
+fn a_backup_skips_locked_and_volatile_files_and_says_so() {
+    let area = Area::new();
+    let store = crate::store::Store::new(area.0.join("data/state"));
+    store.save("test", &1).unwrap();
+    let root = store.root().to_path_buf();
+    std::fs::create_dir_all(root.join("tor/data")).unwrap();
+    std::fs::write(root.join("tor/data/lock"), b"").unwrap();
+    std::fs::write(root.join("tor/data/state"), b"tor state").unwrap();
+    std::fs::write(root.join("pending.json.writing"), b"half").unwrap();
+    std::fs::write(root.join("stuck.json"), b"held by someone else").unwrap();
+    let open = |path: &Path| {
+        let file = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(path)
+            .unwrap();
+        file.try_lock().unwrap();
+        file
+    };
+    let _tor_lock = open(&root.join("tor/data/lock"));
+    let _stuck = open(&root.join("stuck.json"));
+    let cfg = BackupConfig {
+        dir: area.0.join("backups").display().to_string(),
+        ..BackupConfig::default()
+    };
+    let (backup, skips) =
+        back_up_with_report(&root, &cfg, 70, &store.notes_dir(), &store.trash_dir())
+            .expect("a locked file must not fail the whole backup");
+    // At least the Tor lock and the .writing file; the state root's own lock files count too.
+    assert!(skips.volatile >= 2, "{skips:?}");
+    assert_eq!(skips.files.len(), 1);
+    assert!(
+        skips.files[0].path.ends_with("stuck.json"),
+        "{:?}",
+        skips.files
+    );
+    assert!(skips.say().unwrap().contains("stuck.json"));
+    assert!(backup.path.join("tor/data/state").is_file());
+    assert!(!backup.path.join("tor/data/lock").exists());
+    assert!(!backup.path.join("stuck.json").exists());
+    assert!(!backup.path.join("pending.json.writing").exists());
+    let manifest: BackupManifest =
+        serde_json::from_slice(&std::fs::read(backup.path.join(BACKUP_MANIFEST)).unwrap()).unwrap();
+    assert_eq!(manifest.skipped_volatile, skips.volatile);
+    assert_eq!(manifest.skipped, skips.files);
+    assert!(backup.files.unwrap() >= 2);
+}
+
 #[test]
 fn native_daemon_lease_blocks_a_separate_process_even_after_sleep() {
     let area = Area::new();

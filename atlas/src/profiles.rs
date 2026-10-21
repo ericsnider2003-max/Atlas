@@ -180,6 +180,13 @@ pub const NEVER_AS_A_GUEST: &[&str] = &[
 pub const ONLY_YOU_MAY_ASK: &[&str] = &["after_me"];
 
 pub const THE_OWNERS_OWN: &[&str] = &[
+    // The floor's file and folder jobs (20 Oct 2026): reading, making and
+    // moving your files and copying a folder of yours elsewhere are yours;
+    // whoever is holding the laptop gets none of them.
+    "create_file",
+    "read_file",
+    "move_file",
+    "back_up_folder",
     // What you arranged if something happens to you. Said only when you ask.
     "after_me",
     // Reading back what Atlas holds for you.

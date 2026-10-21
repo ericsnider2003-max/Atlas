@@ -533,6 +533,7 @@ pub fn all() -> Vec<Capability> {
         Capability { id: "probe", what: "go and look at another window to answer you, then put your focus back where it was", area: Windows, state: Untested, needs: Some("your machine"), offline: true, added: 40, runs: &[Needs::Windows_, Needs::ReadScreen], modules: &["probe"] },
         Capability { id: "workspace", what: "open your workspace or a named mode -- trading, writing, a call -- each app on its screen, and close it all again; 'two hours on the edit' starts a work session that holds interruptions, checks in once, and says how it went", area: Windows, state: Untested, needs: Some("your machine"), offline: true, added: 40, runs: &[Needs::Windows_, Needs::LaunchApps], modules: &["workspace", "modes", "worksession"] },
         Capability { id: "rehearse", what: "show you what it would do -- every window, file and message -- without doing any of it", area: Windows, state: Working, needs: None, offline: true, added: 40, runs: &[Needs::JustThinking], modules: &["rehearse"] },
+        Capability { id: "floor", what: "do the everyday things with no language model loaded and even offline -- open and close an app, make, read and move a file, back up a folder, say what is using the memory -- each checked afterwards and kept as a job; and when a question needs the model and the memory to load it isn't there, say so at once and offer an online answer or closing an app", area: Itself, state: Working, needs: None, offline: true, added: 41, runs: &[Needs::Files], modules: &["floor"] },
         Capability { id: "undo", what: "tell you what it did, across files, settings, mail and posts, and take it back where it can", area: Itself, state: Working, needs: None, offline: true, added: 40, runs: &[Needs::Files], modules: &["undo"] },
         Capability { id: "mind", what: "tell you what it's working on right now, show how it got to an answer, and say why it did what it did", area: Itself, state: Working, needs: None, offline: true, added: 40, runs: &[Needs::JustThinking], modules: &["mind", "why"] },
         Capability { id: "trace", what: "keep each turn's timing and a record of every model call -- what was asked, how long it took -- and say which part was slow", area: Itself, state: Working, needs: None, offline: true, added: 40, runs: &[Needs::Files], modules: &["trace", "timing"] },
@@ -2010,7 +2011,7 @@ pub fn claimed_modules() -> std::collections::BTreeSet<&'static str> {
 // 12 Oct 2026: + `gpulost` (graphics reset safe mode) = 493.
 // 15 Oct 2026: + `evidence` and `job`, bounded foundation journals used by
 // every capability rather than user-facing capabilities themselves = 495.
-pub const MODULES_IN_TREE: usize = 497;
+pub const MODULES_IN_TREE: usize = 501;
 
 /// Every module no capability claims, and why it is not one.
 ///
@@ -2074,6 +2075,9 @@ pub const PLUMBING: &[(&str, &str)] = &[
     ("metrics", "counts tests and modules for the documents, a developer's tool"),
     ("mock", "a fake operating system for tests and dry runs; rehearse is the capability that uses it"),
     ("params", "every frozen tuning number in the market module, with its reason"),
+    ("asr_server", "keeps one speech recogniser loaded between turns so every clip skips the model read; ends with Atlas, and any failure falls back to the per-clip program"),
+    ("ecoqos", "puts background workers and the programs they start in Windows efficiency mode so they do not compete with what you are doing; never the answer path"),
+    ("relief", "gives back memory Atlas holds, cheapest to reload first, when the machine is short of it; a property of every capability"),
     ("perf", "how hard the background loop works when idle or on battery, a property of every capability"),
     ("posix", "the Mac and Linux platform layer"),
     ("roots", "where this install lives on disk"),

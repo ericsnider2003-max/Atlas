@@ -144,9 +144,235 @@ pub(super) fn drop_button(key: Option<&Option<String>>, what: &str) -> String {
 }
 
 impl Open {
+    /// Everything that still wants a look: the four live lanes, plus what
+    /// failed and what a restart cut off. Not Done, which is history.
     pub fn count(&self) -> usize {
-        self.waiting.len() + self.blocked.len() + self.in_progress.len() + self.carried.len()
+        self.waiting.len()
+            + self.blocked.len()
+            + self.in_progress.len()
+            + self.carried.len()
+            + self.failed.len()
+            + self.interrupted.len()
     }
+}
+
+/// How many things are in each state, read off the lanes and nothing else
+/// (20 Oct 2026). The header pill, the sidebar count, Home's "to act", Home's
+/// "Nothing needs you" and "Nothing underway", and the Outstanding lane
+/// headings all take their numbers from here. Until then each had its own
+/// formula: the pill said "1 waiting" while Outstanding said "Waiting on you
+/// 0" and Home said "It's quiet".
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Counts {
+    /// Waiting on you: the Waiting lane, and only what is yours to answer.
+    pub waiting: usize,
+    pub blocked: usize,
+    /// Running now: the In progress lane.
+    pub running: usize,
+    pub failed: usize,
+    /// Shown in the Done lane, which is capped, so this is a floor.
+    pub done_today: usize,
+    pub interrupted: usize,
+}
+
+impl Counts {
+    pub fn of(o: &Open) -> Counts {
+        Counts {
+            waiting: o.waiting.len(),
+            blocked: o.blocked.len(),
+            running: o.in_progress.len(),
+            failed: o.failed.len(),
+            done_today: o.done.len(),
+            interrupted: o.interrupted.len(),
+        }
+    }
+
+    /// Things that stopped and need a look, though they aren't a question
+    /// for you: blocked, failed, or cut off by a restart.
+    pub fn stopped(&self) -> usize {
+        self.blocked + self.failed + self.interrupted
+    }
+
+    /// The short extra for the header pill beside "N waiting": "2 blocked",
+    /// "1 failed" or both, empty when nothing stopped. Cut-off work counts
+    /// with the failed, because from the pill's distance both say "go look".
+    pub fn pill_extra(&self) -> String {
+        let mut parts = Vec::new();
+        if self.blocked > 0 {
+            parts.push(format!("{} blocked", self.blocked));
+        }
+        let bad = self.failed + self.interrupted;
+        if bad > 0 {
+            parts.push(format!("{bad} failed or cut off"));
+        }
+        parts.join(" · ")
+    }
+}
+
+/// One icon per work state, drawn as 24-unit strokes: the design's rule is
+/// never colour alone, and each state also has its own shape (20 Oct 2026:
+/// Waiting and Blocked used the same exclamation mark). Colours for the same
+/// states are the `--st-*` variables in hub.css, so the dark and colour-blind
+/// variants carry through.
+pub fn state_icon(state: &str) -> &'static str {
+    match state {
+        // A raised hand: it is your move.
+        "waiting" => "<path d='M8 13V6.5a1.5 1.5 0 0 1 3 0V11M11 11V4.5a1.5 1.5 0 0 1 3 0V11M14 11V6.5a1.5 1.5 0 0 1 3 0V15a6 6 0 0 1-6 6h-.5a5 5 0 0 1-4-2l-3-4.5a1.4 1.4 0 0 1 2.2-1.6L8 14'/>",
+        // A no-entry sign: something is in the way.
+        "blocked" | "stopped" => "<path d='M8.5 3h7L21 8.5v7L15.5 21h-7L3 15.5v-7z'/><path d='M8 12h8'/>",
+        // A clock: it is going, and takes time.
+        "running" | "working" => "<circle cx=12 cy=12 r=9 /><path d='M12 7v5l3 2'/>",
+        // A cross in a circle: it ended and did not work.
+        "failed" => "<circle cx=12 cy=12 r=9 /><path d='M9 9l6 6M15 9l-6 6'/>",
+        // A tick: it finished.
+        "done" => "<circle cx=12 cy=12 r=9 /><path d='M8 12.5l3 3 5-6'/>",
+        // A question mark: cut off, and nobody knows how far it got.
+        "interrupted" => "<circle cx=12 cy=12 r=9 /><path d='M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.7.4-1 .9-1 1.7M12 17h.01'/>",
+        _ => "<circle cx=12 cy=12 r=9 />",
+    }
+}
+
+/// The class a state's lane and items wear: `st-<state>` colours both the
+/// icon and a left edge, from the `--st-*` variables.
+fn ended_lane(
+    id: &str,
+    state: &str,
+    name: &str,
+    items: &[Ended],
+    drops: &[Option<String>],
+    nothing_said: &str,
+    why_label: &str,
+) -> String {
+    let mut out = format!("<section class=lane id='lane-{id}'>");
+    out.push_str(&lane_head(
+        state_icon(state),
+        &format!("--st-{state}"),
+        name,
+        items.len(),
+    ));
+    if items.is_empty() {
+        out.push_str(&format!("<p class=nothing>{}</p>", esc(nothing_said)));
+    }
+    for (n, e) in items.iter().enumerate() {
+        let drop = drop_button(drops.get(n), &e.what);
+        out.push_str(&format!(
+            "<div class='item st-{state}'>{when}<div class=t>{what}</div>{detail}{acts}</div>",
+            when = if e.when.is_empty() {
+                String::new()
+            } else {
+                format!("<span class=area>{}</span>", esc(&e.when))
+            },
+            what = esc(&e.what),
+            detail = if e.detail.is_empty() {
+                String::new()
+            } else {
+                format!(
+                    "<div class=d><span class=k>{}</span> {}</div>",
+                    esc(why_label),
+                    esc(&e.detail)
+                )
+            },
+            acts = if drop.is_empty() {
+                String::new()
+            } else {
+                format!("<div class=acts>{drop}</div>")
+            },
+        ));
+    }
+    out.push_str("</section>");
+    out
+}
+
+/// What the Activity page shows beside each line, from the journal entry's
+/// own fields rather than from reading its sentence.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ActivityState {
+    /// It happened.
+    Done,
+    /// It did not work.
+    Failed,
+    /// Atlas is waiting on you, or has offered you something.
+    Asked,
+    /// A note: you asked, or something was recorded.
+    Info,
+}
+
+impl ActivityState {
+    pub fn word(self) -> &'static str {
+        match self {
+            ActivityState::Done => "Done",
+            ActivityState::Failed => "Failed",
+            ActivityState::Asked => "Needs you",
+            ActivityState::Info => "Noted",
+        }
+    }
+    fn class(self) -> &'static str {
+        match self {
+            ActivityState::Done => "done",
+            ActivityState::Failed => "failed",
+            ActivityState::Asked => "waiting",
+            ActivityState::Info => "info",
+        }
+    }
+}
+
+/// A journal entry's state. The entry's `ok` and `kind` decide it. Only an
+/// entry marked ok whose sentence still opens with a plain failure word
+/// ("couldn't ...", "failed ...", "error ...") is read as failed from its
+/// words: older entries and chores that wrote `ok: true` with a failure
+/// sentence. Nothing else is guessed from the text.
+pub fn activity_state(kind: crate::activity::Kind, ok: bool, what: &str) -> ActivityState {
+    use crate::activity::Kind;
+    if !ok {
+        return ActivityState::Failed;
+    }
+    let said = what.trim().to_lowercase();
+    let first = said
+        .split(|c: char| !(c.is_alphanumeric() || c == '\'' || c == '\u{2019}'))
+        .find(|w| !w.is_empty())
+        .unwrap_or("");
+    if matches!(
+        first,
+        "couldn't" | "couldn\u{2019}t" | "failed" | "error" | "unable"
+    ) || said.starts_with("could not")
+    {
+        return ActivityState::Failed;
+    }
+    match kind {
+        Kind::Blocked | Kind::Offered => ActivityState::Asked,
+        Kind::Published | Kind::Scheduled | Kind::Upkeep | Kind::SelfWork => ActivityState::Done,
+        Kind::Asked => ActivityState::Info,
+    }
+}
+
+/// The Activity page: each line with its state as an icon and a word, and the
+/// time on your clock. Lines are (state, text, time).
+pub fn activity_page(items: &[(ActivityState, String, String)]) -> String {
+    let mut body = String::from(
+        "<p class=note>Everything I did without being watched. Each line says whether it worked.</p>",
+    );
+    if items.is_empty() {
+        body.push_str(&nothing("Nothing on this list right now."));
+    }
+    for (state, text, time) in items {
+        let class = state.class();
+        let icon = match state {
+            ActivityState::Info => "<circle cx=12 cy=12 r=9 /><path d='M12 11v5M12 8h.01'/>",
+            other => state_icon(other.class()),
+        };
+        body.push_str(&format!(
+            "<div class='row act st-{class}'><span class=mk><svg viewBox='0 0 24 24' fill=none stroke=currentColor stroke-width=2.2 aria-hidden=true>{icon}</svg>{word}</span> \
+             <span class=what>{text}</span>{time}</div>",
+            word = state.word(),
+            text = esc(text),
+            time = if time.is_empty() {
+                String::new()
+            } else {
+                format!(" <time>{}</time>", esc(time))
+            },
+        ));
+    }
+    shell_at(Some(Page::Activity), "What I did", &body)
 }
 
 pub(super) fn lane_head(icon_paths: &str, colour: &str, name: &str, n: usize) -> String {
@@ -160,10 +386,10 @@ pub(super) fn lane_head(icon_paths: &str, colour: &str, name: &str, n: usize) ->
 /// pressing first. Nothing rots quietly: the rule is on the page.
 pub fn outstanding_page(o: &Open) -> String {
     let mut left = String::new();
-    left.push_str("<section class=lane>");
+    left.push_str("<section class=lane id=lane-waiting>");
     left.push_str(&lane_head(
-        "<path d='M12 8v4l3 2'/><circle cx=12 cy=12 r=9 />",
-        "--accent",
+        state_icon("waiting"),
+        "--st-waiting",
         "Waiting on you",
         o.waiting.len(),
     ));
@@ -179,10 +405,10 @@ pub fn outstanding_page(o: &Open) -> String {
             drop_button(o.drops.waiting.get(n), what)
         ));
     }
-    left.push_str("</section><section class=lane>");
+    left.push_str("</section><section class=lane id=lane-blocked>");
     left.push_str(&lane_head(
-        "<path d='M12 8v4M12 16h.01'/><circle cx=12 cy=12 r=9 />",
-        "--hot",
+        state_icon("blocked"),
+        "--st-blocked",
         "Blocked",
         o.blocked.len(),
     ));
@@ -213,12 +439,30 @@ pub fn outstanding_page(o: &Open) -> String {
         ));
     }
     left.push_str("</section>");
+    left.push_str(&ended_lane(
+        "failed",
+        "failed",
+        "Failed",
+        &o.failed,
+        &o.drops.failed,
+        "Nothing has failed in the last day.",
+        "Why",
+    ));
+    left.push_str(&ended_lane(
+        "interrupted",
+        "interrupted",
+        "Interrupted",
+        &o.interrupted,
+        &o.drops.interrupted,
+        "Nothing was cut off by a restart.",
+        "What happened",
+    ));
 
     let mut right = String::new();
-    right.push_str("<section class=lane>");
+    right.push_str("<section class=lane id=lane-running>");
     right.push_str(&lane_head(
-        "<circle cx=12 cy=12 r=9 /><path d='M12 7v5l3 2'/>",
-        "--cool",
+        state_icon("running"),
+        "--st-running",
         "In progress",
         o.in_progress.len(),
     ));
@@ -260,8 +504,18 @@ pub fn outstanding_page(o: &Open) -> String {
         }
         right.push_str("</div>");
     }
+    right.push_str("</section>");
+    right.push_str(&ended_lane(
+        "done",
+        "done",
+        "Done today",
+        &o.done,
+        &[],
+        "Nothing has finished yet today.",
+        "Result",
+    ));
     right.push_str(
-        "</section><div class=rule><b>Nothing here rots quietly.</b> Anything carried more than a week, \
+        "<div class=rule><b>Nothing here rots quietly.</b> Anything carried more than a week, \
          I raise in your brief. If you want something gone, press Drop it, or tell me to take it off your outstanding list, \
          and it's gone — I won't keep nagging.</div>",
     );
@@ -589,4 +843,183 @@ pub fn phone_block(link: Option<&str>, why_not: Option<&str>) -> String {
         }
     }
     out
+}
+
+#[cfg(test)]
+mod work_state_tests {
+    use super::*;
+    use crate::activity::Kind;
+
+    fn ended(what: &str) -> Ended {
+        Ended {
+            what: what.into(),
+            detail: "because".into(),
+            when: "09:30".into(),
+            at: 1,
+        }
+    }
+
+    #[test]
+    fn every_work_state_has_its_own_icon_and_colour_variable() {
+        let states = [
+            "waiting",
+            "blocked",
+            "running",
+            "failed",
+            "done",
+            "interrupted",
+        ];
+        for (i, a) in states.iter().enumerate() {
+            for b in &states[i + 1..] {
+                assert_ne!(state_icon(a), state_icon(b), "{a} and {b} share an icon");
+            }
+        }
+        // Home's pill: waiting on you and stopped are no longer the same mark.
+        assert_ne!(state_icon("waiting"), state_icon("stopped"));
+        let css = include_str!("../../assets/hub/hub.css");
+        for s in states {
+            assert!(
+                css.contains(&format!("--st-{s}:var(")),
+                "no --st-{s} variable"
+            );
+        }
+        // They are defined from the theme's own colours, so dark and the
+        // colour-blind variants (which redefine those) carry through.
+        assert!(css.contains("--st-waiting:var(--accent)"));
+        assert!(css.contains("--st-failed:var(--hot)"));
+        assert!(css.contains("--st-done:var(--good)"));
+        assert!(css.contains("--st-interrupted:var(--warm)"));
+    }
+
+    #[test]
+    fn failed_interrupted_and_done_are_their_own_lanes_with_their_own_classes() {
+        let o = Open {
+            failed: vec![ended("Backup")],
+            interrupted: vec![ended("Download of what Atlas still needs")],
+            done: vec![ended("Housekeeping")],
+            drops: Drops {
+                failed: vec![Some("j:errand:backup:1:1".into())],
+                interrupted: vec![Some("j:errand:getting-everything:1:2".into())],
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let html = outstanding_page(&o);
+        for lane in ["Failed", "Interrupted", "Done today"] {
+            assert!(
+                html.contains(&format!("{lane} <span class=n>1</span>")),
+                "{lane}: {html}"
+            );
+        }
+        assert!(html.contains("class='item st-failed'"));
+        assert!(html.contains("class='item st-interrupted'"));
+        assert!(html.contains("class='item st-done'"));
+        assert!(html.contains("var(--st-failed)") && html.contains("var(--st-interrupted)"));
+        assert!(html.contains("var(--st-done)") && html.contains("var(--st-waiting)"));
+        // The ones that can be dismissed have a button; Done has none.
+        assert_eq!(html.matches("action=/hub/outstanding").count(), 2);
+        assert!(html.contains("value='j:errand:backup:1:1'"));
+        let c = Counts::of(&o);
+        assert_eq!((c.failed, c.interrupted, c.done_today), (1, 1, 1));
+        assert_eq!(c.waiting + c.blocked + c.running, 0);
+        assert_eq!(c.pill_extra(), "2 failed or cut off");
+        assert_eq!(o.count(), 2, "done is history, not something to look at");
+    }
+
+    #[test]
+    fn an_entry_is_classified_from_its_kind_and_outcome_not_its_sentence() {
+        // Outcome first.
+        assert_eq!(
+            activity_state(Kind::Upkeep, false, "backup: all went well"),
+            ActivityState::Failed
+        );
+        assert_eq!(
+            activity_state(Kind::Scheduled, true, "sent the weekly report"),
+            ActivityState::Done
+        );
+        assert_eq!(
+            activity_state(Kind::Published, true, "posted to Bluesky"),
+            ActivityState::Done
+        );
+        assert_eq!(
+            activity_state(Kind::Blocked, true, "Sam sent you something, it's waiting"),
+            ActivityState::Asked
+        );
+        assert_eq!(
+            activity_state(Kind::Offered, true, "I could tidy your downloads"),
+            ActivityState::Asked
+        );
+        assert_eq!(
+            activity_state(Kind::Asked, true, "what's on today"),
+            ActivityState::Info
+        );
+        // Text only upgrades an "ok" entry whose sentence opens with a plain
+        // failure word, and only then.
+        assert_eq!(
+            activity_state(Kind::Upkeep, true, "Couldn't reach the mail server"),
+            ActivityState::Failed
+        );
+        assert_eq!(
+            activity_state(Kind::Upkeep, true, "failed: disk locked"),
+            ActivityState::Failed
+        );
+        assert_eq!(
+            activity_state(Kind::Upkeep, true, "cleared 3 MB; nothing failed"),
+            ActivityState::Done,
+            "a failure word later in the sentence proves nothing"
+        );
+    }
+
+    #[test]
+    fn the_activity_page_marks_each_line_with_an_icon_and_a_word() {
+        let html = activity_page(&[
+            (
+                ActivityState::Failed,
+                "backup: disk locked".into(),
+                "09:01".into(),
+            ),
+            (ActivityState::Done, "moved 3 files".into(), "08:00".into()),
+            (
+                ActivityState::Asked,
+                "Sam sent you something".into(),
+                String::new(),
+            ),
+        ]);
+        assert!(html.contains("st-failed") && html.contains("Failed</span>"));
+        assert!(html.contains("st-done") && html.contains("Done</span>"));
+        assert!(html.contains("st-waiting") && html.contains("Needs you</span>"));
+        assert!(html.contains("<time>09:01</time>"));
+        assert!(html.contains("<svg"), "an icon beside the word");
+    }
+
+    #[test]
+    fn the_header_pill_says_what_stopped_beside_what_waits() {
+        let page = "<header><a class=tool href='/hub/outstanding'>Nothing waiting</a></header>";
+        let none = with_counts(page.to_string(), 0, "");
+        assert!(none.contains("Nothing waiting</a>") && !none.contains("class=dot"));
+        let both = with_counts(page.to_string(), 1, "2 blocked");
+        assert!(
+            both.contains("<span class=dot></span>1 waiting · 2 blocked</a>"),
+            "{both}"
+        );
+        let only_stopped = with_counts(page.to_string(), 0, "1 failed or cut off");
+        assert!(
+            only_stopped.contains("Nothing waiting · 1 failed or cut off</a>"),
+            "{only_stopped}"
+        );
+        // The dashboard's shell wrote its own "N waiting"; it is replaced too.
+        let dash = "<header><a class=tool href='/hub/outstanding'><span class=dot></span>1 waiting</a></header>";
+        let said = with_counts(dash.to_string(), 1, "2 blocked");
+        assert!(
+            said.contains("1 waiting · 2 blocked</a>") && said.matches("class=dot").count() == 1
+        );
+    }
+
+    #[test]
+    fn the_quit_button_is_a_form_with_one_hidden_field() {
+        let page = shell_at(Some(Page::Status), "Status", "<p>x</p>");
+        assert!(page.contains("<form class=quit method=post action=/hub/quit>"));
+        assert!(page.contains("<input type=hidden name=what value=quit>"));
+        assert!(page.contains("aria-label='Quit Atlas'"));
+    }
 }

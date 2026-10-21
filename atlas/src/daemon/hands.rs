@@ -93,8 +93,15 @@ impl<'a> Daemon<'a> {
         // the room when nothing needs watching and is blind at the one moment
         // that matters — Atlas asks a question and then does not look again
         // for nineteen seconds while a hand is held up in front of it.
+        // 20 Oct 2026: a question waiting only opens the camera when the owner
+        // has switched gestures on (`answering.accept_gestures`, now off by
+        // default). It used to be read only after the frame was taken, so
+        // every pending question opened the camera every two seconds for a
+        // hand nobody was allowed to answer with -- the log showed "camera:
+        // one frame taken" on a loop with nobody having asked for it.
         let now = crate::gaze::Situation {
-            question_waiting: matches!(self.session.pending, Pending::Clarification(_)),
+            question_waiting: tools.answering.accept_gestures
+                && matches!(self.session.pending, Pending::Clarification(_)),
             mid_conversation: !self.thread.recent.is_empty()
                 && t.saturating_sub(self.awareness.last_spoke) < 30,
             about_to_be_private: false,
@@ -288,7 +295,11 @@ impl<'a> Daemon<'a> {
         // number and nothing else can know it.
         self.pace
             .took(began.elapsed().as_millis().min(u32::MAX as u128) as u32);
-        if let Some(struggling) = self.pace.keeping_up(&tools.pace) {
+        // 20 Oct 2026: the "it'll feel laggy" nudge is only for someone who
+        // turned hand reading on (steering, or gestures answering). It was
+        // said to an owner who never asked for it.
+        let hands_wanted = reason.hands_may_steer() || tools.answering.accept_gestures;
+        if let Some(struggling) = self.pace.keeping_up(&tools.pace).filter(|_| hands_wanted) {
             // Once, not every look. `may_raise` is the same back-off every
             // other nudge obeys.
             if self.nudger.may_raise("hand tracking", t) {
@@ -2799,10 +2810,9 @@ fn look_on_its_own(
             Err(e) => {
                 let detail = e.to_string();
                 let detail = detail.strip_prefix("platform: ").unwrap_or(&detail);
-                done.printed = crate::vision::Sight::Unread(format!(
-                    "the camera wouldn't open: {detail}"
-                ))
-                .as_lines(&you);
+                done.printed =
+                    crate::vision::Sight::Unread(format!("the camera wouldn't open: {detail}"))
+                        .as_lines(&you);
                 done.spent_ms = began.elapsed().as_millis() as u64;
                 return done;
             }

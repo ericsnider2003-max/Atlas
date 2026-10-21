@@ -190,7 +190,6 @@ const TEST_ONLY_METHODS: &[&str] = &[
     // is kept for the tests that measure the old shape.
     // (`ToolBook::retrieved_for` lost its one caller and was deleted.)
     "intent::for_sentence",
-    "interrupt::forget_stale",
     // `knowhow::for_symptom` came off 22 Sep 2026: the new `Intent::Diagnose`
     // handler (`Daemon::diagnose_symptom`, reached by "troubleshoot …", "why
     // won't …") scores a symptom you describe against every shipped
@@ -200,7 +199,6 @@ const TEST_ONLY_METHODS: &[&str] = &[
     "knowhow::offline_coverage",
     // One `ladder` entry left with `ladder.rs` on 28 Sep 2026.
     "learned::about",
-    "learned::forget_stale",
     "levels::other_targets",
     // `lifecycle::acquire` and `lifecycle::stop_all` were here until 17 Sep.
     // The merge that day gave both a caller inside `lifecycle.rs` itself --

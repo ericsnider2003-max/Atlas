@@ -1960,7 +1960,7 @@ impl<'a> Daemon<'a> {
             checks.push(Check::fail(
                 "setup",
                 format!(
-                    "still to fetch: {} (starting Atlas again fetches them)",
+                    "still to fetch: {} (nothing downloads until you approve it: say \"finish setting up\", or press the Download button on the Connections page)",
                     missing.join(", ")
                 ),
             ));
@@ -2289,6 +2289,23 @@ impl<'a> Daemon<'a> {
              you're talking."
                 .to_string()
         };
+        // 20 Oct 2026: the button that says yes to downloading what's missing
+        // (the ask Atlas files instead of fetching it unasked).
+        let still_to_ask: Vec<crate::getpieces::Piece> = {
+            let approved: crate::getpieces::Approved =
+                self.store.load(crate::getpieces::Approved::RECORD);
+            crate::getpieces::everything_else()
+                .into_iter()
+                .filter(|p| !crate::getpieces::have(p, &root) && !approved.covers(p))
+                .collect()
+        };
+        if !still_to_ask.is_empty() {
+            buttons.push_str(&format!(
+                "<button name=what value=get-everything>Download {} missing pieces \u{b7} {}</button>",
+                still_to_ask.len(),
+                crate::getpieces::gib_label(crate::getpieces::total_bytes(&still_to_ask))
+            ));
+        }
         let bigger_line = if bigger_line.is_empty() {
             String::new()
         } else {
@@ -2332,6 +2349,10 @@ impl<'a> Daemon<'a> {
             "get-better" => self.get_model_piece(crate::getpieces::better_talk_model(), "the better model"),
             "get-deep" => self.get_model_piece(crate::getpieces::deep_model(), "the deep brain"),
             "get-bigger" => self.get_bigger_talk(),
+            // 20 Oct 2026: the yes to "Atlas can fetch N missing pieces ...".
+            "get-everything" => self
+                .approve_missing_pieces(crate::store::now())
+                .unwrap_or_else(|| "Nothing is missing, so there was nothing to download.".into()),
             "get-understanding" => self.get_understanding(),
             "get-coder" => match crate::coder::pieces_for_here().into_iter().next() {
                 Some(p) => self.get_model_piece(p, "the coding model"),
@@ -2537,6 +2558,86 @@ fn capital(s: &str) -> String {
     match c.next() {
         Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
         None => String::new(),
+    }
+}
+
+/// What the daemon can let go for `relief::relieve`: the voice, and the
+/// talking model's server when it isn't answering.
+struct DaemonHolders<'h> {
+    helpers: &'h mut crate::lifecycle::Helpers,
+    server_let_go: bool,
+}
+
+impl crate::relief::Holders for DaemonHolders<'_> {
+    fn holds(&self, step: crate::relief::Step) -> bool {
+        use crate::relief::Step;
+        match step {
+            Step::ModelServer => self.helpers.is_running("model-server"),
+            Step::Recogniser => crate::asr_server::resident(),
+            // The voice is held in kokoro's own cache; `release` finds out.
+            Step::Kokoro => true,
+            // Loaded for a call and dropped after it: never resident.
+            Step::HandTracking | Step::Vision | Step::MeaningEncoder => false,
+        }
+    }
+    /// The resident recogniser is let go only when the machine is still at
+    /// the urgent memory line after everything before it.
+    fn still_short(&self) -> bool {
+        let r = crate::health::read_machine();
+        r.ram_total_gb > 0.0
+            && r.ram_used_gb / r.ram_total_gb >= crate::health::HealthConfig::default().ram_urgent
+    }
+    fn busy(&self, step: crate::relief::Step) -> bool {
+        matches!(step, crate::relief::Step::ModelServer) && !self.helpers.is_idle("model-server")
+    }
+    fn release(&mut self, step: crate::relief::Step) -> bool {
+        use crate::relief::Step;
+        match step {
+            Step::Kokoro => {
+                crate::kokoro::unload_if_idle(std::time::Duration::ZERO, true).is_some()
+            }
+            Step::ModelServer => {
+                self.helpers.finished("model-server");
+                self.server_let_go = true;
+                true
+            }
+            Step::Recogniser => crate::asr_server::relieve_last(true),
+            _ => false,
+        }
+    }
+}
+
+impl<'a> Daemon<'a> {
+    /// The voice's idle unload, and the memory relief when the machine is
+    /// short of memory (20 Oct 2026). Called from the tick; cheap when
+    /// nothing is loaded. `pressure` is the "ram" finding being present.
+    pub(super) fn let_go_of_memory(&mut self, pressure: bool) {
+        if !pressure {
+            if let Some(what) = crate::kokoro::unload_if_idle(crate::kokoro::IDLE_UNLOAD, false) {
+                self.log.info(&format!(
+                    "memory: let go of {what}; it loads again on the next speech"
+                ));
+            }
+            return;
+        }
+        if !crate::relief::time_to_relieve(true, crate::relief::since_last()) {
+            return;
+        }
+        crate::relief::note_ran();
+        let mut holders = DaemonHolders {
+            helpers: &mut self.helpers,
+            server_let_go: false,
+        };
+        let report = crate::relief::relieve(&mut holders, &mut crate::relief::private_bytes);
+        let server_let_go = holders.server_let_go;
+        if server_let_go {
+            // Waits for the next question, as after an idle let-go.
+            self.model_rested = true;
+            self.model_running_id = None;
+            self.model_started = None;
+            self.model_start_tried = None;
+        }
+        self.log.info(&report.line("memory is short"));
     }
 }
 
