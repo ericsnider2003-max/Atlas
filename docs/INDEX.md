@@ -22,6 +22,7 @@ Dates are UTC. The card at the top of `AGENTS.md` holds the facts; this file hol
 - `offline-assistant` Full offline assistant that keeps the PC usable: design (memory tiers, voice loop, governor) and benchmark plan — home: [docs/OFFLINE_ASSISTANT_DESIGN_2026-10-20.md](OFFLINE_ASSISTANT_DESIGN_2026-10-20.md) — open since 2026-10-21 (claude)
 - `desktop-e2e-1020` Desktop E2E acceptance run 2026-10-20: fix false progress claims, Hub failed/done states, restart reconciliation, backup, mic — home: [verification/runs/20261021T033717Z-claude-desktop-e2e/RESULTS.md](../verification/runs/20261021T033717Z-claude-desktop-e2e/RESULTS.md) — open since 2026-10-21 (claude)
 - `efficiency` Atlas-wide efficiency and device adaptation: tiers T0-T3, processing, memory, storage, learning budgets, acting ahead with guardrails, any-device platform record — home: [docs/ATLAS_EFFICIENCY_AND_ADAPTATION_DESIGN_2026-10-20.md](ATLAS_EFFICIENCY_AND_ADAPTATION_DESIGN_2026-10-20.md) — open since 2026-10-21 (claude)
+- `model-training` Train Atlas's own model: data from Eric's own messages, clean open datasets, REA/Replica/Atlas repo; stages, cost, first 3 steps — home: [docs/ATLAS_MODEL_TRAINING_PLAN_2026-10-21.md](ATLAS_MODEL_TRAINING_PLAN_2026-10-21.md) — open since 2026-10-21 (claude)
 
 ## Last session
 
@@ -103,6 +104,7 @@ One line per doc. "Last true" is the date the doc declares (`Last updated: YYYY-
 | [docs/ATLAS_FULL_HANDOFF_2026-10-17.md](ATLAS_FULL_HANDOFF_2026-10-17.md) | Atlas full handoff — singular candidate and complete workspace accounting | — |
 | [docs/ATLAS_FULL_HANDOFF_2026-10-18.md](ATLAS_FULL_HANDOFF_2026-10-18.md) | Atlas full handoff — singular candidate, installed proof, and filed work | — |
 | [docs/ATLAS_FULL_VALIDATION_PLAN.md](ATLAS_FULL_VALIDATION_PLAN.md) | Atlas full validation plan | — |
+| [docs/ATLAS_MODEL_TRAINING_PLAN_2026-10-21.md](ATLAS_MODEL_TRAINING_PLAN_2026-10-21.md) | Building and training Atlas's own model: the breakdown | 2026-10-21 |
 | [docs/ATLAS_NEXT_CHAT_HANDOFF_2026-10-17.md](ATLAS_NEXT_CHAT_HANDOFF_2026-10-17.md) | Atlas next-chat handoff — full operational context | — |
 | [docs/ATLAS_SYSTEM_AUDIT_2026-10-17.md](ATLAS_SYSTEM_AUDIT_2026-10-17.md) | Atlas system audit — implementation versus requested system | — |
 | [docs/ATLAS_VERIFICATION_HARNESS.md](ATLAS_VERIFICATION_HARNESS.md) | Atlas verification harness | — |
