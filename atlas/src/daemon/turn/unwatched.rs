@@ -994,6 +994,19 @@ impl<'a> Daemon<'a> {
             }
         }
 
+        // The floor's question (`floor`, 20 Oct 2026): where a backup should
+        // go, or "answer online" / "close <app>" after memory was short. An
+        // answer is carried on from here; anything else is a new request.
+        if let Pending::Clarification(_) = self.session.pending.clone() {
+            if let Some(waiting) = self.floor.pending.take() {
+                self.session.pending = Pending::Nothing;
+                if let Some(reply) = self.floor_answer(waiting, said, t, how) {
+                    self.persist();
+                    return reply;
+                }
+            }
+        }
+
         // A pending offer works the same way.
         let mut offer_dropped = false;
         if let Pending::Clarification(q) = self.session.pending.clone() {

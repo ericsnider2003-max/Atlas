@@ -173,6 +173,9 @@ raw-window-handle = "0.6"
 windows = { version = "0.58", features = [
     "Win32_Foundation",
     "Win32_Graphics_Gdi",
+    # fit: the graphics adapter's dedicated and shared memory (DXGI), so the
+    # device tier no longer reads video memory as 0 (20 Oct 2026).
+    "Win32_Graphics_Dxgi",
     "Win32_UI_WindowsAndMessaging",
     "Win32_System_Threading",
     "Win32_System_SystemInformation",
@@ -243,6 +246,10 @@ path = "tests/all.rs"
 [[test]]
 name = "truthful_publication_and_calendars"
 path = "tests/truthful_publication_and_calendars.rs"
+# Its own process: "quit Atlas" rings the process-wide stop flag.
+[[test]]
+name = "truthful_replies"
+path = "tests/truthful_replies.rs"
 # Its own process: the "Google data held" flag is process-wide.
 [[test]]
 name = "google_data_stays_here"
@@ -413,3 +420,9 @@ webview2-com-sys = { path = "vendor/webview2-com-sys" }
 [[test]]
 name = "a_misspelt_setting_is_reported"
 path = "tests/a_misspelt_setting_is_reported.rs"
+
+# Its own process: the memory it measures is this process's alone (the floor,
+# 20 Oct 2026: Atlas with no language model loaded).
+[[test]]
+name = "the_floor_without_a_model"
+path = "tests/the_floor_without_a_model.rs"

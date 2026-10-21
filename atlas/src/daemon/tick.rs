@@ -946,6 +946,12 @@ impl<'a> Daemon<'a> {
         self.tick_laps.mark("queued work and backlog");
         let hcfg = self.health_cfg();
         let mut findings = assess_machine(&self.readings(), &hcfg);
+        // Short of memory: let go of what is idle, in order, and log what it
+        // freed (`relief`); otherwise only the voice's idle unload.
+        self.let_go_of_memory(findings.iter().any(|f| f.id == "ram"));
+        if let Some(why) = crate::ecoqos::take_failure() {
+            self.log.warn(&why);
+        }
         // Atlas's own model, loading, is not news about your machine (6 Oct
         // 2026): it was started, and seconds later "Memory is nearly full"
         // was said aloud, about the memory Atlas had just taken itself. Held
@@ -1381,7 +1387,7 @@ impl<'a> Daemon<'a> {
             let work: crew::Work = Box::new(move |_stop| {
                 match crate::safety::check_configured_scope(&store_for_scope, &notes, &trash)
                     .and_then(|_| {
-                        crate::safety::back_up_with_inputs(
+                        crate::safety::back_up_with_report(
                             &root,
                             &cfg_for_errand,
                             crate::store::now(),
@@ -1389,9 +1395,15 @@ impl<'a> Daemon<'a> {
                             &trash,
                         )
                     }) {
-                    Ok(b) => {
-                        prune_backups(&cfg_for_errand);
-                        Ok(format!("backed up {} files", b.files.unwrap_or(0)))
+                    Ok((b, skips)) => {
+                        let (said, prune) =
+                            crate::safety::backup_outcome(b.files.unwrap_or(0), &skips);
+                        // Never after a partial backup: it could push out the
+                        // last complete one.
+                        if prune {
+                            prune_backups(&cfg_for_errand);
+                        }
+                        Ok(said)
                     }
                     Err(e) => Err(e.to_string()),
                 }
@@ -1706,6 +1718,10 @@ impl<'a> Daemon<'a> {
             }
             self.backlog.tidy(&backlog_cfg, t);
             self.scheduler.prune();
+            // Aged-out lessons, forgotten once a day, the count logged.
+            if let Some(line) = crate::learned::sweep(&self.store, t) {
+                self.log.info(&line);
+            }
             // A trash record that cannot be read stops `expire` and `take`
             // dead — both refuse rather than guess an id, which is right, and
             // both used to do it in silence. `LedgerState::trouble()` exists
@@ -1756,7 +1772,16 @@ impl<'a> Daemon<'a> {
                         stray.display()
                     ));
                 }
-                let freed = crate::retention::apply_until(&plans, &root_for_errand, &|| stop.checkpoint()).map_err(|error| format!("Cleanup did not finish ({error}); files that were not deleted remain available for a later attempt."))?;
+                let applied = crate::retention::apply_report(&plans, &root_for_errand, &|| stop.checkpoint()).map_err(|error| format!("Cleanup did not finish ({error}); files that were not deleted remain available for a later attempt."))?;
+                let freed = applied.freed;
+                // 20 Oct 2026: files in use are left for the next pass, said
+                // plainly. They are not a failure.
+                if !applied.in_use.is_empty() {
+                    lines.push(format!(
+                        "{} files in use, left for later",
+                        applied.in_use.len()
+                    ));
+                }
                 if freed > 0 {
                     lines.push(format!("reclaimed {} MB", freed / (1024 * 1024)));
                 }
@@ -3582,38 +3607,14 @@ impl Daemon<'_> {
     /// Fetch what a capability needs and isn't here (`getpieces::everything_else`),
     /// on the crew, one piece at a time, each checked for room first and
     /// against its SHA-256 as always. Only on an install setup has finished
-    /// (the essentials are here), never while handed over or rehearsing,
-    /// and at most every `TOP_UP_EVERY_SECS`.
+    /// (the essentials are here), never while handed over, rehearsing or
+    /// unattended, at most every `TOP_UP_EVERY_SECS`, and (20 Oct 2026) only
+    /// what the owner has said yes to (`top_up_plan`).
     pub(super) fn keep_everything_here(&mut self, t: u64) {
-        if self.rehearsal {
+        let Some(missing) = self.top_up_plan(t) else {
             return;
-        }
-        // The first tick only books the first look, a couple of minutes on.
-        if self.last_top_up == 0 {
-            self.last_top_up = t
-                .saturating_sub(TOP_UP_EVERY_SECS)
-                .saturating_add(TOP_UP_AFTER_START_SECS)
-                .max(1);
-            return;
-        }
-        if t.saturating_sub(self.last_top_up) < TOP_UP_EVERY_SECS {
-            return;
-        }
+        };
         let root = self.store.install_root();
-        let setup_done = crate::getpieces::catalogue()
-            .first()
-            .is_some_and(|p| crate::getpieces::have(p, &root));
-        if !setup_done || self.handover().stance.handed_over() {
-            return;
-        }
-        self.last_top_up = t;
-        let missing: Vec<crate::getpieces::Piece> = crate::getpieces::everything_else()
-            .into_iter()
-            .filter(|p| !crate::getpieces::have(p, &root))
-            .collect();
-        if missing.is_empty() && !crate::codetools::unfinished(&root) {
-            return;
-        }
         self.log.info(&format!(
             "fetching {} missing piece(s) myself: {}",
             missing.len(),
@@ -3623,6 +3624,86 @@ impl Daemon<'_> {
                 .collect::<Vec<_>>()
                 .join(", ")
         ));
+        // The plan only comes back when a yes covers what it fetches, so the
+        // second step runs only if the code-tool pieces were approved too.
+        let approved: crate::getpieces::Approved =
+            self.store.load(crate::getpieces::Approved::RECORD);
+        let finish =
+            crate::codetools::unfinished(&root) && crate::getpieces::code_tools_approved(&approved);
+        self.fetch_on_the_crew(t, root, missing, finish);
+    }
+
+    /// What `keep_everything_here` may fetch right now: `None` when it isn't
+    /// time, setup isn't finished, nobody is here, or nothing approved is
+    /// missing -- and in the last case, when pieces are missing and unapproved,
+    /// the one ask has been filed (`ask_before_fetching`). No download starts
+    /// here; the caller hands `Some(pieces)` to the crew.
+    pub(super) fn top_up_plan(&mut self, t: u64) -> Option<Vec<crate::getpieces::Piece>> {
+        if self.rehearsal {
+            return None;
+        }
+        // The first tick only books the first look, a couple of minutes on.
+        if self.last_top_up == 0 {
+            self.last_top_up = t
+                .saturating_sub(TOP_UP_EVERY_SECS)
+                .saturating_add(TOP_UP_AFTER_START_SECS)
+                .max(1);
+            return None;
+        }
+        if t.saturating_sub(self.last_top_up) < TOP_UP_EVERY_SECS {
+            return None;
+        }
+        let root = self.store.install_root();
+        let setup_done = crate::getpieces::catalogue()
+            .first()
+            .is_some_and(|p| crate::getpieces::have(p, &root));
+        if !setup_done || self.handover().stance.handed_over() {
+            return None;
+        }
+        // 20 Oct 2026: nothing is downloaded while nobody is here to say yes.
+        if self.autonomy == Autonomy::Unattended {
+            return None;
+        }
+        self.last_top_up = t;
+        let missing: Vec<crate::getpieces::Piece> = crate::getpieces::everything_else()
+            .into_iter()
+            .filter(|p| !crate::getpieces::have(p, &root))
+            .collect();
+        // 20 Oct 2026: a multi-GB download is asked for first. About two
+        // minutes after every start this fetched ten missing pieces (some
+        // 3.6 GB) the owner never agreed to. Only pieces the owner has said
+        // yes to are fetched; anything else is asked about once (the Hub's
+        // "Waiting on you", and a spoken or typed "finish setting up" or the
+        // Connections page's Download button answers it).
+        let approved: crate::getpieces::Approved =
+            self.store.load(crate::getpieces::Approved::RECORD);
+        // 21 Oct 2026: the code checkers' second step downloads Python, node
+        // packages and the Rust toolchain, so it waits for the same yes; the
+        // ask names it.
+        let (plan, finish_ok) = crate::getpieces::decide_top_up_and_finish(
+            missing,
+            &approved,
+            crate::codetools::unfinished(&root),
+        );
+        if let Some(ask) = plan.ask {
+            self.ask_before_fetching(&ask, t);
+        }
+        let missing = plan.fetch;
+        if missing.is_empty() && !finish_ok {
+            return None;
+        }
+        Some(missing)
+    }
+
+    /// Hand `missing` to the crew, one piece at a time; `finish_code_tools`
+    /// also runs the code checkers' second step (only ever with a yes).
+    fn fetch_on_the_crew(
+        &mut self,
+        t: u64,
+        root: std::path::PathBuf,
+        missing: Vec<crate::getpieces::Piece>,
+        finish_code_tools: bool,
+    ) {
         let work: crew::Work = Box::new(move |ctl| {
             let (mut got, mut not) = (Vec::new(), Vec::new());
             for p in &missing {
@@ -3658,8 +3739,10 @@ impl Daemon<'_> {
             }
             // The code checkers' second step: Python's, node's and Rust's own
             // installs, once their archives are here.
-            for problem in crate::codetools::finish(&root) {
-                not.push(problem);
+            if finish_code_tools {
+                for problem in crate::codetools::finish(&root) {
+                    not.push(problem);
+                }
             }
             if got.is_empty() && not.is_empty() {
                 return Ok("Set up the code checkers.".into());
@@ -3682,6 +3765,99 @@ impl Daemon<'_> {
         });
         // unheard-ok: returns `bool`, not a Result
         let _ = self.hand_off("getting-everything", t, work, None, SpeakPolicy::ViaWatcher);
+    }
+
+    /// Put the one question about missing pieces in front of the owner: it
+    /// goes on the backlog as a decision only the owner can make, which the
+    /// Hub's "Waiting on you" shows and which is never read out on a timer
+    /// (`NeedsYourDecision` is not offered aloud). Once: the same words are
+    /// already on the books -- open, dropped or answered -- so a later tick or
+    /// a restart does not file it again, and dropping it from the Hub is a no
+    /// that sticks until the list of missing pieces changes.
+    pub(super) fn ask_before_fetching(&mut self, ask: &str, t: u64) {
+        if self.backlog.items.iter().any(|i| i.request == ask) {
+            return;
+        }
+        self.backlog.record(
+            ask,
+            Blocker::NeedsYourDecision {
+                question: ask.to_string(),
+                set_aside: "downloading the missing pieces".into(),
+            },
+            t,
+        );
+        crate::kept!(self.backlog.save(&self.store));
+        self.log
+            .info("missing pieces are waiting on your yes before I download them");
+    }
+
+    /// The owner says yes to fetching what's missing (the Connections page's
+    /// button, or "finish setting up"). The yes is kept, scoped to the pieces
+    /// missing right now, the ask is cleared, and the next tick fetches
+    /// instead of waiting out `TOP_UP_EVERY_SECS`. `None`: nothing is missing.
+    pub(super) fn approve_missing_pieces(&mut self, t: u64) -> Option<String> {
+        if self.handover().stance.handed_over() {
+            return Some(
+                "Not while this is handed over -- downloads onto this machine are the owner's."
+                    .into(),
+            );
+        }
+        let root = self.store.install_root();
+        let missing: Vec<crate::getpieces::Piece> = crate::getpieces::everything_else()
+            .into_iter()
+            .filter(|p| !crate::getpieces::have(p, &root))
+            .collect();
+        // The code checkers' second step (Python, node packages, the Rust
+        // toolchain) is part of the same yes (2026-10-21).
+        let finish = crate::codetools::unfinished(&root);
+        if missing.is_empty() && !finish {
+            return None;
+        }
+        let mut approved: crate::getpieces::Approved =
+            self.store.load(crate::getpieces::Approved::RECORD);
+        approved.grant(&missing, t);
+        if finish {
+            approved.grant(&crate::codetools::tool_pieces(), t);
+        }
+        if let Err(e) = self
+            .store
+            .save(crate::getpieces::Approved::RECORD, &approved)
+        {
+            return Some(format!(
+                "I couldn't write that down ({e}), so I haven't started downloading."
+            ));
+        }
+        let open: Vec<u64> = self
+            .backlog
+            .items
+            .iter()
+            .filter(|i| {
+                !i.done && !i.dismissed && i.request.starts_with(crate::getpieces::ASK_PREFIX)
+            })
+            .map(|i| i.id)
+            .collect();
+        for id in open {
+            self.backlog.complete(id);
+        }
+        crate::kept!(self.backlog.save(&self.store));
+        self.last_top_up = 1;
+        if missing.is_empty() {
+            return Some(
+                "Finishing the code checkers' setup (Python, the TypeScript and Prettier packages and the Rust toolchain are downloaded from their own sites) -- I'll say when it's done."
+                    .into(),
+            );
+        }
+        Some(format!(
+            "Downloading {} piece{} (about {}) -- I'll say when {} here.",
+            missing.len(),
+            if missing.len() == 1 { "" } else { "s" },
+            crate::getpieces::gib_label(crate::getpieces::total_bytes(&missing)),
+            if missing.len() == 1 {
+                "it's"
+            } else {
+                "they're"
+            },
+        ))
     }
 }
 
@@ -3894,4 +4070,305 @@ fn briefly_busy<T>(
         }
     }
     attempt()
+}
+
+/// 20 Oct 2026: the top-up asks before it downloads. About two minutes after
+/// every start Atlas fetched ten missing pieces (some 3.6 GB) with no yes.
+#[cfg(test)]
+mod downloads_are_asked_for_first {
+    use super::*;
+
+    fn root(tag: &str) -> std::path::PathBuf {
+        let root =
+            std::env::temp_dir().join(format!("atlas-topup-ask-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        // Setup finished: the first catalogue piece (the listening engine) is here.
+        let first = crate::getpieces::catalogue().remove(0);
+        let key = root.join(first.key_path());
+        std::fs::create_dir_all(key.parent().unwrap()).unwrap();
+        std::fs::write(&key, b"engine").unwrap();
+        root
+    }
+
+    fn platform() -> crate::platform::mock::MockPlatform {
+        crate::platform::mock::MockPlatform::new(vec![crate::platform::Monitor {
+            id: 1,
+            x: 0,
+            y: 0,
+            width: 1280,
+            height: 800,
+            primary: true,
+        }])
+    }
+
+    const LATER: u64 = 1_900_000_000;
+
+    fn asks(d: &Daemon<'_>) -> usize {
+        d.backlog
+            .items
+            .iter()
+            .filter(|i| !i.done && !i.dismissed)
+            .filter(|i| i.request.starts_with(crate::getpieces::ASK_PREFIX))
+            .count()
+    }
+
+    #[test]
+    fn missing_pieces_with_no_yes_start_nothing_and_raise_exactly_one_ask() {
+        let cfg = crate::config::Config::load(std::path::Path::new("config")).unwrap();
+        let p = platform();
+        let root = root("ask");
+        let mut d = Daemon::new(
+            &cfg,
+            &p,
+            None,
+            crate::store::Store::new(&root),
+            crate::proactive::Proactive::new(crate::proactive::ProactiveConfig::default()),
+        );
+        d.last_top_up = 1;
+        assert!(d.top_up_plan(LATER).is_none(), "nothing may be fetched");
+        assert_eq!(asks(&d), 1, "one ask is put in front of the owner");
+        assert!(
+            d.crew_links.is_empty(),
+            "keep_everything_here must not hand a download to the crew"
+        );
+        d.keep_everything_here(LATER + 7 * 3600);
+        d.keep_everything_here(LATER + 14 * 3600);
+        assert!(d.crew_links.is_empty());
+        assert_eq!(asks(&d), 1, "twice more is still one ask");
+        let ask = &d.backlog.items[0];
+        assert!(
+            ask.request.contains("GB") || ask.request.contains("MB"),
+            "{}",
+            ask.request
+        );
+        assert!(matches!(ask.blocker, Blocker::NeedsYourDecision { .. }));
+        // A restart finds the same ask on the books, not a second one.
+        let mut again = Daemon::new(
+            &cfg,
+            &p,
+            None,
+            crate::store::Store::new(&root),
+            crate::proactive::Proactive::new(crate::proactive::ProactiveConfig::default()),
+        );
+        again.last_top_up = 1;
+        assert!(again.top_up_plan(LATER).is_none());
+        assert_eq!(asks(&again), 1);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[cfg(all(windows, target_arch = "x86_64"))]
+    #[test]
+    fn an_unfinished_code_checker_setup_waits_for_the_yes_too() {
+        let cfg = crate::config::Config::load(std::path::Path::new("config")).unwrap();
+        let p = platform();
+        let root = root("unfinished");
+        // The uv archive is here but Python's environment isn't: the second
+        // step would download Python and packages.
+        let uv = root.join("tools/uv/uv.exe");
+        std::fs::create_dir_all(uv.parent().unwrap()).unwrap();
+        std::fs::write(&uv, b"uv").unwrap();
+        assert!(crate::codetools::unfinished(&root));
+        let mut d = Daemon::new(
+            &cfg,
+            &p,
+            None,
+            crate::store::Store::new(&root),
+            crate::proactive::Proactive::new(crate::proactive::ProactiveConfig::default()),
+        );
+        d.last_top_up = 1;
+        assert!(
+            d.top_up_plan(LATER).is_none(),
+            "no yes: neither pieces nor the second step"
+        );
+        assert_eq!(asks(&d), 1);
+        assert!(
+            d.backlog.items[0].request.contains("Rust toolchain"),
+            "{}",
+            d.backlog.items[0].request
+        );
+        // The yes covers the code-tool pieces, so the step may run.
+        d.approve_missing_pieces(LATER)
+            .expect("something to approve");
+        let approved: crate::getpieces::Approved = d.store.load(crate::getpieces::Approved::RECORD);
+        assert!(crate::getpieces::code_tools_approved(&approved));
+        assert!(d.top_up_plan(LATER + 10).is_some());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn with_a_yes_it_fetches_what_was_listed_and_asks_about_nothing() {
+        let cfg = crate::config::Config::load(std::path::Path::new("config")).unwrap();
+        let p = platform();
+        let root = root("yes");
+        let mut d = Daemon::new(
+            &cfg,
+            &p,
+            None,
+            crate::store::Store::new(&root),
+            crate::proactive::Proactive::new(crate::proactive::ProactiveConfig::default()),
+        );
+        d.last_top_up = 1;
+        assert!(d.top_up_plan(LATER).is_none());
+        assert_eq!(asks(&d), 1);
+        let said = d.approve_missing_pieces(LATER).expect("pieces are missing");
+        assert!(said.starts_with("Downloading"), "{said}");
+        assert_eq!(asks(&d), 0, "the ask is cleared once answered");
+        let open = d
+            .backlog
+            .items
+            .iter()
+            .filter(|i| !i.done && !i.dismissed)
+            .count();
+        assert_eq!(open, 0);
+        let plan = d
+            .top_up_plan(LATER + 10)
+            .expect("approved pieces are fetched");
+        assert!(!plan.is_empty());
+        let approved: crate::getpieces::Approved = d.store.load(crate::getpieces::Approved::RECORD);
+        assert!(plan.iter().all(|p| approved.covers(p)));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn unattended_never_downloads_and_never_asks() {
+        let cfg = crate::config::Config::load(std::path::Path::new("config")).unwrap();
+        let p = platform();
+        let root = root("unattended");
+        let mut d = Daemon::new(
+            &cfg,
+            &p,
+            None,
+            crate::store::Store::new(&root),
+            crate::proactive::Proactive::new(crate::proactive::ProactiveConfig::default()),
+        );
+        d.autonomy = Autonomy::Unattended;
+        d.last_top_up = 1;
+        assert!(d.top_up_plan(LATER).is_none());
+        assert_eq!(asks(&d), 0);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+}
+
+/// 20 Oct 2026: things Atlas does on its own stay quiet unless asked for.
+#[cfg(test)]
+mod quiet_unless_asked {
+    use super::*;
+
+    fn daemon_in<'a>(
+        cfg: &'a crate::config::Config,
+        p: &'a crate::platform::mock::MockPlatform,
+        root: &std::path::Path,
+    ) -> Daemon<'a> {
+        Daemon::new(
+            cfg,
+            p,
+            None,
+            crate::store::Store::new(root),
+            crate::proactive::Proactive::new(crate::proactive::ProactiveConfig::default()),
+        )
+    }
+
+    fn platform() -> crate::platform::mock::MockPlatform {
+        crate::platform::mock::MockPlatform::new(vec![crate::platform::Monitor {
+            id: 1,
+            x: 0,
+            y: 0,
+            width: 1280,
+            height: 800,
+            primary: true,
+        }])
+    }
+
+    /// "backup failed after 2 seconds. io: The process cannot access the file
+    /// because another process has locked a portion of the file" was read
+    /// aloud and captioned word by word. A chore's failure is the Hub's, not
+    /// speech.
+    #[test]
+    fn a_maintenance_failure_is_not_routed_to_speech() {
+        let cfg = crate::config::Config::load(std::path::Path::new("config")).unwrap();
+        let p = platform();
+        let root = std::env::temp_dir().join(format!("atlas-chore-quiet-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        let mut d = daemon_in(&cfg, &p, &root);
+        let work: crew::Work = Box::new(|_ctl| {
+            Err(
+                "io: The process cannot access the file because another process has locked a \
+                 portion of the file. (os error 33)"
+                    .into(),
+            )
+        });
+        assert!(d.hand_off("backup", 1_900_000_000, work, None, SpeakPolicy::ViaWatcher));
+        let said = d.errands_done_for_test().join("\n");
+        assert!(
+            !said.contains("failed after") && !said.contains("locked a portion"),
+            "a chore's failure was spoken: {said}"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// The same failure was announced about ten times in one session. Three
+    /// identical failures, a success, then the same failure again: said on the
+    /// first and the fifth only.
+    #[test]
+    fn a_repeated_errand_failure_is_announced_once_until_something_changes() {
+        let cfg = crate::config::Config::load(std::path::Path::new("config")).unwrap();
+        let p = platform();
+        let root = std::env::temp_dir().join(format!("atlas-repeat-fail-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        let mut d = daemon_in(&cfg, &p, &root);
+        let mut announced = Vec::new();
+        for (i, fails) in [true, true, true, false, true].into_iter().enumerate() {
+            let secs = 2 + i;
+            let work: crew::Work = Box::new(move |_ctl| {
+                if fails {
+                    Err(format!(
+                        "Cleanup did not finish after {secs} seconds (os error 3{secs})"
+                    ))
+                } else {
+                    Ok("done".into())
+                }
+            });
+            assert!(d.hand_off(
+                "housekeeping",
+                1_900_000_000 + i as u64,
+                work,
+                None,
+                SpeakPolicy::Always
+            ));
+            let said = d.errands_done_for_test();
+            announced.push(said.iter().any(|s| s.contains("Cleanup did not finish")));
+        }
+        assert_eq!(announced, vec![true, false, false, false, true]);
+        assert_eq!(
+            d.errand_failures["housekeeping"].1, 1,
+            "a reset starts the count again"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// The camera opened every two seconds for any waiting question, though
+    /// gestures were never turned on.
+    #[test]
+    fn a_waiting_question_does_not_open_the_camera_unless_gestures_are_on() {
+        let cfg = crate::config::Config::load(std::path::Path::new("config")).unwrap();
+        let p = platform();
+        let root = std::env::temp_dir().join(format!("atlas-cam-quiet-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        let mut d = daemon_in(&cfg, &p, &root);
+        {
+            let tools = std::sync::Arc::make_mut(&mut d.tools_resolved);
+            tools.gaze.enabled = true; // "Watching the room" on, as it is on Eric's laptop
+            tools.answering.accept_gestures = false;
+            // Whatever happens, no camera can be opened by this test.
+            tools.capture_webcam = None;
+        }
+        d.session.ask("Which one did you mean?");
+        assert!(d.look_at_the_room(1_900_000_000).is_none());
+        assert_eq!(d.looked_at, 0, "it never decided to look");
+        assert!(d.look_in_flight.is_none());
+        let _ = std::fs::remove_dir_all(&root);
+    }
 }

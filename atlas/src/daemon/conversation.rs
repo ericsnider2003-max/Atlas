@@ -71,6 +71,7 @@ impl<'a> Daemon<'a> {
             || self.pending_media_keep.is_some()
             || self.pending_media_original.is_some()
             || self.pending_undo.is_some()
+            || self.floor.pending.is_some()
             || self.pending_storage.is_some()
             || self.pending_optimize.is_some()
             || self.pending_desktop.is_some()
@@ -102,6 +103,7 @@ impl<'a> Daemon<'a> {
         self.pending_media_keep = None;
         self.pending_media_original = None;
         self.pending_undo = None;
+        self.floor.pending = None;
         self.pending_storage = None;
         self.pending_optimize = None;
         self.pending_desktop = None;

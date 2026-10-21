@@ -1248,6 +1248,20 @@ pub const TALK_WAIT_SCRIPT: &str = "<script>(function(){var seen=null,out=false;
 fetch('/hub/changed.json?p=talk',{credentials:'same-origin'}).then(function(r){out=false;return r.ok?r.json():null;}).then(function(j){\
 if(!j||j.busy===undefined)return;if(!j.busy||(seen!==null&&j.v!==seen)){clearInterval(t);location.reload();return;}seen=j.v;}).catch(function(){out=false;});},1500);})();</script>";
 
+/// The Talk box's own behaviour (20 Oct 2026, from the desktop test): Enter
+/// sends and Shift+Enter adds a line -- not while an input method is still
+/// composing (`isComposing`, and keyCode 229 for engines that don't set it),
+/// and not an empty box. And after a send or a reload for the reply, the page
+/// lands on the newest message with the box ready: the post redirects back to
+/// `/hub/talk`, which used to open at the top. On a phone the box isn't
+/// focused for you (that would raise the keyboard on every visit). Written
+/// out here, not in a `format!`, so its braces stay single.
+pub const TALK_COMPOSE_SCRIPT: &str = "<script>(function(){var f=document.getElementById('talktext');if(!f)return;\
+f.addEventListener('keydown',function(e){if(e.key!=='Enter'||e.shiftKey||e.isComposing||e.keyCode===229)return;\
+e.preventDefault();if(!f.value.trim())return;if(f.form.requestSubmit)f.form.requestSubmit();else f.form.submit();});\
+var l=document.getElementById('latest');if(l&&l.scrollIntoView)l.scrollIntoView({block:'end'});\
+if(window.matchMedia&&matchMedia('(pointer:fine)').matches)f.focus({preventScroll:true});})();</script>";
+
 pub fn talk_page(
     exchanges: &[(String, String)],
     pending: &[String],
@@ -1261,8 +1275,11 @@ pub fn talk_page(
         ));
         body.push_str("</li>");
     }
+    // The newest of Atlas's lines carries `id=latest`, where the page lands
+    // (`TALK_COMPOSE_SCRIPT`).
+    let mut lines: Vec<String> = Vec::new();
     for (you, atlas) in exchanges {
-        body.push_str(&format!(
+        lines.push(format!(
             "<li class='msg mine'><div class=bubble><span class=sr>You: </span>{}</div></li>\
              <li class=msg><div class=bubble><span class=from>Atlas: </span>{}</div></li>",
             esc(you),
@@ -1272,11 +1289,17 @@ pub fn talk_page(
     // Sent, and Atlas is still on it: shown straight away, and the page looks
     // again every two seconds until the reply is there.
     for you in pending {
-        body.push_str(&format!(
+        lines.push(format!(
             "<li class='msg mine'><div class=bubble><span class=sr>You: </span>{}</div></li>\
              <li class=msg><div class=bubble><span class=from>Atlas: </span><span class=note>thinking…</span></div></li>",
             esc(you)
         ));
+    }
+    if let Some(last) = lines.last_mut() {
+        *last = last.replacen("<li class=msg>", "<li class=msg id=latest>", 1);
+    }
+    for l in &lines {
+        body.push_str(l);
     }
     body.push_str("</ol>");
     // Still thinking: the page asks every second and a half whether the
@@ -1290,9 +1313,9 @@ pub fn talk_page(
     body.push_str(&format!(
         "<form class=compose method=post action='/hub/talk'>\
          <label for=talktext class=sr>Say something to Atlas</label>\
-         <textarea autocomplete=off id=talktext name=text rows=2 required placeholder='Type to Atlas…'></textarea>\
+         <textarea autocomplete=off id=talktext name=text rows=2 required placeholder='Type to Atlas… (Enter sends, Shift+Enter adds a line)'></textarea>\
          <input type=hidden id=talkspoken name=spoken value=0>\
-         <button class=primary>Send</button></form>\
+         <button class=primary>Send</button></form>{compose}\
          <div class=holdtalk{hide}><button type=button id=holdtalk class=bigtalk aria-describedby=holdnote>\
          <svg viewBox='0 0 24 24' fill=none stroke=currentColor stroke-width=2 aria-hidden=true><rect x=9 y=3 width=6 height=12 rx=3 />\
          <path d='M6 11a6 6 0 0 0 12 0M12 17v4'/></svg>Hold to talk</button>\
@@ -1320,6 +1343,7 @@ pub fn talk_page(
          if(hf()&&s.converse&&!/[?&]say=1/.test(location.search)&&{pending_none})s.converse();\
          if(/[?&]say=1/.test(location.search)&&s.speak&&{pending_none}){{var r=document.querySelectorAll('.msg:not(.mine) .bubble');\
          if(r.length)s.speak(r[r.length-1].textContent.replace(/^Atlas: /,''));}}}})();</script>",
+        compose = TALK_COMPOSE_SCRIPT,
         hide = if listening_here { "" } else { " hidden" },
         pending_none = if pending.is_empty() { "true" } else { "false" },
     ));
@@ -1788,6 +1812,46 @@ pub fn feedback_page(v: &FeedbackView, notice: Option<&str>) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn talk_enter_sends_and_shift_enter_adds_a_line() {
+        let page = talk_page(&[("hi".into(), "Hello.".into())], &[], false);
+        let s = TALK_COMPOSE_SCRIPT;
+        assert!(page.contains(s), "the Talk page carries the script");
+        assert!(page.contains("id=talktext"), "the box the script finds");
+        // Enter alone sends; Shift+Enter, composing text and an empty box don't.
+        assert!(s.contains("e.key!=='Enter'||e.shiftKey||e.isComposing||e.keyCode===229)return;"));
+        assert!(s.contains("e.preventDefault();if(!f.value.trim())return;"));
+        assert!(s.contains("f.form.requestSubmit"));
+        assert!(!s.contains("src="), "no external script");
+        // The braces stayed single: it was not put through `format!` twice.
+        assert!(!s.contains("{{") && !s.contains("}}"));
+    }
+
+    #[test]
+    fn talk_lands_on_the_newest_message_with_the_box_ready() {
+        let page = talk_page(
+            &[
+                ("one".into(), "First.".into()),
+                ("two".into(), "Second.".into()),
+            ],
+            &[],
+            false,
+        );
+        assert_eq!(page.matches("id=latest").count(), 1, "one landing place");
+        let at = page.find("id=latest").unwrap();
+        assert!(page[at..]
+            .starts_with("id=latest><div class=bubble><span class=from>Atlas: </span>Second."));
+        assert!(TALK_COMPOSE_SCRIPT.contains("getElementById('latest')"));
+        assert!(TALK_COMPOSE_SCRIPT.contains("scrollIntoView"));
+        assert!(TALK_COMPOSE_SCRIPT.contains("f.focus({preventScroll:true})"));
+        // While Atlas is still thinking the newest line is the pending one.
+        let waiting = talk_page(&[("one".into(), "First.".into())], &["two".into()], false);
+        let at = waiting.find("id=latest").unwrap();
+        assert!(waiting[at..].contains("thinking"));
+        // Nothing said yet: nowhere to land, and no error.
+        assert_eq!(talk_page(&[], &[], false).matches("id=latest").count(), 0);
+    }
 
     #[test]
     fn dates_round_trip_through_the_day_count() {

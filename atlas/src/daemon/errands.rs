@@ -388,6 +388,21 @@ impl<'a> Daemon<'a> {
             );
             self.keep_unfinished();
         }
+        // Long errands the owner would miss if a restart made them vanish are
+        // also written to the durable job journal, so a restart leaves a
+        // `Running` record that `cut_off_by_restart` turns into a visible
+        // "cut off by a restart" (20 Oct 2026).
+        let job_id = errand_stage(name).map(|(stage, at_start)| {
+            let id = format!("{}{name}:{t}:{crew_id}", crate::job::ERRAND_PREFIX);
+            if at_start {
+                let said = format!("{stage} started");
+                if let Err(e) = crate::job::begin(&self.store, &id, stage, &said) {
+                    self.log
+                        .warn(&format!("couldn't write down that {name} started: {e}"));
+                }
+            }
+            id
+        });
         self.crew_links.insert(
             crew_id,
             CrewLink {
@@ -395,6 +410,7 @@ impl<'a> Daemon<'a> {
                 label: name,
                 topic,
                 speak,
+                job_id,
             },
         );
         self.last_crew_handoff = Some(crew_id);
@@ -620,6 +636,16 @@ impl<'a> Daemon<'a> {
         )
     }
 
+    /// The job ids of the errands the crew still has in hand that keep a
+    /// durable record (`errand_stage`), for the Hub: their records are
+    /// `Running` because they are, so they are not "gone quiet".
+    pub(crate) fn live_errand_jobs(&self) -> Vec<String> {
+        self.crew_links
+            .values()
+            .filter_map(|link| link.job_id.clone())
+            .collect()
+    }
+
     /// Write down the work in hand (`resume::RECORD`).
     fn keep_unfinished(&self) {
         let list: Vec<&crate::resume::Unfinished> = self.unfinished.values().collect();
@@ -675,29 +701,13 @@ impl<'a> Daemon<'a> {
         self.read_left_waiting();
         if !self.left_pickup_done {
             self.left_pickup_done = true;
-            let current_job = self
-                .task_loop
-                .as_ref()
-                .map(|loop_state| loop_state.job_id.as_str());
-            let reconciled = match current_job {
-                Some(job_id) => {
-                    crate::job::reconcile_after_restart_except(&self.store, Some(job_id))
-                }
-                None => crate::job::reconcile_after_restart(&self.store),
-            };
-            match reconciled {
-                Ok(jobs) => {
-                    for job in jobs {
-                        out.push(format!(
-                            "The {} job was interrupted by my restart; its result is uncertain, so I won't repeat it automatically.",
-                            job.stage
-                        ));
-                    }
-                }
-                Err(error) => out.push(format!(
-                    "I found unfinished job state after restart, but couldn't reconcile it safely ({error}); I won't repeat that work automatically."
-                )),
-            }
+            // Reconciling the job journal happened when this Daemon was made
+            // (`cut_off_by_restart`), before any page could be served, and was
+            // saved then. Doing it here too would be wrong now: by the first
+            // tick this run has begun errands of its own, whose `Running`
+            // records are not evidence of a process that died. Only what it
+            // found is said.
+            out.extend(std::mem::take(&mut self.restart_cut_off));
             let left = std::mem::take(&mut self.last_run_left);
             let fresh: Vec<_> = left
                 .into_iter()
@@ -858,6 +868,33 @@ impl<'a> Daemon<'a> {
             .map(|t| t.watching.clone())
             .unwrap_or_default()
     }
+    /// Whether this ending is a failure already announced for this kind of
+    /// errand (20 Oct 2026: the same maintenance failure was announced about
+    /// ten times in one session). The first is announced; an identical one
+    /// after it only counts and says "again (Nth time)" in the daemon log. A
+    /// success of that kind, or a different failure, starts over. The job
+    /// record is written regardless: the Hub's Failed lane still shows it.
+    pub(super) fn repeat_failure(&mut self, kind: &str, ok: bool, text: &str) -> bool {
+        if ok {
+            self.errand_failures.remove(kind);
+            return false;
+        }
+        let key = normalized_failure(text);
+        match self.errand_failures.get_mut(kind) {
+            Some((seen, count)) if *seen == key => {
+                *count += 1;
+                let n = *count;
+                self.log
+                    .info(&format!("{kind}: {text} -- again ({} time)", ordinal(n)));
+                true
+            }
+            _ => {
+                self.errand_failures.insert(kind.to_string(), (key, 1));
+                false
+            }
+        }
+    }
+
     /// Called once a tick, right alongside `helpers.reap`. Never blocks —
     /// `crew::Crew::settle` doesn't, and neither does anything below it.
     ///
@@ -873,6 +910,22 @@ impl<'a> Daemon<'a> {
             };
             if link.label == "backup" && matches!(&news.ending, crew::Ending::Done(Ok(_))) {
                 self.last_backup = t;
+            }
+            // How it ended, written beside how it began (`errand_stage`).
+            if let (Some(id), Some((stage, _))) = (&link.job_id, errand_stage(link.label)) {
+                let (state, detail) = errand_outcome(&news.ending);
+                // A chore only written down when it goes wrong has no record
+                // to close when it went right.
+                let wanted = state != crate::job::State::Succeeded
+                    || errand_stage(link.label).is_some_and(|(_, at_start)| at_start);
+                if wanted {
+                    if let Err(e) = crate::job::end(&self.store, id, stage, state, &detail) {
+                        self.log.warn(&format!(
+                            "couldn't write down how {} ended: {e}",
+                            link.label
+                        ));
+                    }
+                }
             }
             if self.unfinished.remove(&news.id).is_some() {
                 self.keep_unfinished();
@@ -1353,6 +1406,7 @@ impl<'a> Daemon<'a> {
             }
             self.long_work
                 .update(link.watch_id, outcome_of(&news.ending), &result, t);
+            let repeat = self.repeat_failure(link.label, ok, &result);
 
             // The device flow's own errand always returns `Ok` carrying
             // the refresh token on success — stored in the vault here,
@@ -1578,7 +1632,7 @@ impl<'a> Daemon<'a> {
                 // interrupting for" — that filter is for chores you never
                 // asked about in the first place.
                 SpeakPolicy::Always => {
-                    if !continued {
+                    if !continued && !repeat {
                         out.push(result.clone());
                     }
                     if let Some(j) = self
@@ -1594,18 +1648,24 @@ impl<'a> Daemon<'a> {
                 // news, however long it took: "housekeeping finished. Took
                 // 1 minute." and "mutation-sweep finished. Took 40 minutes."
                 // were most of what Eric's conversation held on 3-5 Oct 2026
-                // ("Atlas is repeating itself constantly"). Only a failure
-                // of one is said, through the watcher.
+                // ("Atlas is repeating itself constantly"). (A failure of one
+                // used to be said through the watcher; see below.)
+                //
+                // 20 Oct 2026: a failure of one is not said either. It was read
+                // aloud and captioned word by word ("backup failed after 2
+                // seconds. io: The process cannot access the file because
+                // another process has locked a portion of the file", and the
+                // same for housekeeping). Maintenance failures are kept in the
+                // journal just below (`Act::Upkeep`, ok = false) for the Hub to
+                // show; speech is for replies to you and what needs you now.
                 SpeakPolicy::ViaWatcher => {
-                    if ok {
-                        if let Some(j) = self
-                            .long_work
-                            .jobs
-                            .iter_mut()
-                            .find(|j| j.id == link.watch_id)
-                        {
-                            j.reported = true;
-                        }
+                    if let Some(j) = self
+                        .long_work
+                        .jobs
+                        .iter_mut()
+                        .find(|j| j.id == link.watch_id)
+                    {
+                        j.reported = true;
                     }
                 }
             }
@@ -1614,8 +1674,15 @@ impl<'a> Daemon<'a> {
             // housekeeping is not a fact worth a journal line every time it
             // fires; a real result (non-empty) or a failure always is.
             if !result.is_empty() || !ok {
+                // Atlas's work on its own code is kept for the record under
+                // its own kind, which the owner's Activity leaves out.
+                let kind = if is_self_work(link.label) {
+                    Act::SelfWork
+                } else {
+                    Act::Upkeep
+                };
                 self.journal
-                    .record_at(Act::Upkeep, &format!("{}: {result}", link.label), ok, t);
+                    .record_at(kind, &format!("{}: {result}", link.label), ok, t);
             }
         }
         for (_id, name) in self.crew.still_wont_stop(t) {
@@ -1625,6 +1692,29 @@ impl<'a> Daemon<'a> {
         self.long_work.prune(&self.watching_cfg(), t);
         out
     }
+}
+
+/// A failure's wording with the parts that change from run to run taken out
+/// (digits, so durations, counts and error numbers), so the same failure
+/// reads the same twice.
+fn normalized_failure(text: &str) -> String {
+    text.chars()
+        .filter(|c| !c.is_ascii_digit())
+        .collect::<String>()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn ordinal(n: u32) -> String {
+    let suffix = match (n % 100, n % 10) {
+        (11..=13, _) => "th",
+        (_, 1) => "st",
+        (_, 2) => "nd",
+        (_, 3) => "rd",
+        _ => "th",
+    };
+    format!("{n}{suffix}")
 }
 
 /// Mail accounts Atlas connected itself (Outlook's sign-in), kept apart from
@@ -1696,4 +1786,85 @@ impl Daemon<'_> {
         self.tools_resolved = std::sync::Arc::new(resolve_tools(self.tools_ref(), &self.store));
         Ok(true)
     }
+}
+
+/// The long errands that get a durable job record (`job`), as (what the page
+/// calls it, whether a record is written when it starts). Everything else the
+/// crew does is a chore a restart can quietly lose. `research` and builds
+/// already keep their own records, so they are not here, and housekeeping is
+/// only written down if it fails, since a run that went fine is not news.
+fn errand_stage(name: &str) -> Option<(&'static str, bool)> {
+    match name {
+        "getting-everything" => Some(("Download of what Atlas still needs", true)),
+        "model-piece" => Some(("Model download", true)),
+        "backup" => Some(("Backup", true)),
+        "housekeeping" => Some(("Housekeeping", false)),
+        _ => None,
+    }
+}
+
+/// An errand's ending as a job state and what to say about it. The text of an
+/// `Ok` is only kept when it reads as a sentence: most errands hand back JSON
+/// for the daemon, not words for the page.
+fn errand_outcome(ending: &crew::Ending) -> (crate::job::State, String) {
+    use crate::job::State;
+    let short = |s: &str| -> String { s.chars().take(300).collect() };
+    match ending {
+        crew::Ending::Done(Ok(said)) => {
+            let said = said.trim();
+            let plain = !said.is_empty() && !said.starts_with(['{', '[']);
+            (
+                State::Succeeded,
+                if plain {
+                    short(said)
+                } else {
+                    "Finished.".into()
+                },
+            )
+        }
+        crew::Ending::Done(Err(why)) => (State::Failed, short(why)),
+        crew::Ending::Stopped => (State::Cancelled, "Stopped before it finished.".into()),
+        crew::Ending::Vanished => (
+            State::Failed,
+            "It stopped partway through without reporting back.".into(),
+        ),
+    }
+}
+
+/// Run once as a `Daemon` is made, before it can serve anything: durable jobs
+/// the last run left unfinished become `Uncertain` and are saved by
+/// `job::reconcile_after_restart`. Returns what to say about them on the
+/// first tick.
+pub(super) fn cut_off_by_restart(store: &Store) -> Vec<String> {
+    match crate::job::reconcile_after_restart(store) {
+        Ok(jobs) => jobs
+            .into_iter()
+            .map(|job| {
+                format!(
+                    "The {} job was interrupted by my restart; its result is uncertain, so I won't repeat it automatically.",
+                    job.stage
+                )
+            })
+            .collect(),
+        Err(error) => vec![format!(
+            "I found unfinished job state after restart, but couldn't reconcile it safely ({error}); I won't repeat that work automatically."
+        )],
+    }
+}
+
+/// Errands that are Atlas working on itself (mutation sweeps, self-tests,
+/// proving its own fixes). Their results are developer detail: journalled as
+/// `Kind::SelfWork`, which the owner's Activity and Home do not show.
+fn is_self_work(label: &str) -> bool {
+    matches!(
+        label,
+        "mutation-sweep"
+            | "self-test"
+            | "self-fix"
+            | "self-repair"
+            | "proof-check"
+            | "what-broke"
+            | "improve"
+            | "search-check"
+    )
 }

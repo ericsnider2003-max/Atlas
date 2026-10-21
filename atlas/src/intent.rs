@@ -343,6 +343,25 @@ pub enum Intent {
     Translate(String),
     /// "Which model are you using?" — what is installed, what fits here, why.
     WhichModel,
+    /// "Quit Atlas" -- stop the daemon the way the tray's Quit does
+    /// (`goodbye::please_stop_because(Why::YouClosedIt)`). 20 Oct 2026: it
+    /// went to the model, which said "Sure, taking a break" and nothing stopped.
+    QuitAtlas,
+    /// "Create a text file named x.txt in my Desktop folder containing today's
+    /// date" -- the whole sentence, read by `floor::read_create`. Made by plain
+    /// code with no model, never over an existing file, read back afterwards
+    /// (20 Oct 2026: the free online model said "On it" and made nothing).
+    CreateFile(String),
+    /// "Read atlas-test.txt on my Desktop" -- the whole sentence.
+    ReadFile(String),
+    /// "Move x.txt from my Desktop to my Documents folder" -- the whole sentence.
+    MoveFile(String),
+    /// "Back up my Documents folder to D:\Backups" -- the whole sentence; with
+    /// no destination Atlas asks for one and the answer comes back here.
+    BackUpFolder(String),
+    /// "What's using my memory?" -- the five biggest programs and the totals,
+    /// read in a moment from the process list.
+    WhatsUsingMemory,
     /// Put a question to a room of seats that do not agree with each other.
     /// Hardware is what it is scoped to, because hardware is the subject
     /// Atlas has measured numbers for; anything else gets the general room.
@@ -645,6 +664,12 @@ impl Intent {
             Intent::Cards(_) => "your flashcards".into(),
             Intent::Translate(_) => "translating".into(),
             Intent::WhichModel => "which model I am using".into(),
+            Intent::QuitAtlas => "stopping Atlas".into(),
+            Intent::CreateFile(_) => "making a file".into(),
+            Intent::ReadFile(_) => "reading a file".into(),
+            Intent::MoveFile(_) => "moving a file".into(),
+            Intent::BackUpFolder(_) => "backing up a folder".into(),
+            Intent::WhatsUsingMemory => "what is using the memory".into(),
             Intent::AskTheRoom(q) => format!("putting \"{q}\" to the room"),
             Intent::Message(m) => {
                 let who = m.split_once(':').map(|(w, _)| w.trim()).unwrap_or(m.trim());
@@ -1040,10 +1065,25 @@ impl Parser {
         if asks_for_a_self_report(input) {
             return (Intent::SelfCheck, Some("self_check".into()));
         }
+        // "Record 5 seconds from my microphone": Atlas has no record-a-clip
+        // ability, and says so with the closest real things, rather than
+        // leaving it to a model's bare "I can't" (20 Oct 2026).
+        if crate::backed::asks_to_record_a_clip(input) {
+            return (
+                Intent::Say(crate::backed::NO_CLIP_RECORDING.to_string()),
+                None,
+            );
+        }
         // A follow-up to a list just shown ("open 2"), or a sentence one of
         // round 11's tools reads whole ("keep in touch with Priya every
         // month"). Strict shapes only; anything else carries on below.
         if let Some((i, name)) = crate::workday::read_first(input, &self.workday) {
+            return (i, Some(name.into()));
+        }
+        // The everyday file and folder jobs that put the thing after a verb
+        // and the place after a "to" (`floor`): read from the words alone, so
+        // they work with no model loaded.
+        if let Some((i, name)) = crate::floor::read_spoken(input) {
             return (i, Some(name.into()));
         }
         let text = normalize(input);
@@ -1750,6 +1790,12 @@ fn build(intent: &str, arg: String, raw: &str) -> Intent {
         "cards" => Intent::Cards(raw.trim().to_string()),
         "translate" => Intent::Translate(raw.trim().to_string()),
         "which_model" => Intent::WhichModel,
+        "quit_atlas" => Intent::QuitAtlas,
+        "create_file" => Intent::CreateFile(raw.trim().to_string()),
+        "read_file" => Intent::ReadFile(raw.trim().to_string()),
+        "move_file" => Intent::MoveFile(raw.trim().to_string()),
+        "back_up_folder" => Intent::BackUpFolder(raw.trim().to_string()),
+        "whats_using_memory" => Intent::WhatsUsingMemory,
         "set_mode" => Intent::SetMode(arg),
         "machine_health" => Intent::MachineHealth,
         "self_check" => Intent::SelfCheck,
@@ -1951,6 +1997,13 @@ fn polite_rest(input: &str) -> Option<&str> {
 /// about you or how it behaves. `commands.yaml` marks the same ones
 /// `expose: never` (checked by `tests/talking_freely.rs`).
 pub const NEVER_FOR_THE_MODEL: &[&str] = &[
+    // Stopping Atlas, and the floor's file and folder jobs (20 Oct 2026):
+    // done from your own words, by plain code, never chosen by a model.
+    "quit_atlas",
+    "create_file",
+    "read_file",
+    "move_file",
+    "back_up_folder",
     "dictate",
     "snippet",
     "type_code",

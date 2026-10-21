@@ -101,11 +101,12 @@ pub fn overlay_band(
     screen_h: i32,
     cfg: &crate::overlay::OverlayConfig,
 ) -> (i32, i32, i32, i32) {
-    let cy = screen_h / 2;
+    // Low on the screen, not the middle (20 Oct 2026): see `overlay::caption_line`.
+    let cy = crate::overlay::caption_line(screen_h);
     let x = (screen_w as f32 * 0.18) as i32;
     let w = (screen_w as f32 * 0.64) as i32;
-    // The mark is 132 high and sits 40 above the middle; a little air above.
-    let top = (cy - 132 - 40 - 24).max(0);
+    // The mark sits just above the caption line; a little air above that.
+    let top = (cy - crate::overlay::MARK_SIZE - crate::overlay::MARK_GAP - 24).max(0);
     let bottom = (cy + cfg.headline_size * 4).min(screen_h);
     (x, top, w, bottom - top)
 }
@@ -113,10 +114,24 @@ pub fn overlay_band(
 /// How long the overlay stays after Atlas last spoke.
 pub const IDLE_EXIT: std::time::Duration = std::time::Duration::from_secs(45);
 
+/// Whether the owner has desktop captions switched on (`overlay.enabled`).
+fn captions_on(config_dir: &std::path::Path) -> bool {
+    crate::config::Config::load(config_dir)
+        .ok()
+        .and_then(|c| c.tools.map(|t| t.overlay))
+        .unwrap_or_default()
+        .enabled
+}
+
 /// Start the overlay if it isn't running: called as Atlas starts to speak,
 /// so the words still go on screen though no overlay sits idle in between.
 pub fn start_if_gone(data_dir: &std::path::Path) {
     if !cfg!(windows) || crate::selftest::in_a_test() {
+        return;
+    }
+    // 20 Oct 2026: not even started while captions are off. It used to start
+    // an always-on-top process on every reply and let it stand down.
+    if !captions_on(&crate::roots::config_dir()) {
         return;
     }
     let only = crate::onlyone::OnlyOne::at(&data_dir.join("overlay"));

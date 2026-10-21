@@ -1020,10 +1020,22 @@ impl<'a> Daemon<'a> {
             // from another Atlas sits unnoticed. Checking for one costs
             // nothing when none has arrived, so there is no real saving in
             // waiting longer between checks, only a longer worst-case delay.
-            // Capped at 2s regardless of what the general backoff computed,
-            // so kin signals and everything else polled at the top of this
-            // loop are never held hostage by it.
-            const MAX_SLEEP_SECS: u64 = 2;
+            // That cap (2 s regardless of the backoff) is gone (20 Oct 2026):
+            // it made Atlas wake every 2 s forever, battery saver or not.
+            // The nap ends on the doorbell anyway; `perf::loop_sleep_ms`
+            // shortens it only for the next scheduled job and while the
+            // friends' door (polled, not rung) is open.
+            let now_t = clock();
+            // Every deadline the tick polls for the owner, not only jobs
+            // (21 Oct 2026): calendar reminders, a work session, the brief.
+            let next_timer = self.next_user_facing_wake_secs(now_t);
+            let sleep_ms = crate::perf::loop_sleep_ms(
+                &throttle.cfg,
+                nap,
+                throttle.was_busy(),
+                self.signal_listener.is_some(),
+                next_timer,
+            );
             // `goodbye::nap`, not `thread::sleep`: the same wait, in slices,
             // so Ctrl-C is answered in 50ms rather than up to two seconds.
             // Sooner still when the crew has news or a hand free for queued
@@ -1036,7 +1048,7 @@ impl<'a> Daemon<'a> {
             let nap_ms = if self.crew.wants_attention() || self.working_through_steps() {
                 CREW_NAP_MS
             } else {
-                nap.min(MAX_SLEEP_SECS) * 1000
+                sleep_ms
             };
             // Not asleep, though (27 Sep 2026): the nap is spent answering
             // the hub the moment a request arrives, and watching for typing,
@@ -1050,6 +1062,45 @@ impl<'a> Daemon<'a> {
         for line in self.shut_down() {
             self.say(mouth, &line);
         }
+    }
+
+    /// The soonest the idle nap must end for anything the owner will notice,
+    /// in seconds from `now_t` (21 Oct 2026). It was only the next scheduler
+    /// job, so a calendar lead-time reminder, a work session's check-in or
+    /// end, or the brief -- all polled on the tick -- could come a whole idle
+    /// interval (60 to 180 s) late. Sources with a due time give it; the
+    /// brief has none (it waits for you to be here), so while one may be
+    /// given the nap is capped (`perf::POLLED_ITEM_NAP_SECS`).
+    fn next_user_facing_wake_secs(&self, now_t: u64) -> Option<u64> {
+        let job = self
+            .scheduler
+            .jobs
+            .iter()
+            .filter(|j| j.state == crate::scheduler::JobState::Pending)
+            .map(|j| j.due.saturating_sub(now_t))
+            .min();
+        let reminder = self
+            .calendar
+            .next_reminder_at(now_t)
+            .map(|at| at.saturating_sub(now_t));
+        let session = self.work_session.as_ref().map(|s| s.next_due_in(now_t));
+        // A brief ready to be offered, or one that may be started once you
+        // are here: neither has a time, so the loop looks every few seconds.
+        let brief = self.morning_brief.is_some() || {
+            let bcfg = self.tools_cfg().brief.clone();
+            let dcfg = self.tools_cfg().daily.clone();
+            bcfg.enabled
+                && self.work_session.is_none()
+                && self.automatic_brief_available(now_t)
+                && crate::daily::arriving(
+                    self.last_turn_of_yours,
+                    self.last_brief_at.max(self.last_brief_attempt_at),
+                    now_t,
+                    self.rhythm.rolls_at(&dcfg),
+                    &dcfg,
+                ) == crate::daily::Arrival::Starting
+        };
+        crate::perf::earliest_wake_secs(&[job, reminder, session], brief)
     }
 
     /// One line in the log per turn: how long each stage took, and how much

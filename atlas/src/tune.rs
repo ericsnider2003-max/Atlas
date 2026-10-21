@@ -1924,7 +1924,7 @@ pub fn slowest_words(load: &[Load]) -> String {
 /// The process list now: every process, its parent, session, memory, CPU
 /// time so far and whether it has a window. Windows only; elsewhere empty.
 #[cfg(windows)]
-fn snapshot() -> Vec<Proc> {
+pub fn snapshot() -> Vec<Proc> {
     use windows::Win32::Foundation::{CloseHandle, BOOL, FILETIME, HWND, LPARAM, TRUE};
     use windows::Win32::System::Diagnostics::ToolHelp::{
         CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W,
@@ -2036,7 +2036,7 @@ fn snapshot() -> Vec<Proc> {
 }
 
 #[cfg(not(windows))]
-fn snapshot() -> Vec<Proc> {
+pub fn snapshot() -> Vec<Proc> {
     Vec::new()
 }
 

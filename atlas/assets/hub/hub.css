@@ -167,6 +167,28 @@ header .tool,.chip{
 }
 header .tool:hover,.chip:hover{color:var(--ink);border-color:var(--ink-faint)}
 header .tool .dot{width:7px;height:7px;border-radius:99px;background:var(--accent);display:inline-block}
+/* Quit Atlas: a form with one button, drawn like the other header tools. */
+header form.quit{margin:0;display:inline-flex}
+header button.tool{font:inherit;font-size:12.5px;cursor:pointer}
+header button.tool svg{width:16px;height:16px;flex:none}
+header button.quitbtn:hover{color:var(--st-failed);border-color:var(--st-failed)}
+/* Work states. One variable per state, each pointing at the theme's own
+   colours, so Ember Dark and the colour-blind sets (which redefine --accent,
+   --hot, --cool, --good and --warm above) carry through with no rule of
+   their own. Colour is never the only cue: each state has its own icon
+   (`state_icon`) and a word. Waiting is the accent, Blocked and Failed are hot
+   (a no-entry sign and a cross), Running is cool, Done is good, Interrupted
+   is warm (amber, a question mark). */
+:root{
+  --st-waiting:var(--accent); --st-waiting-dim:var(--accent-dim);
+  --st-blocked:var(--hot); --st-blocked-dim:var(--hot-dim);
+  --st-running:var(--cool); --st-running-dim:var(--cool-dim);
+  --st-failed:var(--hot); --st-failed-dim:var(--hot-dim);
+  --st-done:var(--good); --st-done-dim:var(--good-dim);
+  --st-interrupted:var(--warm); --st-interrupted-dim:var(--warm-dim);
+  --st-info:var(--ink-faint);
+}
+.pill.ask{color:var(--accent-tx);background:var(--accent-dim)}
 /* A status as an icon and a word, never colour alone. */
 .pill{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;
   padding:2px 9px 2px 7px;border-radius:99px;white-space:nowrap;color:var(--ink-dim);background:var(--edge)}
@@ -302,6 +324,22 @@ ol.firststeps .btn{grid-column:3;grid-row:1 / span 2}
 .item{background:var(--raise);border:1px solid var(--edge);border-radius:12px;padding:15px 17px;margin-bottom:10px}
 .item.wait{border-color:var(--accent-line)}
 .item.stop{border-color:color-mix(in srgb,var(--hot) 30%,var(--edge))}
+.item.st-failed{border-color:color-mix(in srgb,var(--st-failed) 40%,var(--edge));border-left:4px solid var(--st-failed)}
+.item.st-interrupted{border-color:color-mix(in srgb,var(--st-interrupted) 40%,var(--edge));border-left:4px solid var(--st-interrupted)}
+.item.st-done{border-left:4px solid var(--st-done)}
+.item .d .k{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-faint);margin-right:4px}
+.item.st-failed .d .k{color:var(--st-failed)}
+.item.st-interrupted .d .k{color:var(--st-interrupted)}
+.item.st-done .d .k{color:var(--st-done)}
+/* Activity: each line says whether it worked, as an icon and a word. */
+.row.act{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap}
+.row.act .mk{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:700;min-width:84px;color:var(--st-info)}
+.row.act .mk svg{width:14px;height:14px;flex:none}
+.row.act.st-done .mk{color:var(--st-done)}
+.row.act.st-failed .mk{color:var(--st-failed)}
+.row.act.st-waiting .mk{color:var(--st-waiting)}
+.row.act .what{flex:1;min-width:0}
+.row.act time{font:12px var(--mono);color:var(--ink-faint)}
 .item .t{font-size:15px;font-weight:600;color:var(--ink)}
 .item .d{font-size:13px;color:var(--ink-dim);margin-top:3px;line-height:1.5}
 .item .acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}

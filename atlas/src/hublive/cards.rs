@@ -26,59 +26,50 @@ impl Daemon<'_> {
         ]
     }
 
-    /// Waiting on you: the command deck's first card. Two big numbers — what's
-    /// yours to act on, in ember, and what Atlas has proposed, in blue — then
-    /// the things themselves.
+    /// Waiting on you: the command deck's first card. Big numbers -- what's
+    /// yours to act on, in ember, what Atlas is blocked on, and what failed --
+    /// then the things themselves.
+    ///
+    /// Every number is `hub::Counts` of the lanes Outstanding shows, the same
+    /// ones the header pill counts (20 Oct 2026: "1 to act" here, "1 waiting"
+    /// in the header and "Waiting on you 0" on Outstanding were three
+    /// different formulas). "To act" is the Waiting lane and nothing else.
     pub(super) fn card_outstanding(&self, now: u64) -> String {
-        let o = crate::workspace_view::overview(&self.workspace, now);
-        // The same things the "waiting" count at the top of every page
-        // counts (`waiting_count`), so the two can never disagree: your open
-        // items, and what Atlas stopped on and needs you for.
-        let mut lines = self.outstanding_lines(now);
-        let stopped: Vec<String> = self
-            .backlog
-            .items
-            .iter()
-            .filter(|i| !i.done)
-            .map(|i| crate::backlog::Backlog::phrase(i))
-            .collect();
-        lines.extend(stopped.iter().cloned());
-        let proposed: Vec<(String, String)> = self
-            .workshop
-            .projects
-            .iter()
-            .flat_map(|p| {
-                p.ready()
-                    .into_iter()
-                    .map(move |c| (c.title.clone(), p.name.clone()))
-            })
-            .collect();
-        if lines.is_empty() && proposed.is_empty() {
+        let o = self.open_work(now);
+        let c = hub::Counts::of(&o);
+        if c.waiting == 0 && c.stopped() == 0 {
             return hub::nothing("Nothing waiting on you. Genuinely, not just unread.");
         }
         let mut s = hub::deck_figures(&[
+            ("To act", c.waiting, hub::Dot::Act),
+            ("Blocked", c.blocked, hub::Dot::Proposed),
             (
-                "To act",
-                o.needs_you + o.overdue + stopped.len(),
-                hub::Dot::Act,
+                "Failed or cut off",
+                c.failed + c.interrupted,
+                hub::Dot::Record,
             ),
-            ("Proposed", proposed.len(), hub::Dot::Proposed),
         ]);
-        let mut rows: Vec<(hub::Dot, String, String)> = lines
+        let mut rows: Vec<(hub::Dot, String, String)> = o
+            .waiting
             .iter()
-            .take(4)
-            .map(|l| (hub::Dot::Act, l.clone(), String::new()))
+            .map(|(what, _, _)| (hub::Dot::Act, what.clone(), "waiting on you".to_string()))
             .collect();
-        for (title, project) in proposed
-            .iter()
-            .take(4usize.saturating_sub(rows.len()).max(1))
-        {
-            rows.push((
-                hub::Dot::Proposed,
-                format!("Approve {title}"),
-                project.clone(),
-            ));
-        }
+        rows.extend(
+            o.blocked
+                .iter()
+                .map(|b| (hub::Dot::Proposed, b.what.clone(), "blocked".to_string())),
+        );
+        rows.extend(
+            o.failed
+                .iter()
+                .map(|f| (hub::Dot::Record, f.what.clone(), "failed".to_string())),
+        );
+        rows.extend(
+            o.interrupted
+                .iter()
+                .map(|f| (hub::Dot::Record, f.what.clone(), "cut off".to_string())),
+        );
+        rows.truncate(5);
         s.push_str(&hub::rows(&rows));
         s.push_str(&hub::more("/hub/outstanding", "Everything outstanding"));
         s
@@ -172,7 +163,7 @@ impl Daemon<'_> {
             .since(since)
             .into_iter()
             .rev()
-            .filter(|e| e.kind != crate::activity::Kind::Upkeep)
+            .filter(|e| e.kind != crate::activity::Kind::Upkeep && !e.kind.internal())
             .take(5)
             .map(|e| {
                 (

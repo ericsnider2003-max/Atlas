@@ -3111,7 +3111,7 @@ impl<'a> Daemon<'a> {
         let original = std::path::PathBuf::from(&path);
         let aspect = crate::studio::requested_aspect(&wish);
         if !original.is_file() {
-            return Some(format!("I can't find {path}."));
+            return Some(crate::backed::cant_find(&path));
         }
         let tools = self.tools_cfg();
         let video = tools.video.clone();
@@ -3351,7 +3351,7 @@ impl<'a> Daemon<'a> {
         };
         let original = std::path::PathBuf::from(&path);
         if !original.is_file() {
-            return format!("I can't find {path}.");
+            return crate::backed::cant_find(&path);
         }
         if wish.trim().is_empty() {
             return "What should the edit do?".into();

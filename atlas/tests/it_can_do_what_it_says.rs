@@ -290,6 +290,22 @@ fn atlas_can_hear(parser: &atlas::intent::Parser, phrase: &str) -> bool {
 /// applies to capabilities.
 const NOT_A_COMMAND_ON_ITS_OWN: &[(&str, &str)] = &[
     (
+        "answer online",
+        "an answer to the floor's own question when a request needs the model and the memory to          load it isn't there (`daemon/floor.rs`, `floor::follow_up`); handled where that          question waits (tests/the_floor_without_a_model.rs). On its own there is no question waiting.",
+    ),
+    (
+        "overwrite",
+        "a word added to a \"make a file\" request that names a file already there          (`floor::read_create` reads it from the same sentence); it is not a command on its own.",
+    ),
+    (
+        "atlas",
+        "the wake word, said before what you want (`kws`): on its own it only wakes Atlas.          `backed::NO_CLIP_RECORDING` tells you to begin with it.",
+    ),
+    (
+        ",",
+        "not a phrase: the extractor's reading of backed.rs's own code (`replacen(\"Say \", \"say \", 1)`)          that lowercases a search phrase, found because a quote follows the word say there.",
+    ),
+    (
         "go ahead on the laptop",
         "heard before the parser on the phone (`remote::go_ahead_on_the_laptop`, `daemon/askthelaptop.rs`), \
          with \"ask the laptop to ...\"; tests/asking_the_laptop_from_the_phone.rs drives it through a turn.",

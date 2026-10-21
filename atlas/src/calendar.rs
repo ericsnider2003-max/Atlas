@@ -1147,6 +1147,21 @@ impl Calendar {
             .collect()
     }
 
+    /// When the next reminder not yet due becomes due (21 Oct 2026): the
+    /// earliest `start - lead` after `now`, for the main loop to wake at
+    /// instead of sleeping past it. `None` when no reminder is coming within
+    /// the day. One already due is not counted -- the tick sends it.
+    pub fn next_reminder_at(&self, now: u64) -> Option<u64> {
+        self.occurrences_between(now, now + 26 * 3600)
+            .into_iter()
+            .filter_map(|e| {
+                let lead = u64::from(e.remind_before_mins?) * 60;
+                let at = e.start.saturating_sub(lead);
+                (at > now).then_some(at)
+            })
+            .min()
+    }
+
     /// Move one to a new time, keeping everything else about it. True if it
     /// was there.
     pub fn move_to(&mut self, id: u64, when: When) -> bool {
@@ -1993,6 +2008,21 @@ mod tests {
         let mut c2 = Calendar::default();
         c2.add("no reminder", w, None, THU);
         assert!(c2.due_reminders(start - 600).is_empty());
+    }
+
+    #[test]
+    fn the_next_reminder_time_is_known_so_the_loop_can_wake_for_it() {
+        let mut c = Calendar::default();
+        let w = resolve_when("today at 2pm", THU).unwrap();
+        let id = c.add("meeting", w, None, THU);
+        let start = w.start;
+        // No reminder set: nothing to wake for.
+        assert_eq!(c.next_reminder_at(start - 3600), None);
+        assert!(c.set_reminder(id, Some(15)));
+        // An hour before: it becomes due at start - 15 minutes.
+        assert_eq!(c.next_reminder_at(start - 3600), Some(start - 900));
+        // Already due: the tick sends it, it is not a future wake.
+        assert_eq!(c.next_reminder_at(start - 600), None);
     }
 
     #[test]

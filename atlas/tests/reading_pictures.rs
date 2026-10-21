@@ -66,7 +66,9 @@ fn what_is_missing_is_named_and_switched_off_says_so() {
     let root = std::env::temp_dir().join(format!("atlas-pictures-none-{}", std::process::id()));
     let why = picture_talk::ready(&PictureTalkConfig::default(), &root).unwrap_err();
     assert!(
-        why.contains("starting Atlas again fetches them") && why.contains("picture reader"),
+        why.contains("nothing downloads until you approve it")
+            && !why.contains("starting Atlas again")
+            && why.contains("picture reader"),
         "{why}"
     );
     // And asking anyway refuses with the same sentence rather than starting

@@ -166,22 +166,31 @@ impl Daemon<'_> {
             html = hub::with_said(html, Some(&said));
         }
         // A saved file set aside in the last day, on every page until then.
-        let set_aside: Vec<String> =
+        // A file that only grew past what is read at start is said as that,
+        // not as unreadable (20 Oct 2026).
+        let (grown, set_aside): (Vec<_>, Vec<_>) =
             crate::store::set_aside_since(&self.store, now.saturating_sub(86_400))
                 .into_iter()
-                .map(|s| s.name)
-                .collect();
+                .partition(|s| s.why == "oversized");
+        let grown: Vec<String> = grown.into_iter().map(|s| s.name).collect();
+        let set_aside: Vec<String> = set_aside.into_iter().map(|s| s.name).collect();
         if !set_aside.is_empty() {
             let mut names = set_aside;
             names.dedup();
             html = hub::with_said(html, Some(&crate::store::set_aside_sentence(&names)));
+        }
+        if !grown.is_empty() {
+            let mut names = grown;
+            names.dedup();
+            html = hub::with_said(html, Some(&crate::store::oversized_sentence(&names)));
         }
         if refresh {
             html = hub::with_refresh(html, 2);
         }
         let entries = crate::palette::catalogue();
         let html = crate::hub::with_palette(html, &entries, &self.palette);
-        let html = crate::hub::with_waiting(html, self.waiting_count(now));
+        let (waiting, stopped) = self.pill_counts(now);
+        let html = crate::hub::with_counts(html, waiting, &stopped);
         let html = self.with_sidebar_names(html);
         let html = self.with_handover_banner(html);
         Reply::html(crate::hub::with_appearance(html, &self.appearance()))

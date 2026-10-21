@@ -119,21 +119,39 @@ pub(super) fn appearance_menu() -> String {
     )
 }
 
-/// Put the true "waiting" count in a finished page's header.
-///
-/// Only the dashboard used to be told the count, so every other page's header
-/// said "Nothing waiting" while the dashboard beside it said "1 waiting". One
-/// insertion point, like [`with_appearance`], so no page can be the one that forgot.
-pub fn with_waiting(page: String, waiting: usize) -> String {
-    if waiting == 0 {
+/// Put the true "waiting" count, and what else has stopped, in a finished
+/// page's header, one insertion point like [`with_appearance`] so no page can
+/// be the one that forgot. Said beside it ("1 waiting ·
+/// 2 blocked"). `extra` comes from `Counts::pill_extra`, so the pill's words
+/// and the lanes it opens read off the same numbers (20 Oct 2026). Nothing
+/// waiting but something stopped still lights the pill: "Nothing waiting"
+/// over a page with failed work on it read as the pill doing nothing.
+pub fn with_counts(page: String, waiting: usize, extra: &str) -> String {
+    if waiting == 0 && extra.is_empty() {
         return page;
     }
     let href = Page::Outstanding.href();
-    let page = page.replacen(
+    let said = match (waiting, extra.is_empty()) {
+        (0, _) => format!("Nothing waiting · {}", esc(extra)),
+        (n, true) => format!("{n} waiting"),
+        (n, false) => format!("{n} waiting · {}", esc(extra)),
+    };
+    let lit = format!("<a class=tool href='{href}'><span class=dot></span>{said}</a>");
+    // The dashboard's own shell already wrote "N waiting"; any other page
+    // still has the plain one. Either is replaced by the same pill.
+    let mut page = page.replacen(
         &format!("<a class=tool href='{href}'>Nothing waiting</a>"),
-        &format!("<a class=tool href='{href}'><span class=dot></span>{waiting} waiting</a>"),
+        &lit,
         1,
     );
+    if !extra.is_empty() {
+        let from =
+            format!("<a class=tool href='{href}'><span class=dot></span>{waiting} waiting</a>");
+        page = page.replacen(&from, &lit, 1);
+    }
+    if waiting == 0 {
+        return page;
+    }
     // And the phone's Home tab carries it as a badge, unless it already does.
     if page.contains("<span class=badge>") {
         return page;
@@ -286,6 +304,20 @@ pub fn with_app_head(page: String, token: &str) -> String {
     format!("{}{tags}{}", &page[..at], &page[at..])
 }
 
+/// "Quit Atlas", in the header of every page (20 Oct 2026: closing the window
+/// left Atlas running, and there was no way to stop it from the hub).
+///
+/// A plain form, no script: POST `/hub/quit` with one hidden field,
+/// `what=quit`, the same `what` convention the hub's other forms use. No token
+/// field: the hub is signed in by its `SameSite=Strict` cookie (`server`), so
+/// a form from another site cannot carry it. The handler is `/hub/quit` in
+/// `hublive/posts.rs`.
+pub const QUIT: &str = "<form class=quit method=post action=/hub/quit>\
+    <input type=hidden name=what value=quit>\
+    <button class='tool quitbtn' type=submit aria-label='Quit Atlas'>\
+    <svg viewBox='0 0 24 24' fill=none stroke=currentColor stroke-width=2 aria-hidden=true>\
+    <path d='M12 3v8M6.3 6.7a8 8 0 1 0 11.4 0'/></svg><span class=lbl>Quit Atlas</span></button></form>";
+
 /// The page, with the navigation knowing where you are.
 ///
 /// The header carries the three things that must never be more than one click
@@ -311,7 +343,7 @@ pub(super) fn shell_with(here: Option<Page>, title: &str, body: &str, waiting: u
          <header><a class=hbrand href='/hub' aria-label='Atlas, Home'>{MARK}<span>Atlas</span></a>{trail}<span class=grow></span>\
          <a class=tool id=palopen href='/hub/find' aria-label='Find anything'>{SEARCH_ICON}<span class=lbl>Find anything</span>{ctrl_k}</a>\
          <a class='tool talkbtn' href='/hub/talk' aria-label='Talk'>{MIC_ICON}</a>\
-         {waiting_link}<a class='tool help' href='/hub/help' aria-label='Help'>{HELP_ICON}<span class=lbl>Help</span></a>{theme_chip}{menu}</header>\
+         {waiting_link}<a class='tool help' href='/hub/help' aria-label='Help'>{HELP_ICON}<span class=lbl>Help</span></a>{theme_chip}{menu}{QUIT}</header>\
          <main id=main tabindex=-1>{heading}{body}</main></div></div>{tabs}</body></html>",
         t = esc(title),
         // A phone has no Ctrl key (`phonemode`).

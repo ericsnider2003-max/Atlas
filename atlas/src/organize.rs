@@ -388,7 +388,7 @@ fn full_path(raw: &str) -> Option<PathBuf> {
 /// The folder named by `words` -- a full path, one of the folders people
 /// mean by name ("my downloads", "the desktop"), or the name of a folder
 /// directly inside home, the desktop or Documents that is there.
-fn named_folder(words: &str) -> Option<PathBuf> {
+pub(crate) fn named_folder(words: &str) -> Option<PathBuf> {
     if let Some(p) = full_path(words) {
         return Some(p);
     }

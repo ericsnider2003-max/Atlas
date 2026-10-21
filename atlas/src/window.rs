@@ -285,6 +285,7 @@ pub fn run(c: Contents) -> Result<(), String> {
             .with_inner_size([420.0, height.min(520.0)])
             .with_always_on_top_if(insists)
             .with_decorations(true)
+            .with_transparent(false)
             .with_resizable(true)
             .with_title(format!("Atlas — {}", c.panel.heading())),
         ..Default::default()
@@ -431,8 +432,22 @@ pub(crate) fn paint_mark(
     }
 }
 
+/// The ground of every Atlas window, fully opaque, as eframe wants it
+/// (gamma-space floats). eframe's own default is translucent (alpha 180), and
+/// anything a panel doesn't cover then lets the desktop show through
+/// (20 Oct 2026: the Atlas and Settings tabs on the real laptop).
+#[cfg(feature = "desktop-ui")]
+pub(crate) fn opaque_ground() -> [f32; 4] {
+    let ink = crate::look_paint::colourway().ink;
+    eframe::egui::Color32::from_rgb(ink.r(), ink.g(), ink.b()).to_normalized_gamma_f32()
+}
+
 #[cfg(feature = "desktop-ui")]
 impl eframe::App for App {
+    fn clear_color(&self, _visuals: &eframe::egui::Visuals) -> [f32; 4] {
+        opaque_ground()
+    }
+
     fn update(&mut self, ctx: &eframe::egui::Context, _f: &mut eframe::Frame) {
         // The locked hub design's colourway, not egui's default grey.
         crate::look_paint::dress(ctx);

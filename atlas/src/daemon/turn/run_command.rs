@@ -150,9 +150,32 @@ impl<'a> Daemon<'a> {
         if !resumed {
             self.by_chat = false;
         }
+        // A request that would go to the model when the model is not loaded
+        // and the memory to load it isn't there (20 Oct 2026): answered now,
+        // with the choice -- no model call, no wait (`floor`). Not for a turn
+        // already finishing, a wording Atlas knows, or a guest.
+        let floor_says = if !resumed
+            && learned.is_none()
+            && local.is_none()
+            && self.llm.is_some()
+            && !self.handover().stance.handed_over()
+            && matches!(self.parser.parse(said), Intent::Unknown(_))
+        {
+            self.floor_when_the_model_cannot_load(said)
+        } else {
+            None
+        };
         let decision = match self.decided_already.take() {
             Some(d) => d,
             None => match self.llm.clone() {
+                _ if floor_says.is_some() => {
+                    let said_now = floor_says.clone().unwrap_or_default();
+                    brain::Decision {
+                        intent: Intent::Say(said_now.clone()),
+                        say: said_now,
+                        model: brain::Reached::NotNeeded,
+                    }
+                }
                 _ if learned.is_some() => {
                     let i = learned.clone().unwrap_or(Intent::Unknown(said.to_string()));
                     let say = brain::default_say(&i);
@@ -285,7 +308,11 @@ impl<'a> Daemon<'a> {
         // sentence back itself; this catches the one-prompt path.
         let decision = match &decision.intent {
             Intent::Say(s) if decision.model == brain::Reached::Yes => {
-                let s2 = crate::backed::without_unbacked_claims(s, false);
+                // 20 Oct 2026: the replacement says why, by what the model in
+                // use can do (no tools: free online, or none) and answers a
+                // "did it finish?" with the fact that no such job exists.
+                let can_act = self.llm.as_ref().is_some_and(|l| l.native_chat());
+                let s2 = crate::backed::without_unbacked_claims_for(s, false, said, can_act);
                 if s2 != *s {
                     brain::Decision {
                         intent: Intent::Say(s2.clone()),

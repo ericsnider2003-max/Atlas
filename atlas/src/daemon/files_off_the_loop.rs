@@ -72,7 +72,9 @@ pub(super) fn read_document_until(
 ) -> FileDone {
     let p = std::path::PathBuf::from(path);
     if !p.is_file() {
-        return FileDone::no(format!("I can't find {path}."));
+        // With the closest names or the search phrase (20 Oct 2026): a bare
+        // "can't find" left the next step to the model, which had none.
+        return FileDone::no(crate::backed::cant_find(path));
     }
     let note = match scanned_ok_until(&p, "read", anyway, tools, stop) {
         Ok(n) => n,
@@ -234,7 +236,9 @@ pub(super) fn unzip_until(
 ) -> FileDone {
     let p = std::path::PathBuf::from(path);
     if !p.is_file() {
-        return FileDone::no(format!("I can't find {path}."));
+        // With the closest names or the search phrase (20 Oct 2026): a bare
+        // "can't find" left the next step to the model, which had none.
+        return FileDone::no(crate::backed::cant_find(path));
     }
     let note = match scanned_ok_until(&p, "unzip", anyway, tools, stop) {
         Ok(n) => n,

@@ -50,6 +50,9 @@ pub struct ToolsConfig {
     /// Which speech-to-text hears you: `auto` (Parakeet when `atlas get
     /// hearing` has fetched it, whisper otherwise), `parakeet`, or `whisper`.
     pub stt_engine: String,
+    /// Keep whisper loaded between turns (`asr_server`), so a turn does not
+    /// pay for reading the model again. 20 Oct 2026.
+    pub resident_asr: crate::asr_server::Config,
     pub tts: ExternalTool,
     pub play: ExternalTool,
     pub capture_screen: Option<ExternalTool>,
@@ -853,6 +856,45 @@ impl<'a> Voice<'a> {
                 ..Default::default()
             });
             return Ok(String::new());
+        }
+        // The resident recogniser first (`asr_server`): the model is already
+        // loaded. When it cannot hear this clip, say why and run the
+        // per-clip program, so hearing never depends on it.
+        let mut why_whisper = why_whisper;
+        if self.cfg.resident_asr.enabled && self.cfg.stt.command.contains("{whisper}") {
+            match crate::asr_server::transcribe(
+                &self.cfg.resident_asr,
+                vars,
+                std::path::Path::new(&in_wav),
+                &canceled,
+            ) {
+                crate::asr_server::Outcome::Text(raw) => {
+                    let text = clean_transcript(&raw);
+                    return Ok(decide(
+                        "whisper-server",
+                        format!("{why_whisper} (resident)"),
+                        audio_ms,
+                        level,
+                        &text,
+                    ));
+                }
+                crate::asr_server::Outcome::Canceled => {
+                    note_asr(AsrDecision {
+                        engine: "none".into(),
+                        why: "canceled during resident whisper".into(),
+                        asr_ms: began.elapsed().as_millis().min(u32::MAX as u128) as u32,
+                        audio_ms,
+                        dropped_hallucination: false,
+                    });
+                    return Ok(String::new());
+                }
+                crate::asr_server::Outcome::Unavailable(why) => {
+                    why_whisper = format!("{why_whisper}; {why} -> whisper-cli");
+                }
+            }
+            if canceled() {
+                return Ok(String::new());
+            }
         }
         let Some(raw) = self.cfg.stt.run_stoppable(vars, None, &canceled)? else {
             return Ok(String::new());

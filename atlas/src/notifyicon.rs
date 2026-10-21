@@ -204,6 +204,63 @@ pub fn bring_icon_back() {
     win::allow_again();
 }
 
+/// What to write in `atlas.log` about the icon after an attempt to put it up,
+/// if anything: `(is_a_problem, words)`.
+///
+/// 20 Oct 2026: on the real laptop there was no icon, and the only record was
+/// a line printed to a console that a Start-menu or sign-in launch doesn't
+/// have. Now the outcome of every kind of attempt reaches the log: the icon's
+/// window being made or not (`shown`), and Explorer taking the icon or not
+/// (`added`, tried again every second). A failure is said on its first try and
+/// then every thirtieth, so a taskbar that never comes up doesn't fill the log.
+pub fn tray_outcome_line(tries: u32, ok: bool, windows_error: u32) -> Option<(bool, String)> {
+    if ok {
+        return Some((
+            false,
+            if tries <= 1 {
+                "the icon by the clock is up".to_string()
+            } else {
+                format!("the icon by the clock is up (Explorer took it on try {tries})")
+            },
+        ));
+    }
+    (tries == 1 || tries.is_multiple_of(30)).then(|| {
+        (
+            true,
+            format!(
+                "Explorer didn't take the icon by the clock (try {tries}, Windows error {windows_error}); \
+                 trying again every second"
+            ),
+        )
+    })
+}
+
+/// The icon's window itself: made, or why not.
+pub fn tray_window_line(shown: &Result<(), String>) -> (bool, String) {
+    match shown {
+        Ok(()) => (
+            false,
+            "the icon by the clock's window is made; adding the icon".to_string(),
+        ),
+        Err(e) => (true, format!("no icon by the clock: {e}")),
+    }
+}
+
+/// Write a line about the icon into `atlas.log` in `dir`.
+pub fn tray_note_in(dir: &std::path::Path, problem: bool, words: &str) {
+    let log = crate::log::Log::new(dir, 8 * 1024 * 1024);
+    if problem {
+        log.warn(words);
+    } else {
+        log.info(words);
+    }
+}
+
+/// The same, in this install's own log.
+pub fn tray_note(problem: bool, words: &str) {
+    tray_note_in(&crate::roots::logs_dir(), problem, words);
+}
+
 /// How many times `take_icon_away` has run in this process (for tests).
 pub fn icon_taken_away_count_for_test() -> usize {
     TAKEN_AWAY.load(Ordering::SeqCst)
@@ -284,7 +341,9 @@ mod win {
     use std::sync::atomic::AtomicU32;
     use std::sync::OnceLock;
     use windows::core::{w, HSTRING, PCWSTR};
-    use windows::Win32::Foundation::{HANDLE, HINSTANCE, HWND, LPARAM, LRESULT, POINT, WPARAM};
+    use windows::Win32::Foundation::{
+        GetLastError, HANDLE, HINSTANCE, HWND, LPARAM, LRESULT, POINT, WPARAM,
+    };
     use windows::Win32::System::LibraryLoader::GetModuleHandleW;
     use windows::Win32::UI::Shell::{
         ShellExecuteW, Shell_NotifyIconW, NIF_ICON, NIF_MESSAGE, NIF_TIP, NIM_ADD, NIM_DELETE,
@@ -323,6 +382,9 @@ mod win {
     /// taskbar is ready, and adding the icon then fails: it is tried again
     /// every second until it takes, rather than given up on for the session.
     static ADDED: AtomicBool = AtomicBool::new(false);
+    /// How many tries since the icon was last up, for the log
+    /// (`tray_outcome_line`).
+    static ADD_TRIES: AtomicU32 = AtomicU32::new(0);
 
     pub(super) fn start(exe: PathBuf) -> Result<TrayIcon, String> {
         if PLACE.set(Place { exe }).is_err() {
@@ -425,7 +487,10 @@ mod win {
     unsafe fn mark() -> HICON {
         let loaded = LoadImageW(
             instance(),
-            PCWSTR(std::ptr::dangling::<u16>()),
+            // MAKEINTRESOURCE(1): the icon's id in `atlas.rc`. This was
+            // `dangling::<u16>()`, which is the address 2 -- resource 2, which
+            // isn't there -- so the icon was always Windows' plain program one.
+            PCWSTR(std::ptr::without_provenance::<u16>(1)),
             IMAGE_ICON,
             GetSystemMetrics(SM_CXSMICON),
             GetSystemMetrics(SM_CYSMICON),
@@ -467,7 +532,15 @@ mod win {
         d.hIcon = mark();
         fill_tip(&mut d, &words);
         let ok = Shell_NotifyIconW(NIM_ADD, &d).as_bool();
+        let error = if ok { 0 } else { GetLastError().0 };
         ADDED.store(ok, Ordering::SeqCst);
+        let tries = ADD_TRIES.fetch_add(1, Ordering::SeqCst) + 1;
+        if let Some((problem, words)) = tray_outcome_line(tries, ok, error) {
+            tray_note(problem, &words);
+        }
+        if ok {
+            ADD_TRIES.store(0, Ordering::SeqCst);
+        }
         ok
     }
 
@@ -649,5 +722,65 @@ mod win {
             }
             _ => DefWindowProcW(hwnd, msg, wp, lp),
         }
+    }
+}
+
+#[cfg(test)]
+mod outcome_tests {
+    use super::*;
+
+    #[test]
+    fn a_first_try_that_works_is_logged_as_up() {
+        let (problem, words) = tray_outcome_line(1, true, 0).unwrap();
+        assert!(!problem);
+        assert_eq!(words, "the icon by the clock is up");
+    }
+
+    #[test]
+    fn a_success_after_failures_says_which_try() {
+        let (problem, words) = tray_outcome_line(4, true, 0).unwrap();
+        assert!(!problem);
+        assert!(words.contains("try 4"), "{words}");
+    }
+
+    #[test]
+    fn failures_are_logged_first_then_every_thirtieth() {
+        let (problem, words) = tray_outcome_line(1, false, 1400).unwrap();
+        assert!(problem);
+        assert!(
+            words.contains("Windows error 1400") && words.contains("every second"),
+            "{words}"
+        );
+        for n in 2..30 {
+            assert!(tray_outcome_line(n, false, 1400).is_none(), "try {n}");
+        }
+        assert!(tray_outcome_line(30, false, 1400).is_some());
+        assert!(tray_outcome_line(31, false, 1400).is_none());
+    }
+
+    #[test]
+    fn the_window_outcome_says_why_there_is_no_icon() {
+        let (problem, words) =
+            tray_window_line(&Err("couldn't make the icon's window: no desktop".into()));
+        assert!(
+            problem && words.starts_with("no icon by the clock:") && words.contains("no desktop")
+        );
+        let (problem, _) = tray_window_line(&Ok(()));
+        assert!(!problem);
+    }
+
+    #[test]
+    fn the_outcome_reaches_the_real_log_file_not_just_stdout() {
+        let dir = std::env::temp_dir().join(format!("atlas-tray-log-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        tray_note_in(&dir, true, "no icon by the clock: test problem");
+        tray_note_in(&dir, false, "the icon by the clock is up");
+        let log = std::fs::read_to_string(dir.join("atlas.log")).unwrap();
+        assert!(
+            log.contains("WARN no icon by the clock: test problem"),
+            "{log}"
+        );
+        assert!(log.contains("INFO the icon by the clock is up"), "{log}");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

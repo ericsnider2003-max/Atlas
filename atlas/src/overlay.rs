@@ -124,7 +124,9 @@ pub struct OverlayConfig {
 impl Default for OverlayConfig {
     fn default() -> Self {
         OverlayConfig {
-            enabled: true,
+            // Off unless the owner turns it on (20 Oct 2026): an always-on-top
+            // window over pages and buttons that nobody asked for.
+            enabled: false,
             typing_cps: 42.0,
             sentence_pause_ms: 260,
             shade_strength: 0.55,
@@ -286,13 +288,13 @@ impl Overlay {
             return Vec::new();
         }
         let cx = screen_w / 2;
-        let cy = screen_h / 2;
-        let mark_size = 132;
+        let cy = caption_line(screen_h);
+        let mark_size = MARK_SIZE;
         let text = self.typing.visible();
 
         let mut out = vec![Element::Mark {
             x: cx - mark_size / 2,
-            y: cy - mark_size - 40,
+            y: cy - mark_size - MARK_GAP,
             size: mark_size,
             state: if self.phase == Phase::Arriving {
                 MarkState::Waking
@@ -324,6 +326,18 @@ impl Overlay {
         }
         out
     }
+}
+
+/// The mark's size and the gap between it and the caption line (20 Oct 2026:
+/// 132 and 40, which put a large logo in the middle of whatever was on screen).
+pub const MARK_SIZE: i32 = 88;
+pub const MARK_GAP: i32 = 24;
+
+/// The screen row the caption's words sit on: near the bottom, so captions
+/// stay out of the middle of pages and off the buttons there (20 Oct 2026).
+/// It used to be the middle of the screen.
+pub fn caption_line(screen_h: i32) -> i32 {
+    screen_h * 82 / 100
 }
 
 /// The window flags a transparent overlay needs.

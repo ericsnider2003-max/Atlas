@@ -277,7 +277,14 @@ pub(crate) fn run_scoped(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     match crate::childjob::Scope::spawn(command) {
-        Ok((child, scope)) => wait_scoped(child, scope, started, limit, cap, feed, stop),
+        Ok((child, scope)) => {
+            // A child launched by background work (a crew errand) runs in
+            // efficiency mode; the answer path never is (`ecoqos`).
+            if crate::ecoqos::on_background_thread() {
+                crate::ecoqos::child(child.id());
+            }
+            wait_scoped(child, scope, started, limit, cap, feed, stop)
+        }
         Err(error) => ProcessRun {
             end: ProcessEnd::Failed(format!(
                 "the command could not start with owned cancellation: {error}"

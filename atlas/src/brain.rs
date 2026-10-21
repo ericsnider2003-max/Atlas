@@ -1644,6 +1644,31 @@ impl<'a> Brain<'a> {
             }
         }
         let d = self.ask_the_model(&turn.said, &turn.one_prompt);
+        // The one-prompt path (a model with no tools, e.g. the free online
+        // one) used to hand its raw words to `on_text` -- spoken and shown --
+        // before the daemon's check ran (20 Oct 2026: "On it. Making
+        // atlas-test.txt..." was said with nothing started). Nothing was
+        // started on this path, so a claim is put right before it is passed on.
+        let d = match &d.intent {
+            Intent::Say(s) if d.model == Reached::Yes && !s.is_empty() => {
+                let s2 = crate::backed::without_unbacked_claims_for(
+                    s,
+                    false,
+                    &turn.said,
+                    self.llm.native_chat(),
+                );
+                if s2 != *s {
+                    Decision {
+                        intent: Intent::Say(s2.clone()),
+                        say: s2,
+                        model: d.model,
+                    }
+                } else {
+                    d
+                }
+            }
+            _ => d,
+        };
         if let Intent::Say(s) = &d.intent {
             if d.model == Reached::Yes && !s.is_empty() {
                 on_text(s);
@@ -3181,6 +3206,12 @@ pub fn default_say(i: &Intent) -> String {
         Intent::Cards(_) => "Cards.".into(),
         Intent::Translate(_) => "Translating.".into(),
         Intent::WhichModel => "Checking what I can run.".into(),
+        Intent::QuitAtlas => crate::backed::STOPPING.into(),
+        Intent::CreateFile(_) => "Making the file.".into(),
+        Intent::ReadFile(_) => "Reading the file.".into(),
+        Intent::MoveFile(_) => "Moving the file.".into(),
+        Intent::BackUpFolder(_) => "Backing up the folder.".into(),
+        Intent::WhatsUsingMemory => "Checking what is using the memory.".into(),
         Intent::SetMode(m) => format!("{m} mode."),
         Intent::MachineHealth => "Checking.".into(),
         Intent::SelfCheck => "Checking myself.".into(),

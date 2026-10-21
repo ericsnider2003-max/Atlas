@@ -652,6 +652,7 @@ impl<'a> Daemon<'a> {
                 | crate::activity::Kind::Blocked => {}
                 crate::activity::Kind::Asked
                 | crate::activity::Kind::Upkeep
+                | crate::activity::Kind::SelfWork
                 | crate::activity::Kind::Offered => continue,
             }
             out.push(crate::returning::Happened {

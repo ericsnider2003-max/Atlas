@@ -217,6 +217,21 @@ impl Jobs {
         self.len() == 0
     }
 
+    /// Every hub job that ended badly and is still remembered, newest first,
+    /// as (number, what it was doing, why it failed). Reads only; nothing is
+    /// marked shown. Outstanding's Failed lane uses it (20 Oct 2026: a hub
+    /// button's job that failed was only ever a one-off line on its own page).
+    pub fn failures(&self) -> Vec<(u64, String, String)> {
+        let g = self.held();
+        g.1.iter()
+            .rev()
+            .filter_map(|(id, job)| match &job.state {
+                State::Failed(why) => Some((*id, job.label.clone(), why.clone())),
+                _ => None,
+            })
+            .collect()
+    }
+
     /// Answers for `page` not shown yet, marked shown.
     pub fn unseen_for(&self, page: Page) -> Vec<String> {
         let mut g = self.held();

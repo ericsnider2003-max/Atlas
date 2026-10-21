@@ -167,6 +167,21 @@ pub struct Missed {
 /// How many example paths to keep.
 const KEEP_EXAMPLES: usize = 8;
 
+/// The most the saved index may be, written or read (20 Oct 2026).
+///
+/// The store's default record budget is 16 MiB, and a real index of 41,797
+/// files was 17 MB of pretty JSON: valid, but over the budget, so every start
+/// set it aside as unreadable, began empty, rescanned and wrote another 17 MB
+/// file. The index grows with the disk, so it names its own, much larger,
+/// budget, and saves and loads with the same number so that Atlas can never
+/// write an index it will then refuse to read. It is still a bound: a file
+/// past it is set aside as oversized rather than read without limit.
+///
+/// 64 MiB (21 Oct 2026; it was 256 MiB). Loading holds the text and its parsed
+/// copy at once, so the peak is several times the file: at 256 MiB that was
+/// gigabytes. 64 MiB is still about four times the 17 MB real index.
+pub const INDEX_MAX_BYTES: u64 = 64 * 1024 * 1024;
+
 impl Missed {
     fn note(&mut self, path: &Path) {
         if self.examples.len() < KEEP_EXAMPLES {
@@ -456,10 +471,10 @@ impl Index {
     }
 
     pub fn load(store: &Store) -> Index {
-        store.load("index")
+        store.load_bounded("index", INDEX_MAX_BYTES)
     }
     pub fn save(&self, store: &Store) -> Result<()> {
-        store.save("index", self)
+        store.save_compact_bounded("index", self, INDEX_MAX_BYTES)
     }
     /// What changes whenever the index does: how many entries, and when it
     /// was last scanned (`apply` sets that on every scan). Cheap to ask
@@ -662,4 +677,51 @@ pub fn default_roots() -> Vec<PathBuf> {
         })
         .filter(|p| p.is_dir())
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn an_index_past_the_default_record_budget_survives_a_restart() {
+        let dir = std::env::temp_dir().join(format!("atlas-index-large-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let store = Store::new(&dir);
+
+        let mut index = Index {
+            last_scan: 1_792_000_000,
+            ..Index::default()
+        };
+        // Long paths, so a few thousand entries clear 16 MiB even compact.
+        let long = "d".repeat(3000);
+        for i in 0..6000u64 {
+            let path = format!("C:/Users/someone/{long}/file-{i:06}.txt");
+            index.entries.insert(
+                path.clone(),
+                Entry {
+                    path,
+                    name: format!("file-{i:06}.txt"),
+                    ext: "txt".to_string(),
+                    size: i,
+                    modified: 1_700_000_000 + i,
+                    class: AssetClass::Document,
+                },
+            );
+        }
+        let pretty = serde_json::to_string_pretty(&index).unwrap();
+        let compact = serde_json::to_string(&index).unwrap();
+        assert!(compact.len() as u64 > 16 * 1024 * 1024, "{}", compact.len());
+        assert!(pretty.len() > compact.len());
+
+        index.save(&store).unwrap();
+        let back = Index::load(&store);
+
+        assert_eq!(back.entries, index.entries);
+        assert_eq!(back.last_scan, index.last_scan);
+        assert!(store.preserved().is_empty(), "{:?}", store.preserved());
+        assert!(crate::store::take_failed_saves(&dir).is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

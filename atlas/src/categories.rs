@@ -116,6 +116,13 @@ pub fn category_of(intent: &Intent) -> Category {
         | Intent::Cards(_)
         | Intent::Translate(_) => Category::LocalOperational,
         Intent::WhichModel => Category::LocalOperational,
+        Intent::QuitAtlas => Category::LocalOperational,
+        // The floor (20 Oct 2026): files and memory on this computer.
+        Intent::CreateFile(_)
+        | Intent::ReadFile(_)
+        | Intent::MoveFile(_)
+        | Intent::BackUpFolder(_)
+        | Intent::WhatsUsingMemory => Category::LocalOperational,
         // A preference about how Atlas talks to you, nothing else.
         Intent::AddressAs(_) => Category::LocalOperational,
         // A signup is a commitment made as you, not a task done for you.

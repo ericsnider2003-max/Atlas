@@ -30,6 +30,12 @@ impl Daemon<'_> {
         html
     }
 
+    /// How many things are in each state, from `open_work`'s lanes and
+    /// nothing else (see `hub::Counts`).
+    pub fn counts(&self, now: u64) -> hub::Counts {
+        hub::Counts::of(&self.open_work(now))
+    }
+
     /// Validate a setting, then keep it, then take it up at once. The one
     /// path every settings form uses (Settings, Sound & voice), so a switch
     /// can't report success and write nothing.
@@ -128,8 +134,27 @@ impl Daemon<'_> {
         hub::with_owner(html, name.as_deref())
     }
 
-    /// Outstanding, in the design's four lanes.
+    /// Outstanding, in the design's lanes: Waiting on you, Blocked, Failed,
+    /// Interrupted, In progress, Carried over and Done today.
+    ///
+    /// The one place that works out what is open (20 Oct 2026). Everything
+    /// that says how many things are in a state -- the header pill, the
+    /// sidebar count, Home's "to act", Home's brief and "Nothing underway",
+    /// the lane headings -- reads `hub::Counts::of` this, so they cannot
+    /// disagree. It reads memory plus one cached durable-job file
+    /// (`job::load_cached`), so it is cheap enough for the pill on every page.
     pub(super) fn open_work(&self, now: u64) -> hub::Open {
+        /// How long a failure stays in the Failed lane unless dismissed.
+        const RECENT_SECS: u64 = 24 * 3600;
+        /// What an interrupted item says about itself, so nobody reads a
+        /// restart as a failure or as a success.
+        const CUT_OFF: &str = "Cut off by a restart — not known to have finished.";
+        /// How many of today's finished things the Done lane shows.
+        const DONE_SHOWN: usize = 10;
+        let clock = crate::store::now();
+        let mut failed: Vec<hub::Ended> = Vec::new();
+        let mut interrupted: Vec<hub::Ended> = Vec::new();
+        let mut done: Vec<hub::Ended> = Vec::new();
         let mut drops = hub::Drops::default();
         let mut waiting: Vec<(String, String, String)> = Vec::new();
         for (what, href, key) in self.home_asks_keyed(now) {
@@ -177,39 +202,95 @@ impl Daemon<'_> {
                         .then(|| format!("s:{}", job.id)),
                 );
             } else if job.interrupted {
-                blocked.push(hub::Stopped {
+                // Cut off by a restart: its own lane (20 Oct 2026), said as
+                // what it is rather than as something Atlas is stuck on.
+                interrupted.push(hub::Ended {
                     what: sentence(&job.command),
-                    tried: format!("To {}.", job.command.trim().trim_end_matches('.')),
-                    stopped: job
+                    detail: format!(
+                        "{} {CUT_OFF}",
+                        job.last_result
+                            .clone()
+                            .unwrap_or_else(|| "Previous outcome is unconfirmed.".into())
+                    ),
+                    when: String::new(),
+                    at: job.due,
+                });
+                drops.interrupted.push(Some(format!("s:{}", job.id)));
+            } else if job.state == crate::scheduler::JobState::Failed
+                && job.due.saturating_add(RECENT_SECS) >= clock
+            {
+                failed.push(hub::Ended {
+                    what: sentence(&job.command),
+                    detail: job
                         .last_result
                         .clone()
-                        .unwrap_or_else(|| "Previous outcome is unconfirmed.".into()),
-                    needs: "Check the previous result before asking Atlas to try again.".into(),
-                    area: None,
+                        .unwrap_or_else(|| "It failed and said nothing more.".into()),
+                    when: crate::localclock::hhmm_here(job.due),
+                    at: job.due,
                 });
-                drops.blocked.push(Some(format!("s:{}", job.id)));
+                // A scheduled job is not taken off a list by this page: that
+                // would cancel its schedule. It leaves after a day.
+                drops.failed.push(None);
             }
         }
         for task in self.queue.tasks.iter().filter(|task| task.interrupted) {
-            blocked.push(hub::Stopped {
+            interrupted.push(hub::Ended {
                 what: sentence(&task.command),
-                tried: format!("To {}.", task.command.trim().trim_end_matches('.')),
-                stopped: task
+                detail: format!(
+                    "{} {CUT_OFF}",
+                    task.result
+                        .clone()
+                        .unwrap_or_else(|| "Previous outcome not confirmed.".into())
+                ),
+                when: String::new(),
+                at: task.created,
+            });
+            drops.interrupted.push(Some(format!("t:{}", task.id)));
+        }
+        for task in self.queue.tasks.iter().filter(|task| {
+            task.state == crate::lanes::TaskState::Failed
+                && !task.interrupted
+                && task.created.saturating_add(RECENT_SECS) >= clock
+        }) {
+            failed.push(hub::Ended {
+                what: sentence(&task.command),
+                detail: task
                     .result
                     .clone()
-                    .unwrap_or_else(|| "Previous outcome not confirmed.".into()),
-                needs: "Check the previous result before asking Atlas to try again.".into(),
-                area: None,
+                    .unwrap_or_else(|| "It failed and said nothing more.".into()),
+                when: crate::localclock::hhmm_here(task.created),
+                at: task.created,
             });
-            drops.blocked.push(Some(format!("t:{}", task.id)));
+            drops.failed.push(Some(format!("t:{}", task.id)));
         }
-        // Generic durable jobs have no safe automatic retry after a process
-        // restart. Keep their uncertain receipt visible in the same blocked
-        // lane, but intentionally do not add a dismiss key: the owner must
-        // inspect the real-world outcome before it can leave the page.
+        let today = crate::localclock::midnight(clock, crate::localclock::offset_secs());
+        for task in self
+            .queue
+            .tasks
+            .iter()
+            .filter(|task| task.state == crate::lanes::TaskState::Done && task.created >= today)
+        {
+            done.push(hub::Ended {
+                what: sentence(&task.command),
+                detail: task.result.clone().unwrap_or_default(),
+                when: crate::localclock::hhmm_here(task.created),
+                at: task.created,
+            });
+        }
+        // Durable job receipts (`job`). Work cut off by a restart is
+        // `Uncertain`: it has no safe automatic retry, so it sits in
+        // Interrupted until the owner has checked the real-world outcome and
+        // dismisses it (20 Oct 2026: it now has a Drop it button; before, it
+        // could never leave the page). A job that ended in failure in the last
+        // day is in Failed, one that finished today is in Done, and one that
+        // has gone quiet for a while without ending is Blocked.
         const STALE_AFTER_SECS: u64 = 15 * 60;
-        let now = crate::store::now();
-        let durable_jobs = match crate::job::load_checked(&self.store) {
+        let now = clock;
+        // Errands the crew still has in hand: their `errand:` records are
+        // Running because they are, so they are neither stale nor lost.
+        let live_errands: std::collections::HashSet<String> =
+            self.live_errand_jobs().into_iter().collect();
+        let durable_jobs = match crate::job::load_cached(&self.store) {
             Ok(jobs) => jobs,
             Err(error) => {
                 blocked.push(hub::Stopped {
@@ -220,13 +301,14 @@ impl Daemon<'_> {
                         .into(),
                     area: None,
                 });
+                drops.blocked.push(None);
                 Vec::new()
             }
         };
-        for job in durable_jobs.into_iter().filter(|job| {
-            job.state == crate::job::State::Uncertain || job.stale(now, STALE_AFTER_SECS)
-        }) {
-            let stale = job.state != crate::job::State::Uncertain;
+        for job in durable_jobs {
+            use crate::job::State as S;
+            let name = durable_name(&job);
+            let said = job.receipt.as_ref().map(|r| r.detail.clone());
             let artifact_note = job
                 .artifacts
                 .as_ref()
@@ -239,30 +321,76 @@ impl Daemon<'_> {
                     )
                 })
                 .unwrap_or_default();
-            blocked.push(hub::Stopped {
-                what: format!("{} job ({})", job.stage, job.job_id),
-                tried: format!("Started the {} job.", job.stage),
-                stopped: job
-                    .receipt
-                    .as_ref()
-                    .map(|receipt| format!("{}{artifact_note}", receipt.detail))
-                    .unwrap_or_else(|| {
-                        if stale {
-                            format!(
-                                "No durable progress has been recorded recently.{artifact_note}"
-                            )
-                        } else {
-                            format!("The previous outcome is uncertain.{artifact_note}")
-                        }
-                    }),
-                needs: if stale {
-                    "Check the worker before asking Atlas to try it again; it may still be running."
-                        .into()
-                } else {
-                    "Check the previous result before asking Atlas to try it again.".into()
-                },
-                area: None,
+            match job.state {
+                S::Uncertain if !job.dismissed => {
+                    interrupted.push(hub::Ended {
+                        what: name,
+                        detail: format!(
+                            "{} {CUT_OFF}{artifact_note}",
+                            said.unwrap_or_else(|| "The previous outcome is uncertain.".into())
+                        ),
+                        when: crate::localclock::hhmm_here(job.updated_at),
+                        at: job.updated_at,
+                    });
+                    drops.interrupted.push(Some(format!("j:{}", job.job_id)));
+                }
+                S::Failed
+                    if !job.dismissed && job.updated_at.saturating_add(RECENT_SECS) >= now =>
+                {
+                    failed.push(hub::Ended {
+                        what: name,
+                        detail: format!(
+                            "{}{artifact_note}",
+                            said.unwrap_or_else(|| "It failed and said nothing more.".into())
+                        ),
+                        when: crate::localclock::hhmm_here(job.updated_at),
+                        at: job.updated_at,
+                    });
+                    drops.failed.push(Some(format!("j:{}", job.job_id)));
+                }
+                S::Succeeded if job.updated_at >= today => {
+                    done.push(hub::Ended {
+                        what: name,
+                        detail: said.unwrap_or_default(),
+                        when: crate::localclock::hhmm_here(job.updated_at),
+                        at: job.updated_at,
+                    });
+                }
+                s if !s.terminal()
+                    && job.stale(now, STALE_AFTER_SECS)
+                    && !live_errands.contains(&job.job_id) =>
+                {
+                    blocked.push(hub::Stopped {
+                        what: format!("{} job ({})", job.stage, job.job_id),
+                        tried: format!("Started the {} job.", job.stage),
+                        stopped: said
+                            .map(|d| format!("{d}{artifact_note}"))
+                            .unwrap_or_else(|| {
+                                format!(
+                                    "No durable progress has been recorded recently.{artifact_note}"
+                                )
+                            }),
+                        needs: "Check the worker before asking Atlas to try it again; it may still be running."
+                            .into(),
+                        area: None,
+                    });
+                    drops.blocked.push(None);
+                }
+                _ => {}
+            }
+        }
+        // A hub button's job that failed (`hubjobs`), including one a restart
+        // cut off, which comes back as a failure with its own explanation.
+        for (_id, label, why) in self.hub_jobs.failures() {
+            failed.push(hub::Ended {
+                what: sentence(&label),
+                detail: why,
+                when: String::new(),
+                at: clock,
             });
+            // Not droppable here: the page that started it already showed it,
+            // and it leaves by itself.
+            drops.failed.push(None);
         }
         for t in self.queue.tasks.iter().filter(|t| {
             !matches!(
@@ -293,7 +421,6 @@ impl Daemon<'_> {
             ));
             drops.in_progress.push(Some(format!("e:{}", e.id)));
         }
-        let today = crate::localclock::midnight(now, crate::localclock::offset_secs());
         let mut carried: Vec<(String, u64)> = Vec::new();
         for i in self
             .workspace
@@ -303,12 +430,27 @@ impl Daemon<'_> {
             carried.push((i.title.clone(), ((today - i.at) / 86_400).max(1)));
             drops.carried.push(Some(format!("w:{}", i.id)));
         }
+        // Failed, newest first, each with its own Drop it key kept beside it.
+        let mut keyed: Vec<(hub::Ended, Option<String>)> = failed
+            .into_iter()
+            .enumerate()
+            .map(|(i, e)| (e, drops.failed.get(i).cloned().flatten()))
+            .collect();
+        keyed.sort_by_key(|k| std::cmp::Reverse(k.0.at));
+        let (failed, failed_keys): (Vec<_>, Vec<_>) = keyed.into_iter().unzip();
+        drops.failed = failed_keys;
+        // Done, newest first, a handful: it is a receipt for today, not a log.
+        done.sort_by_key(|d| std::cmp::Reverse(d.at));
+        done.truncate(DONE_SHOWN);
         hub::Open {
             waiting,
             blocked,
             in_progress,
             carried,
             drops,
+            failed,
+            interrupted,
+            done,
         }
     }
 
@@ -330,7 +472,9 @@ impl Daemon<'_> {
             .map(|w| w.0.clone())
             .chain(o.blocked.iter().map(|b| b.what.clone()))
             .chain(o.in_progress.iter().map(|p| p.0.clone()))
-            .chain(o.carried.iter().map(|c| c.0.clone()));
+            .chain(o.carried.iter().map(|c| c.0.clone()))
+            .chain(o.failed.iter().map(|f| f.what.clone()))
+            .chain(o.interrupted.iter().map(|f| f.what.clone()));
         let pad = |v: &Vec<Option<String>>, n: usize| {
             (0..n)
                 .map(|i| v.get(i).cloned().flatten())
@@ -340,7 +484,9 @@ impl Daemon<'_> {
             .into_iter()
             .chain(pad(&o.drops.blocked, o.blocked.len()))
             .chain(pad(&o.drops.in_progress, o.in_progress.len()))
-            .chain(pad(&o.drops.carried, o.carried.len()));
+            .chain(pad(&o.drops.carried, o.carried.len()))
+            .chain(pad(&o.drops.failed, o.failed.len()))
+            .chain(pad(&o.drops.interrupted, o.interrupted.len()));
         let mut out: Vec<(String, String)> = Vec::new();
         for (key, title) in keys.zip(titles) {
             let Some(key) = key else { continue };
@@ -459,7 +605,9 @@ impl Daemon<'_> {
                     .ok_or_else(gone)?;
                 match t.state {
                     crate::lanes::TaskState::Queued | crate::lanes::TaskState::WaitingForGap => {}
-                    crate::lanes::TaskState::Failed if t.interrupted => {}
+                    // An ended-badly request leaves the Failed lane by being
+                    // taken out of the queue, like an interrupted one.
+                    crate::lanes::TaskState::Failed => {}
                     crate::lanes::TaskState::Running => {
                         if let Some(files) = t.file_move_id {
                             let title = t.command.trim().to_string();
@@ -526,6 +674,30 @@ impl Daemon<'_> {
                     can_bring_back: false,
                 })
             }
+            "j" => {
+                // An ended durable job (`job`), dismissed rather than deleted.
+                let title = crate::job::load_cached(&self.store)
+                    .ok()
+                    .and_then(|jobs| jobs.into_iter().find(|j| j.job_id == rest))
+                    .map(|j| durable_name(&j))
+                    .ok_or_else(gone)?;
+                let kept = crate::job::dismiss(&self.store, rest);
+                match kept {
+                    Ok(true) => Ok(OffTheList {
+                        title,
+                        unsaved: None,
+                        stopping: false,
+                        can_bring_back: false,
+                    }),
+                    Ok(false) => Err(gone()),
+                    Err(e) => Ok(OffTheList {
+                        title,
+                        unsaved: Some(e.to_string()),
+                        stopping: false,
+                        can_bring_back: false,
+                    }),
+                }
+            }
             "c" => {
                 let (id, project) = rest.split_once(':').ok_or_else(gone)?;
                 let id: u64 = id.parse().map_err(|_| gone())?;
@@ -567,13 +739,24 @@ impl Daemon<'_> {
             .collect()
     }
 
-    pub(super) fn activity_lines(&self, now: u64) -> Vec<String> {
+    /// The last day of what Atlas did without being watched, newest first,
+    /// each with its state (from the entry's kind and outcome) and its time.
+    /// Atlas's own work on its own code (`Kind::SelfWork`) is left out: it is
+    /// kept in the journal but is not the owner's business.
+    pub(super) fn activity_lines(&self, now: u64) -> Vec<(hub::ActivityState, String, String)> {
         let since = now.saturating_sub(24 * 3600);
         self.journal
             .since(since)
             .into_iter()
             .rev()
-            .map(|e| e.what.clone())
+            .filter(|e| !e.kind.internal())
+            .map(|e| {
+                (
+                    hub::activity_state(e.kind, e.ok, &e.what),
+                    e.what.clone(),
+                    crate::localclock::hhmm_here(e.at),
+                )
+            })
             .collect()
     }
 
@@ -672,6 +855,16 @@ impl Daemon<'_> {
                 .any(|(name, _)| c.name.contains(name) || name.contains(c.name)),
             crate::credentials::Kept::PlainConfig => true,
         }
+    }
+}
+
+/// What a durable job is called on the page: an errand's own words, or its
+/// stage with "job" after it. The job number is for the receipt, not for you.
+fn durable_name(job: &crate::job::Record) -> String {
+    if job.job_id.starts_with(crate::job::ERRAND_PREFIX) {
+        job.stage.clone()
+    } else {
+        format!("{} job", job.stage)
     }
 }
 
@@ -783,14 +976,21 @@ mod scheduled_status_tests {
                 .as_deref()
                 .is_some_and(|text| text.contains("unconfirmed"))));
         let open = d.open_work(3);
+        // 20 Oct 2026: work a restart cut off is in its own Interrupted lane,
+        // not Blocked: nothing is stuck, nobody knows how far it got.
         assert!(open
-            .blocked
+            .interrupted
             .iter()
             .any(|item| item.what == sentence("prepare the report")
-                && item.stopped.contains("unconfirmed")));
+                && item.detail.contains("unconfirmed")
+                && item.detail.contains("Cut off by a restart")));
+        assert!(!open
+            .blocked
+            .iter()
+            .any(|item| item.what == sentence("prepare the report")));
         assert!(open
             .drops
-            .blocked
+            .interrupted
             .iter()
             .any(|key| key.as_deref() == Some(format!("s:{id}").as_str())));
         assert!(!open
@@ -808,5 +1008,306 @@ mod scheduled_status_tests {
         assert_eq!(d.scheduler.jobs[0].last_result, prior);
         let restored = crate::scheduler::Scheduler::load(&store);
         assert!(restored.due(1000).is_empty());
+    }
+}
+
+/// One source for the counts (20 Oct 2026): the header pill, Home and
+/// Outstanding read the same lanes, and a restart's cut-off work is in them.
+#[cfg(test)]
+mod one_count_tests {
+    use super::*;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::Arc;
+
+    fn scratch(tag: &str) -> crate::store::Store {
+        let root = std::env::temp_dir().join(format!(
+            "atlas-one-count-{tag}-{}-{}",
+            std::process::id(),
+            crate::store::now()
+        ));
+        let _ = std::fs::remove_dir_all(&root);
+        crate::store::Store::new(&root)
+    }
+
+    #[test]
+    fn the_pill_home_and_outstanding_agree_on_blocked_running_and_failed() {
+        let store = scratch("agree");
+        let config = crate::config::Config::load(std::path::Path::new("config")).unwrap();
+        let platform = crate::platform::mock::MockPlatform::new(Vec::new());
+        let mut d = Daemon::new(
+            &config,
+            &platform,
+            None,
+            store.clone(),
+            crate::proactive::Proactive::new(crate::proactive::ProactiveConfig::default()),
+        );
+        let now = crate::store::now();
+        // One backlog item Atlas is stuck on (not a question for you).
+        d.backlog.record(
+            "fetch the invoices",
+            crate::backlog::Blocker::Failed("the site is down".into()),
+            now,
+        );
+        // One running download, in the crew's hands.
+        let release = Arc::new(AtomicBool::new(false));
+        let hold = release.clone();
+        d.crew
+            .hand(
+                "getting-everything",
+                now,
+                Box::new(move |_| {
+                    while !hold.load(Ordering::SeqCst) {
+                        std::thread::sleep(std::time::Duration::from_millis(5));
+                    }
+                    Ok("done".into())
+                }),
+            )
+            .unwrap();
+        // One backup that failed, as `take_crew_news` writes it down.
+        crate::job::end(
+            &store,
+            "errand:backup:1:1",
+            "Backup",
+            crate::job::State::Failed,
+            "the file is locked by another process",
+        )
+        .unwrap();
+
+        let o = d.open_work(now);
+        let c = d.counts(now);
+        assert_eq!(c, hub::Counts::of(&o));
+        assert_eq!(
+            (c.waiting, c.blocked, c.running, c.failed, c.interrupted),
+            (0, 1, 1, 1, 0)
+        );
+
+        // The pill: nothing is waiting on YOU, and it says what stopped.
+        assert_eq!(d.waiting_count(now), 0);
+        assert_eq!(
+            d.pill_counts(now),
+            (0, "1 blocked · 1 failed or cut off".to_string())
+        );
+        let (w, extra) = d.pill_counts(now);
+        let page = hub::with_counts(d.outstanding_page_live(now), w, &extra);
+        assert!(
+            page.contains("Nothing waiting · 1 blocked · 1 failed or cut off</a>"),
+            "{page}"
+        );
+
+        // Outstanding's headings are the same numbers.
+        for (lane, n) in [
+            ("Waiting on you", 0),
+            ("Blocked", 1),
+            ("In progress", 1),
+            ("Failed", 1),
+            ("Interrupted", 0),
+        ] {
+            assert!(
+                page.contains(&format!("{lane} <span class=n>{n}</span>")),
+                "{lane} should read {n}: {page}"
+            );
+        }
+        assert!(page.contains("the file is locked by another process"));
+
+        // Home: not "quiet", and not "Nothing underway" beside a download.
+        let deck = d.deck(now, 0);
+        assert_ne!(deck.now, "Nothing underway.", "a download is running");
+        assert!(deck.now.contains("getting-everything"), "{}", deck.now);
+        assert!(!deck.brief.contains("It's quiet"), "{}", deck.brief);
+        assert!(
+            deck.brief
+                .contains("2 things have stopped: 1 blocked, 1 failed"),
+            "{}",
+            deck.brief
+        );
+        assert!(deck.asks.is_empty());
+        let card = d.card_outstanding(now);
+        assert!(card.contains("<b>0</b><span>To act</span>"), "{card}");
+        assert!(card.contains("<b>1</b><span>Blocked</span>"), "{card}");
+        assert!(card.contains("Fetch the invoices"), "{card}");
+
+        release.store(true, Ordering::SeqCst);
+        d.errands_done_for_test();
+    }
+
+    #[test]
+    fn what_waits_on_you_is_the_same_number_everywhere_and_a_blocked_item_is_not_in_it() {
+        let store = scratch("waits");
+        let config = crate::config::Config::load(std::path::Path::new("config")).unwrap();
+        let platform = crate::platform::mock::MockPlatform::new(Vec::new());
+        let mut d = Daemon::new(
+            &config,
+            &platform,
+            None,
+            store,
+            crate::proactive::Proactive::new(crate::proactive::ProactiveConfig::default()),
+        );
+        let now = crate::store::now();
+        d.backlog.record(
+            "send the contract",
+            crate::backlog::Blocker::NeedsApproval,
+            now,
+        );
+        d.backlog.record(
+            "fetch the invoices",
+            crate::backlog::Blocker::Failed("the site is down".into()),
+            now,
+        );
+        assert_eq!(d.waiting_count(now), 1, "the pill counts the Waiting lane");
+        let deck = d.deck(now, 0);
+        assert_eq!(deck.asks.len(), 1);
+        assert!(
+            deck.brief.starts_with("One thing wants you."),
+            "{}",
+            deck.brief
+        );
+        let page = d.outstanding_page_live(now);
+        assert!(
+            page.contains("Waiting on you <span class=n>1</span>"),
+            "{page}"
+        );
+        assert!(page.contains("Blocked <span class=n>1</span>"), "{page}");
+        let card = d.card_outstanding(now);
+        assert!(card.contains("<b>1</b><span>To act</span>"), "{card}");
+    }
+
+    #[test]
+    fn a_running_job_record_is_interrupted_after_a_restart_and_shown_as_cut_off() {
+        let store = scratch("restart");
+        // The previous run: a download began and the process died.
+        crate::job::begin(
+            &store,
+            "errand:getting-everything:1:1",
+            "Download of what Atlas still needs",
+            "started",
+        )
+        .unwrap();
+        let config = crate::config::Config::load(std::path::Path::new("config")).unwrap();
+        let platform = crate::platform::mock::MockPlatform::new(Vec::new());
+        // Making the Daemon is the start-up: the reconciliation is saved
+        // before any page can be drawn.
+        let d = Daemon::new(
+            &config,
+            &platform,
+            None,
+            store.clone(),
+            crate::proactive::Proactive::new(crate::proactive::ProactiveConfig::default()),
+        );
+        let saved = crate::job::load_checked(&store).unwrap();
+        assert_eq!(saved[0].state, crate::job::State::Uncertain);
+        let now = crate::store::now();
+        let o = d.open_work(now);
+        assert_eq!(o.interrupted.len(), 1);
+        assert_eq!(o.interrupted[0].what, "Download of what Atlas still needs");
+        assert!(
+            o.interrupted[0]
+                .detail
+                .contains("Cut off by a restart — not known to have finished."),
+            "{}",
+            o.interrupted[0].detail
+        );
+        assert_eq!(
+            o.drops.interrupted,
+            vec![Some("j:errand:getting-everything:1:1".to_string())]
+        );
+        assert!(o.failed.is_empty() && o.blocked.is_empty());
+        assert_eq!(d.counts(now).interrupted, 1);
+        let page = d.outstanding_page_live(now);
+        assert!(
+            page.contains("Interrupted <span class=n>1</span>"),
+            "{page}"
+        );
+        assert!(page.contains("class='item st-interrupted'"), "{page}");
+    }
+
+    #[test]
+    fn a_failed_job_can_be_dismissed_and_stays_off_the_page() {
+        let store = scratch("dismiss");
+        let config = crate::config::Config::load(std::path::Path::new("config")).unwrap();
+        let platform = crate::platform::mock::MockPlatform::new(Vec::new());
+        let mut d = Daemon::new(
+            &config,
+            &platform,
+            None,
+            store.clone(),
+            crate::proactive::Proactive::new(crate::proactive::ProactiveConfig::default()),
+        );
+        let now = crate::store::now();
+        crate::job::end(
+            &store,
+            "errand:housekeeping:1:1",
+            "Housekeeping",
+            crate::job::State::Failed,
+            "locked",
+        )
+        .unwrap();
+        crate::job::begin(&store, "errand:backup:1:2", "Backup", "started").unwrap();
+        crate::job::end(
+            &store,
+            "errand:backup:1:2",
+            "Backup",
+            crate::job::State::Succeeded,
+            "Finished.",
+        )
+        .unwrap();
+        let o = d.open_work(now);
+        assert_eq!(o.failed.len(), 1);
+        assert_eq!(o.done.len(), 1, "a backup that finished today is in Done");
+        assert_eq!(o.done[0].what, "Backup");
+        let key = o.drops.failed[0].clone().unwrap();
+        assert_eq!(key, "j:errand:housekeeping:1:1");
+        assert!(d.outstanding_removable(now).iter().any(|(k, _)| *k == key));
+        let off = d.drop_outstanding(&key, now).unwrap();
+        assert_eq!(off.title, "Housekeeping");
+        assert!(d.open_work(now).failed.is_empty());
+        assert!(d.drop_outstanding(&key, now).is_err() || d.counts(now).failed == 0);
+        // Kept, not deleted.
+        assert!(crate::job::load_checked(&store)
+            .unwrap()
+            .iter()
+            .any(|r| r.job_id == "errand:housekeeping:1:1" && r.dismissed));
+    }
+
+    #[test]
+    fn activity_leaves_out_atlas_working_on_its_own_code_and_marks_the_rest() {
+        let store = scratch("activity");
+        let config = crate::config::Config::load(std::path::Path::new("config")).unwrap();
+        let platform = crate::platform::mock::MockPlatform::new(Vec::new());
+        let mut d = Daemon::new(
+            &config,
+            &platform,
+            None,
+            store,
+            crate::proactive::Proactive::new(crate::proactive::ProactiveConfig::default()),
+        );
+        let now = crate::store::now();
+        d.journal.record_at(
+            crate::activity::Kind::SelfWork,
+            "mutation-sweep: mutation sweep of src/audio.rs: 2 changes no test noticed",
+            true,
+            now,
+        );
+        d.journal.record_at(
+            crate::activity::Kind::Upkeep,
+            "backup: the file is locked",
+            false,
+            now,
+        );
+        d.journal.record_at(
+            crate::activity::Kind::Scheduled,
+            "sent the weekly report",
+            true,
+            now,
+        );
+        let lines = d.activity_lines(now);
+        assert_eq!(lines.len(), 2, "only the two the owner should see");
+        assert!(lines
+            .iter()
+            .all(|(_, what, _)| !what.contains("mutation sweep")));
+        assert_eq!(lines[0].0, hub::ActivityState::Done, "newest first");
+        assert_eq!(lines[1].0, hub::ActivityState::Failed);
+        let page = hub::activity_page(&lines);
+        assert!(page.contains("st-failed") && page.contains("st-done"));
+        assert!(!page.contains("mutation sweep"));
     }
 }

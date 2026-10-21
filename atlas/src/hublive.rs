@@ -539,7 +539,8 @@ pub(crate) fn readonly_pages(daemon: &Daemon) -> Vec<(Page, Reply)> {
     .into_iter()
     .map(|(page, html)| {
         let html = hub::with_palette(html, &crate::palette::catalogue(), &daemon.palette);
-        let html = hub::with_waiting(html, daemon.waiting_count(now));
+        let (waiting, stopped) = daemon.pill_counts(now);
+        let html = hub::with_counts(html, waiting, &stopped);
         let html = daemon.with_sidebar_names(html);
         let html = daemon.with_handover_banner(html);
         (
@@ -752,7 +753,8 @@ impl Daemon<'_> {
                     )));
                 }
                 let html = crate::hub::with_palette(html, &entries, &self.palette);
-                let html = crate::hub::with_waiting(html, self.waiting_count(crate::store::now()));
+                let (waiting, stopped) = self.pill_counts(crate::store::now());
+                let html = crate::hub::with_counts(html, waiting, &stopped);
                 let html = self.with_sidebar_names(html);
                 Reply::html(crate::hub::with_appearance(html, &self.appearance()))
             }
@@ -1252,12 +1254,7 @@ impl Daemon<'_> {
             Page::Workshop => self.hub_page_q(Page::Workshop, ""),
             Page::Calendar => hub::calendar_page(&self.calendar, now, &self.home_zone()),
             Page::Outstanding => self.outstanding_page_live(now),
-            Page::Activity => hub::list_page_at(
-                Some(Page::Activity),
-                "What I did",
-                "Everything I did without being watched.",
-                &self.activity_lines(now),
-            ),
+            Page::Activity => hub::activity_page(&self.activity_lines(now)),
             Page::LookingBack => {
                 let day = crate::workspace_view::day_of(&self.workspace, now);
                 let page = hub::looking_back_page(&day, "Today");

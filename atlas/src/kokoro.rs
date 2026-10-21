@@ -630,6 +630,7 @@ pub fn engine(root: &Path) -> Loaded {
     let mut slot = ENGINE
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
+    touch_used();
     if let Some((at, loaded)) = slot.as_ref() {
         if at == root {
             return loaded.clone();
@@ -643,6 +644,54 @@ pub fn engine(root: &Path) -> Loaded {
     };
     *slot = Some((root.to_path_buf(), loaded.clone()));
     loaded
+}
+
+/// When the engine was last asked for (`engine`), for the idle unload.
+static LAST_USED: Mutex<Option<std::time::Instant>> = Mutex::new(None);
+
+fn touch_used() {
+    *LAST_USED
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(std::time::Instant::now());
+}
+
+/// How long the voice may sit unused before it is let go (20 Oct 2026). It
+/// was cached for the life of the process, holding its model's memory
+/// through hours of silence; the next speech loads it again (`engine`).
+pub const IDLE_UNLOAD: Duration = Duration::from_secs(300);
+
+/// Whether a loaded voice should be let go: nobody is speaking with it
+/// (`holders` is the cache's own reference only) and it has either sat idle
+/// past `max_idle` or memory is short (`pressure`), which needs no wait.
+pub fn should_unload(holders: usize, idle: Duration, max_idle: Duration, pressure: bool) -> bool {
+    holders <= 1 && (pressure || idle >= max_idle)
+}
+
+/// Let the loaded voice go if `should_unload` says so. `Some(reason)` when it
+/// did, for the log; `None` when nothing was loaded or it is in use. A failed
+/// load kept in the cache is left alone (it holds no memory, and clearing it
+/// would retry the failure on every sentence).
+pub fn unload_if_idle(max_idle: Duration, pressure: bool) -> Option<String> {
+    let mut slot = ENGINE
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let holders = match slot.as_ref() {
+        Some((_, Ok(k))) => Arc::strong_count(k),
+        _ => return None,
+    };
+    let idle = LAST_USED
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .map_or(max_idle, |t| t.elapsed());
+    if !should_unload(holders, idle, max_idle, pressure) {
+        return None;
+    }
+    *slot = None;
+    Some(if pressure {
+        "the Kokoro voice, memory being short".to_string()
+    } else {
+        format!("the Kokoro voice, unused for {} s", idle.as_secs())
+    })
 }
 
 /// Try again next time: after a download finishes, or files were put back.

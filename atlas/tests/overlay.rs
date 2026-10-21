@@ -224,3 +224,27 @@ fn the_mark_keeps_moving_while_the_words_are_being_typed() {
         o => panic!("{o:?}"),
     }
 }
+
+// ================= quiet by default (20 Oct 2026) =================
+//
+// An always-on-top caption window over pages and buttons, started for every
+// reply, was something the owner never asked for. Off by default; when on,
+// low on the screen and click-through.
+
+#[test]
+fn desktop_captions_are_off_by_default_in_code_and_in_the_shipped_config() {
+    assert!(!OverlayConfig::default().enabled);
+    let cfg = atlas::config::Config::load(std::path::Path::new("config")).unwrap();
+    assert!(!cfg.tools.expect("tools.yaml loads").overlay.enabled);
+}
+
+#[test]
+fn captions_sit_low_on_the_screen_not_over_the_middle_of_a_page() {
+    let cfg = OverlayConfig::default();
+    for (w, h) in [(2560, 1392), (1920, 1080), (1366, 768)] {
+        assert!(atlas::overlay::caption_line(h) > h * 3 / 4);
+        let (_, top, _, band_h) = atlas::overlaywin::overlay_band(w, h, &cfg);
+        assert!(top >= h / 2, "the band starts at {top} on a {h} screen");
+        assert!(top + band_h <= h);
+    }
+}

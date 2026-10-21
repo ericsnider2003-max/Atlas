@@ -296,7 +296,9 @@ impl<'a> Daemon<'a> {
             Intent::OpenApp(a) => self.on_open_app(intent, a),
             Intent::CloseApp(a) => match self.gate_app(a, "close", intent) {
                 AppGate::Ask(q) => q,
-                AppGate::Go => act(workspace::close_app(self.cfg, self.plat, a), &format!("Closed {a}.")),
+                // Recorded as a job, refused for Windows and Atlas itself, and
+                // checked afterwards (`daemon::floor`, 20 Oct 2026).
+                AppGate::Go => self.on_close_app(a),
             },
             Intent::FocusApp(a) => match self.gate_app(a, "focus", intent) {
                 AppGate::Ask(q) => q,
@@ -342,6 +344,19 @@ impl<'a> Daemon<'a> {
             Intent::AddressAs(said) => self.on_address_as(said),
             Intent::Dictate(first) => self.on_dictate(first),
             Intent::Pause => self.on_pause(),
+            // The tray's Quit, by voice or typing (20 Oct 2026). The run loop
+            // sees the flag, writes everything down and exits; the words are
+            // said only because the stop really was asked.
+            Intent::QuitAtlas => {
+                crate::goodbye::please_stop_because(crate::goodbye::Why::YouClosedIt);
+                crate::backed::STOPPING.to_string()
+            }
+            // The floor (20 Oct 2026): done with no model, each checked.
+            Intent::CreateFile(raw) => self.on_create_file(raw),
+            Intent::ReadFile(raw) => self.on_read_file(raw),
+            Intent::MoveFile(raw) => self.on_move_file(raw),
+            Intent::BackUpFolder(raw) => self.on_back_up_folder(raw),
+            Intent::WhatsUsingMemory => self.on_whats_using_memory(),
             Intent::Resume => self.on_resume(),
             // What's outstanding, said the way it's actually useful: the one
             // thing to do next, and the one thing holding several others up.
@@ -1357,22 +1372,39 @@ impl<'a> Daemon<'a> {
         ) {
             return format!("I couldn't back up: {error}");
         }
-        match crate::safety::back_up_with_inputs(
+        // A user-asked backup is a visible Hub job (20 Oct 2026), started here
+        // and finished with the same words the person is told, so the Status
+        // page shows it running and then done or failed. Before this it left
+        // no trace there at all.
+        let job = self
+            .hub_jobs
+            .start(crate::hub::Page::Status, "Backing up Atlas's state");
+        let said = match crate::safety::back_up_with_report(
             self.store.root(),
             &cfg,
             crate::store::now(),
             &self.notes_dir(),
             std::path::Path::new(&self.trash.cfg.dir),
         ) {
-            Ok(b) => {
-                prune_backups(&cfg);
+            Ok((b, skips)) => {
+                // Never after a partial backup: it could push out the last
+                // complete one (2026-10-21).
+                if skips.say().is_none() {
+                    prune_backups(&cfg);
+                }
                 // back_up() just wrote every file itself and counted as it went, so
                 // this is never the unreadable case -- unlike `Backup`s read back off
                 // disk by `backups()`, which is where files: None matters.
-                format!("Backed up {} files.", b.files.unwrap_or(0))
+                let mut said = format!("Backed up {} files.", b.files.unwrap_or(0));
+                if let Some(left_out) = skips.say() {
+                    said.push_str(&format!(" Partial backup: {left_out}."));
+                }
+                Ok(said)
             }
-            Err(e) => format!("Backup failed: {e}"),
-        }
+            Err(e) => Err(format!("Backup failed: {e}")),
+        };
+        self.hub_jobs.finish(job, said.clone(), false);
+        said.unwrap_or_else(|failed| failed)
     }
 
     fn on_set_mode(&mut self, name: &str) -> String {
@@ -2294,7 +2326,13 @@ impl<'a> Daemon<'a> {
             // Said plainly rather than starting setup over. Somebody
             // who says this when nothing was skipped meant "is there
             // anything left", and the answer is no.
-            None => "Nothing was left unfinished — setup is done.".into(),
+            //
+            // 20 Oct 2026: unless pieces are missing -- then this is the yes to
+            // the question Atlas filed about downloading them
+            // (`keep_everything_here` no longer fetches without one).
+            None => self
+                .approve_missing_pieces(crate::store::now())
+                .unwrap_or_else(|| "Nothing was left unfinished — setup is done.".into()),
         }
     }
 
@@ -3042,24 +3080,30 @@ impl<'a> Daemon<'a> {
             Some(how) => how,
             None => match self.answer_from_notes(raw, crate::store::now()) {
                 Some(answer) => answer,
-                // A question Atlas has no way to answer here is said to
-                // be one, rather than "I didn't catch that" -- which tells
-                // a person who spoke clearly that they didn't.
-                // The reason as far as it's known (29 Sep 2026): this
-                // said "there isn't one on this machine yet" whenever no
-                // model was loaded -- also when one was there and hadn't
-                // started, or didn't fit the memory free at that moment.
-                None if self.llm.is_none() && crate::wanted::is_a_question(raw) => {
-                    let why = self
-                        .model_server_trouble
-                        .clone()
-                        .unwrap_or_else(|| "it isn't loaded yet".to_string());
-                    format!(
-                    "I can't answer that one yet: general questions need my language model, and {why}. \
-                     The hub's Health page says where it stands."
-                )
-                }
-                None => "I didn't catch that.".into(),
+                // A request that needs the model when it can't load (20 Oct
+                // 2026): the choice, at once -- answer online, or free memory
+                // -- and nothing pretended (`floor`).
+                None => match self.floor_when_the_model_cannot_load(raw) {
+                    Some(choice) => choice,
+                    // A question Atlas has no way to answer here is said to
+                    // be one, rather than "I didn't catch that" -- which tells
+                    // a person who spoke clearly that they didn't.
+                    // The reason as far as it's known (29 Sep 2026): this
+                    // said "there isn't one on this machine yet" whenever no
+                    // model was loaded -- also when one was there and hadn't
+                    // started, or didn't fit the memory free at that moment.
+                    None if self.llm.is_none() && crate::wanted::is_a_question(raw) => {
+                        let why = self
+                            .model_server_trouble
+                            .clone()
+                            .unwrap_or_else(|| "it isn't loaded yet".to_string());
+                        format!(
+                        "I can't answer that one yet: general questions need my language model, and {why}. \
+                         The hub's Health page says where it stands."
+                    )
+                    }
+                    None => "I didn't catch that.".into(),
+                },
             },
         }
     }

@@ -125,7 +125,12 @@ fn said(text: &str, started_ms: u64) -> Speaking {
 
 #[test]
 fn the_overlay_shows_a_reply_once_then_leaves_the_desktop_alone() {
-    let cfg = OverlayConfig::default();
+    // Switched on: since 20 Oct 2026 captions are off by default, and these are
+    // about how a caption behaves once the owner has turned them on.
+    let cfg = OverlayConfig {
+        enabled: true,
+        ..OverlayConfig::default()
+    };
     let mut stage = Stage::default();
     assert!(
         !stage.step(None, 0, &cfg),
@@ -159,7 +164,12 @@ fn the_overlay_shows_a_reply_once_then_leaves_the_desktop_alone() {
 
 #[test]
 fn the_words_type_in_over_the_desktop() {
-    let cfg = OverlayConfig::default();
+    // Switched on: since 20 Oct 2026 captions are off by default, and these are
+    // about how a caption behaves once the owner has turned them on.
+    let cfg = OverlayConfig {
+        enabled: true,
+        ..OverlayConfig::default()
+    };
     let mut stage = Stage::default();
     let s = said("Hello Eric.", 0);
     stage.step(Some(&s), 1, &cfg);
@@ -192,7 +202,10 @@ fn switched_off_it_shows_nothing_and_fades_what_it_was_showing() {
         "switched off, nothing appears"
     );
 
-    let on = OverlayConfig::default();
+    let on = OverlayConfig {
+        enabled: true,
+        ..OverlayConfig::default()
+    };
     let mut stage = Stage::default();
     stage.step(Some(&said("A longer sentence to type.", 0)), 10, &on);
     stage.stand_down(20);

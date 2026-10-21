@@ -115,7 +115,7 @@ pub fn ready(cfg: &PictureTalkConfig, root: &Path) -> Result<(), String> {
         Ok(())
     } else {
         Err(format!(
-            "I don't have {} yet — they're a one-off download of about 3 GB, and starting Atlas again fetches them",
+            "I don't have {} yet — they're a one-off download of about 3 GB, and nothing downloads until you approve it (say \"finish setting up\", or press the Download button on the Connections page)",
             missing.join(" or ")
         ))
     }

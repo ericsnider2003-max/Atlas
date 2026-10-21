@@ -560,7 +560,7 @@ fn build(t: &crate::voice::ToolsConfig) -> Settings {
             t.trace.keep_examples, Sensitive, "Your accounts and secrets"),
         toggle("answering.accept_gestures", "Gestures",
             "A thumbs up or down on camera answers a question when you can't speak.",
-            "Needs the camera on. Can decline anything, but never approves something irreversible.",
+            "Off unless you turn it on, and needs the camera on too: the camera opens while a question waits for you. Can decline anything, but never approves something irreversible.",
             t.answering.accept_gestures, Sensitive, "Talking to it"),
         toggle("clipboard.enabled", "Clipboard",
             "Copy something and say \"explain this\".",

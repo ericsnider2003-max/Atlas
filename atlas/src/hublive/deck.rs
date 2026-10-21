@@ -87,7 +87,10 @@ impl Daemon<'_> {
             ));
         }
         for e in self.journal.since(now.saturating_sub(86_400)) {
-            if e.kind == crate::activity::Kind::Upkeep || day(e.at, off) != today {
+            if e.kind == crate::activity::Kind::Upkeep
+                || e.kind.internal()
+                || day(e.at, off) != today
+            {
                 continue;
             }
             events.push((
@@ -99,6 +102,11 @@ impl Daemon<'_> {
         }
         events.sort_by_key(|(w, ..)| *w);
 
+        // One build of the lanes Outstanding shows: "Nothing underway", "It's
+        // quiet" and the asks below all read it, so Home cannot say nothing is
+        // running beside a download that is (20 Oct 2026).
+        let open = self.open_work(now);
+        let counts = hub::Counts::of(&open);
         let running = self
             .queue
             .tasks
@@ -151,6 +159,19 @@ impl Daemon<'_> {
                 "Say \"carry on\" when you want me back.".to_string(),
                 "Paused".to_string(),
             )
+        } else if let Some((what, how)) = open.in_progress.first() {
+            // Running, though not in the task queue: a worker's errand (a
+            // download, a backup) or a scheduled job in flight.
+            let more = counts.running.saturating_sub(1);
+            (
+                what.clone(),
+                if more > 0 {
+                    format!("{how} {more} more running.")
+                } else {
+                    how.clone()
+                },
+                what.clone(),
+            )
         } else {
             (
                 "Nothing underway.".to_string(),
@@ -178,7 +199,7 @@ impl Daemon<'_> {
             .skip(done.len().saturating_sub(3))
             .map(|(_, t, w, _)| (t.clone(), w.clone(), hub::Mark::Done))
             .collect();
-        if !events.is_empty() || running.is_some() {
+        if !events.is_empty() || running.is_some() || counts.running > 0 {
             spine.push(("NOW".to_string(), now_short, hub::Mark::Now));
         }
         spine.extend(
@@ -188,15 +209,25 @@ impl Daemon<'_> {
                 .map(|(_, t, w, m)| (t.clone(), w.clone(), *m)),
         );
 
-        let asks = self.home_asks(now);
-        let brief = self.brief_line(&asks, running.is_some(), &now_line);
+        let asks: Vec<(String, String)> = open
+            .waiting
+            .iter()
+            .map(|(what, _, href)| (what.clone(), href.clone()))
+            .collect();
+        let brief = self.brief_line(
+            &counts,
+            counts.running > 0 && !self.attention.is_paused(),
+            &now_line,
+        );
         let first_run = calendar_available
             && events.is_empty()
             && self.workspace.is_empty()
             && self.workshop.projects.is_empty()
             && self.calendar.is_empty()
             && self.journal.since(0).is_empty()
-            && asks.is_empty();
+            && asks.is_empty()
+            && counts.running == 0
+            && counts.stopped() == 0;
         hub::Deck {
             greeting,
             status,
@@ -213,16 +244,11 @@ impl Daemon<'_> {
 
     /// What's waiting on you, for the Brief on Home and the first lane of
     /// Outstanding: your own open items, what Atlas stopped on and needs you
-    /// for, and changes it built that wait on your yes. The same things the
-    /// waiting count at the top of every page counts.
-    pub(super) fn home_asks(&self, now: u64) -> Vec<(String, String)> {
-        self.home_asks_keyed(now)
-            .into_iter()
-            .map(|(what, href, _)| (what, href))
-            .collect()
-    }
-
-    /// `home_asks`, each with the key its Drop it button sends (see
+    /// for, and changes it built that wait on your yes. `open_work` lists
+    /// these as its Waiting lane, which is also what the waiting count at the
+    /// top of every page counts.
+    ///
+    /// Each ask with the key its Drop it button sends (see
     /// `hub::Drops`). Worked out here, where each ask is made, rather than
     /// matched back up by its words afterwards: two things can read the same.
     pub(super) fn home_asks_keyed(&self, now: u64) -> Vec<(String, String, Option<String>)> {
@@ -266,25 +292,24 @@ impl Daemon<'_> {
     }
 
     /// The Brief, in Atlas's words: how many things want you, what it's on,
-    /// and — when nothing does — that it's quiet, said plainly.
-    pub(super) fn brief_line(
-        &self,
-        asks: &[(String, String)],
-        working: bool,
-        now_line: &str,
-    ) -> String {
+    /// and -- when nothing does -- that it's quiet, said plainly.
+    ///
+    /// Reads `hub::Counts`, the numbers Outstanding and the header pill read.
+    /// "It's quiet" is only said when nothing is waiting on you AND nothing
+    /// has stopped or failed; otherwise it says what has (20 Oct 2026).
+    pub(super) fn brief_line(&self, counts: &hub::Counts, working: bool, now_line: &str) -> String {
         let doing = if working {
-            format!(" I'm on it now: {}", now_line.trim_end_matches('.'))
+            format!(" I'm on it now: {}.", now_line.trim_end_matches('.'))
         } else {
             String::new()
         };
-        let doing = if doing.is_empty() {
-            doing
-        } else {
-            format!("{doing}.")
-        };
-        match asks.len() {
-            0 => format!("It's quiet. Nothing needs you.{doing}"),
+        let stopped = counts.stopped();
+        let mut line = match counts.waiting {
+            0 if stopped == 0 => format!("It's quiet. Nothing needs you.{doing}"),
+            0 => format!(
+                "Nothing is waiting on you, but {}.{doing}",
+                stopped_said(counts)
+            ),
             1 => format!("One thing wants you.{doing}"),
             n => {
                 const WORDS: [&str; 9] = [
@@ -296,7 +321,11 @@ impl Daemon<'_> {
                     .unwrap_or_else(|| n.to_string());
                 format!("{said} things want you.{doing}")
             }
+        };
+        if counts.waiting > 0 && stopped > 0 {
+            line.push_str(&format!(" Also, {}.", stopped_said(counts)));
         }
+        line
     }
 
     /// Your businesses at a glance: each business on the roster, its open
@@ -327,4 +356,24 @@ impl Daemon<'_> {
             })
             .collect()
     }
+}
+
+/// "3 things have stopped: 2 blocked, 1 failed", from the counts.
+fn stopped_said(c: &hub::Counts) -> String {
+    let mut parts = Vec::new();
+    if c.blocked > 0 {
+        parts.push(format!("{} blocked", c.blocked));
+    }
+    if c.failed > 0 {
+        parts.push(format!("{} failed", c.failed));
+    }
+    if c.interrupted > 0 {
+        parts.push(format!("{} cut off by a restart", c.interrupted));
+    }
+    let n = c.stopped();
+    format!(
+        "{n} {} stopped: {}",
+        if n == 1 { "thing has" } else { "things have" },
+        parts.join(", ")
+    )
 }

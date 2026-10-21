@@ -261,6 +261,130 @@ struct BackupManifest {
     roots: Vec<(String, String)>,
     #[serde(default)]
     directories: Vec<PathBuf>,
+    /// How many Atlas-owned volatile files (lock files, unfinished atomic
+    /// writes, live process controls, a child process's own lock) were left
+    /// out on purpose. Absent in manifests written before 20 Oct 2026.
+    #[serde(default)]
+    skipped_volatile: usize,
+    /// Genuine files that could not be read at backup time (held by another
+    /// process, or growing faster than they could be copied). The backup is
+    /// partial in exactly these files, and says so.
+    #[serde(default)]
+    skipped: Vec<SkippedFile>,
+}
+
+/// A file a backup could not copy, and why.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SkippedFile {
+    pub path: String,
+    pub reason: String,
+}
+
+/// What a backup left out. `volatile` is Atlas's own lock/in-flight files by
+/// design; `files` are real files that could not be read this time.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Skips {
+    pub volatile: usize,
+    pub files: Vec<SkippedFile>,
+}
+
+impl Skips {
+    /// One line for the person, or nothing when no real file was left out.
+    pub fn say(&self) -> Option<String> {
+        if self.files.is_empty() {
+            return None;
+        }
+        let names: Vec<String> = self.files.iter().take(3).map(|f| f.path.clone()).collect();
+        let more = self.files.len().saturating_sub(names.len());
+        Some(format!(
+            "{} file{} could not be read and {} left out: {}{}",
+            self.files.len(),
+            if self.files.len() == 1 { "" } else { "s" },
+            if self.files.len() == 1 { "was" } else { "were" },
+            names.join(", "),
+            if more > 0 {
+                format!(" and {more} more")
+            } else {
+                String::new()
+            }
+        ))
+    }
+}
+
+/// The outcome text of a finished backup and whether older backups may be
+/// pruned after it. A partial backup (real files left out) says so, and never
+/// prunes: `prune_backups` drops the oldest once `keep` is exceeded, so a
+/// partial one could push out the last complete backup (2026-10-21).
+pub fn backup_outcome(files: usize, skips: &Skips) -> (String, bool) {
+    match skips.say() {
+        None => (format!("backed up {files} files"), true),
+        Some(left_out) => (
+            format!(
+                "partial backup: {} file{} skipped ({left_out}); older backups were kept",
+                skips.files.len(),
+                if skips.files.len() == 1 { "" } else { "s" }
+            ),
+            false,
+        ),
+    }
+}
+
+/// Why a backup must not read this file, or `None` if it should.
+///
+/// Atlas's own volatile files and a child process's lock: held open with an
+/// exclusive `LockFileEx` range by whoever owns them, which makes any read
+/// fail with ERROR_LOCK_VIOLATION (os error 33). Reading them would be wrong
+/// even if it worked: a lock file holds nothing, and a `.writing` file is half
+/// of a write.
+///
+/// 20 Oct 2026: the real log showed "backup failed ... (os error 33)" on every
+/// start. The state root's own locks were already covered by name; the file
+/// the list missed was the lock inside the Tor child's data directory
+/// (`state/tor/data/lock`), which the running Tor holds exclusively.
+fn volatile_reason(from: &Path, name: &str) -> Option<&'static str> {
+    let in_dir = |dir: &str| from.file_name().is_some_and(|n| n == dir);
+    let under = |dir: &str| from.components().any(|c| c.as_os_str() == dir);
+    if name == ".state-operations.lock" || name == ".state-access.lock" {
+        Some("state lock held by the running Atlas")
+    } else if name == ".atlas-output-write.lock" || name == "ledger.lock" {
+        Some("output lease lock held while recording or copying")
+    } else if name == "running.os.lock" || name == "running.lock" || name == "running.claim" {
+        Some("single-instance sentinel of the running Atlas")
+    } else if name == ".atlas-output-owner" || name.starts_with(".restoring-") {
+        Some("ownership marker or restore staging")
+    } else if name.ends_with(".writing") && !under("tray") && !under("handoffs") {
+        Some("unfinished atomic write")
+    } else if name == "please_stop" || name == "hub_door.json" {
+        Some("live process control")
+    } else if name == "release_download" {
+        Some("replaceable installer download cache")
+    } else if name.starts_with(".health-check-") && name.ends_with(".tmp") {
+        Some("health-check probe")
+    } else if in_dir("tray") && name.starts_with("frames-") {
+        Some("derived tray frames")
+    } else if name == "lock"
+        && in_dir("data")
+        && from
+            .parent()
+            .and_then(Path::file_name)
+            .is_some_and(|n| n == "tor")
+    {
+        Some("Tor's own lock, held exclusively while Tor runs")
+    } else {
+        None
+    }
+}
+
+/// Windows says a file is held by someone else with 32 (sharing violation) or
+/// 33 (lock violation, an exclusive byte range).
+fn held_elsewhere(error: &std::io::Error) -> bool {
+    cfg!(windows) && matches!(error.raw_os_error(), Some(32) | Some(33))
+}
+
+/// The same error, saying which file. An "(os error 33)" with no path gave
+/// the owner nothing to act on.
+fn naming(path: &Path, error: std::io::Error) -> std::io::Error {
+    std::io::Error::new(error.kind(), format!("{}: {error}", path.display()))
 }
 const OWNED_OUTPUTS: &str = ".atlas-owned-outputs";
 const OWNED_FOLDERS: [&str; 5] = ["notes", "calls", "reading", "trash", "recovery"];
@@ -487,13 +611,26 @@ pub fn back_up(state: &Path, cfg: &BackupConfig, t: u64) -> Result<Backup> {
     back_up_with_inputs(state, cfg, t, &store.notes_dir(), &store.trash_dir())
 }
 
-pub fn back_up_with_inputs(
+fn back_up_with_inputs(
     state: &Path,
     cfg: &BackupConfig,
     t: u64,
     notes: &Path,
     trash: &Path,
 ) -> Result<Backup> {
+    back_up_with_report(state, cfg, t, notes, trash).map(|(backup, _)| backup)
+}
+
+/// `back_up_with_inputs`, also saying what was left out. A file another
+/// process holds locked is retried briefly and then listed as skipped, so one
+/// stuck file makes a partial backup that says so, not a failed backup.
+pub fn back_up_with_report(
+    state: &Path,
+    cfg: &BackupConfig,
+    t: u64,
+    notes: &Path,
+    trash: &Path,
+) -> Result<(Backup, Skips)> {
     if !state.is_dir() {
         return Err(AtlasError::Platform(format!(
             "nothing at {}",
@@ -561,6 +698,7 @@ pub fn back_up_with_inputs(
 
     let mut files = 0usize;
     let mut bytes = 0u64;
+    let mut skips = Skips::default();
     let copied = (|| -> Result<()> {
         let flush = DeferFlush::begin();
         let snapshot = crate::store::wait_for_state_transaction(state)?;
@@ -616,7 +754,9 @@ pub fn back_up_with_inputs(
             .iter()
             .filter_map(|(_, source)| std::fs::canonicalize(source).ok())
             .collect();
-        copy_state_into_skipping(state, &staging, &skip, &excluded, &mut files, &mut bytes)?;
+        copy_state_into_skipping(
+            state, &staging, &skip, &excluded, &mut files, &mut bytes, &mut skips,
+        )?;
         // The state folder is the part that must be one consistent moment, and
         // it is copied. Let go of the lock now: everything below is the owned
         // output folders (each held by its own lease) and checking the copy,
@@ -634,6 +774,7 @@ pub fn back_up_with_inputs(
                     &[],
                     &mut files,
                     &mut bytes,
+                    &mut skips,
                 )?;
             }
         }
@@ -652,7 +793,7 @@ pub fn back_up_with_inputs(
             .collect::<Result<Vec<_>>>()?;
         let mut directories = Vec::new();
         gather_directories(&staging, Path::new(""), &mut directories)?;
-        let manifest = BackupManifest { version: 2, entries, directories, excluded: vec![
+        let manifest = BackupManifest { version: 2, entries, directories, skipped_volatile: skips.volatile, skipped: skips.files.clone(), excluded: vec![
             "state root/operation/access lock metadata; active restore staging; unfinished atomic writes".into(),
             "please_stop and hub_door.json are live process controls; release_download is a replaceable installer download cache".into(),
             "tray/frames-* and updater probes are derived/transient; data logs/cache and external originals held by reference are outside this backup".into(),
@@ -672,12 +813,15 @@ pub fn back_up_with_inputs(
         std::fs::rename(&staging, &dest)?;
         Ok(())
     }) {
-        Ok(()) => Ok(Backup {
-            path: dest,
-            at: t,
-            files: Some(files),
-            bytes,
-        }),
+        Ok(()) => Ok((
+            Backup {
+                path: dest,
+                at: t,
+                files: Some(files),
+                bytes,
+            },
+            skips,
+        )),
         Err(e) => {
             // A backup that failed is not a backup. Left on disk it has a
             // recent timestamp, which is worse than no backup at all.
@@ -698,6 +842,7 @@ fn copy_state_into_skipping(
     excluded: &[PathBuf],
     files: &mut usize,
     bytes: &mut u64,
+    skips: &mut Skips,
 ) -> Result<()> {
     std::fs::create_dir_all(to)?;
     for e in std::fs::read_dir(from)? {
@@ -727,26 +872,12 @@ fn copy_state_into_skipping(
         if name_text == ".atlas-state-root"
             || name_text == BACKUP_MANIFEST
             || name_text == ".restore-journal.json"
-            || name_text == "please_stop"
-            || name_text == "hub_door.json"
-            || name_text == "release_download"
-            || (name_text.starts_with(".health-check-") && name_text.ends_with(".tmp"))
-            || (from.file_name().is_some_and(|name| name == "tray")
-                && name_text.starts_with("frames-"))
-            || (!from
-                .components()
-                .any(|c| c.as_os_str() == "tray" || c.as_os_str() == "handoffs")
-                && name_text.ends_with(".writing"))
-            || name_text == ".state-operations.lock"
-            || name_text == ".state-access.lock"
-            || name_text == ".atlas-output-write.lock"
-            || name_text == ".atlas-output-owner"
-            || name_text == "running.os.lock"
-            || name_text == "running.lock"
-            || name_text == "running.claim"
-            || name_text == "ledger.lock"
-            || name_text.starts_with(".restoring-")
         {
+            continue;
+        }
+        if volatile_reason(from, &name_text).is_some() {
+            // Counted, so a restore's "why is this missing" has an answer.
+            skips.volatile += 1;
             continue;
         }
         // A file that is no longer there is skipped, not an error.
@@ -786,14 +917,25 @@ fn copy_state_into_skipping(
             if here == *skip || here.starts_with(skip) {
                 continue;
             }
-            copy_state_into_skipping(&p, &to.join(&name), skip, excluded, files, bytes)?;
+            copy_state_into_skipping(&p, &to.join(&name), skip, excluded, files, bytes, skips)?;
             continue;
         }
         let tmp = to.join(format!("{PART_PREFIX}{}", name.to_string_lossy()));
         match copy_file_durably(&p, &tmp) {
             Ok(_) => {}
-            // Same reasoning: gone between the listing and the copy.
-            Err(e) => return Err(e.into()),
+            // Gone between the listing and the copy: nothing to back up.
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound && !p.exists() => continue,
+            // Still held by another process after the brief retries, or never
+            // stopped growing. One such file must not fail the whole backup:
+            // it is listed in the manifest and in the report as left out.
+            Err(e) if held_elsewhere(&e) || e.kind() == std::io::ErrorKind::UnexpectedEof => {
+                skips.files.push(SkippedFile {
+                    path: p.display().to_string(),
+                    reason: e.to_string(),
+                });
+                continue;
+            }
+            Err(e) => return Err(naming(&p, e).into()),
         }
         crate::store::rename_patiently(&tmp, &to.join(&name))?;
         DEFERRED_FLUSH.with(|d| {
@@ -1648,6 +1790,29 @@ fn atomic_move_no_replace(from: &Path, to: &Path) -> Result<()> {
     }
 }
 
+/// Copy a folder the way a backup wants it: a link inside it (a symbolic link
+/// or a junction) is left out and counted in `links`, never followed and
+/// never a reason to refuse (2026-10-21: Documents carries the old "My Music"
+/// junctions). The top of the copy must itself be an ordinary folder or file.
+pub(crate) fn copy_without_overwrite_verified_leaving_links(
+    from: &Path,
+    to: &Path,
+    stopped: &impl Fn() -> bool,
+    verify: &dyn Fn(&Path) -> Result<()>,
+    links: &std::cell::Cell<u64>,
+) -> Result<()> {
+    move_controlled_checked_links(
+        from,
+        to,
+        stopped,
+        true,
+        Some(verify),
+        false,
+        None,
+        Some(links),
+    )
+}
+
 fn move_controlled_checked(
     from: &Path,
     to: &Path,
@@ -1656,6 +1821,29 @@ fn move_controlled_checked(
     verify: Option<&dyn Fn(&Path) -> Result<()>>,
     remove_source: bool,
     before: Option<&mut dyn FnMut() -> Result<()>>,
+) -> Result<()> {
+    move_controlled_checked_links(
+        from,
+        to,
+        stopped,
+        force_copy,
+        verify,
+        remove_source,
+        before,
+        None,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn move_controlled_checked_links(
+    from: &Path,
+    to: &Path,
+    stopped: &impl Fn() -> bool,
+    force_copy: bool,
+    verify: Option<&dyn Fn(&Path) -> Result<()>>,
+    remove_source: bool,
+    before: Option<&mut dyn FnMut() -> Result<()>>,
+    links: Option<&std::cell::Cell<u64>>,
 ) -> Result<()> {
     fn checkpoint(stopped: &impl Fn() -> bool) -> std::io::Result<()> {
         if stopped() {
@@ -1667,11 +1855,21 @@ fn move_controlled_checked(
             Ok(())
         }
     }
-    fn copy(from: &Path, to: &Path, stopped: &impl Fn() -> bool) -> std::io::Result<()> {
+    fn copy(
+        from: &Path,
+        to: &Path,
+        stopped: &impl Fn() -> bool,
+        links: Option<&std::cell::Cell<u64>>,
+        top: bool,
+    ) -> std::io::Result<()> {
         use std::io::{Read, Write};
         checkpoint(stopped)?;
         let metadata = std::fs::symlink_metadata(from)?;
         if metadata.file_type().is_symlink() {
+            if let (Some(links), false) = (links, top) {
+                links.set(links.get() + 1);
+                return Ok(());
+            }
             return Err(std::io::Error::other(
                 "symbolic links cannot be safely copied",
             ));
@@ -1681,7 +1879,13 @@ fn move_controlled_checked(
             for entry in std::fs::read_dir(from)? {
                 checkpoint(stopped)?;
                 let entry = entry?;
-                copy(&entry.path(), &to.join(entry.file_name()), stopped)?;
+                copy(
+                    &entry.path(),
+                    &to.join(entry.file_name()),
+                    stopped,
+                    links,
+                    false,
+                )?;
             }
         } else if metadata.is_file() {
             let mut input = std::fs::File::open(from)?;
@@ -1766,7 +1970,7 @@ fn move_controlled_checked(
     std::fs::create_dir(&temporary)?;
     let payload = temporary.join("payload");
     let result = (|| -> Result<()> {
-        copy(from, &payload, stopped)?;
+        copy(from, &payload, stopped, links, true)?;
         #[cfg(windows)]
         if let Some(cohort) = &cohort {
             cohort.validate(stopped)?;
@@ -2198,6 +2402,35 @@ impl Trash {
 #[cfg(test)]
 mod resolved_dir_tests {
     use super::*;
+
+    #[test]
+    fn a_partial_backup_is_said_and_never_prunes() {
+        let (said, prune) = backup_outcome(40, &Skips::default());
+        assert!(said.contains("backed up 40 files") && prune, "{said}");
+        // Atlas's own volatile files are by design, not a partial backup.
+        let (_, prune) = backup_outcome(
+            40,
+            &Skips {
+                volatile: 3,
+                files: Vec::new(),
+            },
+        );
+        assert!(prune);
+        let skips = Skips {
+            volatile: 0,
+            files: vec![SkippedFile {
+                path: "state/a.json".into(),
+                reason: "locked".into(),
+            }],
+        };
+        let (said, prune) = backup_outcome(39, &skips);
+        assert!(said.starts_with("partial backup: 1 file skipped"), "{said}");
+        assert!(said.contains("state/a.json"), "{said}");
+        assert!(
+            !prune,
+            "pruning after a partial backup could drop the last complete one"
+        );
+    }
 
     #[test]
     fn a_relative_dir_is_resolved_under_the_store_root() {

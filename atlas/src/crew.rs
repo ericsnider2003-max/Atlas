@@ -582,6 +582,9 @@ impl Crew {
         let for_thread = ctl.clone();
         let work = p.work;
         let thread = std::thread::spawn(move || {
+            // Errands are background work: efficiency mode and a lower
+            // priority for this thread and the programs it starts (20 Oct 2026).
+            crate::ecoqos::this_thread();
             let result = work(&for_thread);
             // Send, then return. A hand checking `is_finished()` after this
             // point is guaranteed to find the message already sitting in

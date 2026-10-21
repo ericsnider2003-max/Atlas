@@ -445,7 +445,11 @@ fn outstanding_says_what_it_tried_what_stopped_it_and_what_it_needs() {
             blocked: vec![Some("b:1".into())],
             in_progress: vec![Some("e:4".into())],
             carried: vec![None],
+            ..Default::default()
         },
+        // 20 Oct 2026: Failed, Interrupted and Done lanes exist as well; this
+        // test is about the four the design drew, so the new ones are empty.
+        ..Default::default()
     };
     let html = hub::outstanding_page(&o);
     assert_eq!(
@@ -699,11 +703,11 @@ fn the_appearance_menu_the_second_chat_built_is_back_and_needs_no_script() {
 fn every_page_tells_the_truth_about_whats_waiting() {
     let page = hub::shell_at(Some(Page::Settings), "Settings", "<p>x</p>");
     assert!(page.contains(">Nothing waiting</a>"));
-    let told = hub::with_waiting(page.clone(), 2);
+    let told = hub::with_counts(page.clone(), 2, "");
     assert!(
         told.contains("<span class=dot></span>2 waiting</a>") && !told.contains("Nothing waiting")
     );
-    assert_eq!(hub::with_waiting(page.clone(), 0), page);
+    assert_eq!(hub::with_counts(page.clone(), 0, ""), page);
 }
 
 #[test]
