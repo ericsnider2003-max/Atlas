@@ -35,6 +35,7 @@ Dates are UTC. The card at the top of `AGENTS.md` holds the facts; this file hol
 
 ## Recently done
 
+- `sec4-dns-q25` SEC4 residual: keyless peer name lookups moved off the tick to a background cache; Q25: Daemon::set_auto_backup switch for tests (2026-10-21)
 - `gpu1-health` GPU1: a model server whose log shows Vulkan device loss is not trusted even when /health says OK; checked before each request (2026-10-21)
 - `tune-trash` PC tidy-up moves old temp files to Atlas's trash (restorable, 30 days) instead of deleting them (2026-10-21)
 - `selftest-scratch` SELFTEST1: self-test scratch cleanup removes junction links only, guarded to temp atlas-selftest-* folders, failures reported (2026-10-21)
@@ -44,7 +45,6 @@ Dates are UTC. The card at the top of `AGENTS.md` holds the facts; this file hol
 - `i65c1` Canonical open-work audit (2026-10-16)
 - `filingbundle` Complete canonical Atlas filing bundle (2026-10-16)
 - `filingcheckpoint` Filing integrity checkpoint for canonical Atlas work (2026-10-15)
-- `f1jobcompile` F1 durable job task-loop compile boundary (2026-10-15)
 
 ## Docs
 

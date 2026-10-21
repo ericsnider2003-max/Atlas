@@ -1359,9 +1359,13 @@ impl<'a> Daemon<'a> {
         if first_backup_look {
             self.next_backup_look = first_backup_look_at(t);
         }
-        let look = !first_backup_look
-            && t >= self.next_backup_look
-            && t.saturating_sub(self.last_backup_attempt) > 600;
+        let look = backup_look_due(
+            self.auto_backup,
+            first_backup_look,
+            t,
+            self.next_backup_look,
+            self.last_backup_attempt,
+        );
         let bcfg = if look {
             self.backup_cfg()
         } else {
@@ -2831,23 +2835,21 @@ impl<'a> Daemon<'a> {
         )
     }
 
-    /// Is this address one of the devices named in `elsewhere.known`? A
-    /// name is looked up; an address is compared as written.
+    /// Is this address one of the devices named in `elsewhere.known`? An
+    /// address is compared as written. A name is matched against a cache
+    /// that a background thread fills, because a DNS lookup here stalled the
+    /// whole tick (21 Oct 2026). So a peer given by name may be recognised a
+    /// little after the first connection, not on it.
     fn is_a_named_peer(&self, peer: std::net::IpAddr) -> bool {
-        use std::net::ToSocketAddrs;
-        self.tools_cfg().elsewhere.known.iter().any(|p| {
-            let host = p.host.trim();
-            if host.is_empty() {
-                return false;
-            }
-            match host.parse::<std::net::IpAddr>() {
-                Ok(ip) => ip == peer,
-                Err(_) => (host, 0u16)
-                    .to_socket_addrs()
-                    .map(|mut a| a.any(|a| a.ip() == peer))
-                    .unwrap_or(false),
-            }
-        })
+        let hosts: Vec<String> = self
+            .tools_cfg()
+            .elsewhere
+            .known
+            .iter()
+            .map(|p| p.host.trim().to_string())
+            .filter(|h| !h.is_empty())
+            .collect();
+        self.peer_names.matches(&hosts, peer, resolve_host)
     }
 
     fn sync_key(&self) -> Option<Vec<u8>> {
@@ -3574,6 +3576,101 @@ pub const TOP_UP_AFTER_START_SECS: u64 = 120;
 /// first answer. Later looks retain the normal ten-minute cadence.
 const BACKUP_AFTER_START_SECS: u64 = 120;
 
+/// Whether the timer looks at the backup schedule this tick. `auto_backup`
+/// is false only in tests that must not meet a scheduled backup.
+fn backup_look_due(auto_backup: bool, first: bool, t: u64, next: u64, last_attempt: u64) -> bool {
+    auto_backup && !first && t >= next && t.saturating_sub(last_attempt) > 600
+}
+
+/// A blocking lookup. Only ever called from the background thread.
+fn resolve_host(host: &str) -> Vec<std::net::IpAddr> {
+    use std::net::ToSocketAddrs;
+    (host, 0u16)
+        .to_socket_addrs()
+        .map(|a| a.map(|a| a.ip()).collect())
+        .unwrap_or_default()
+}
+
+/// How often the named peers are looked up again.
+const PEER_NAMES_REFRESH: std::time::Duration = std::time::Duration::from_secs(300);
+
+#[derive(Default)]
+struct PeerNamesState {
+    /// Names that resolved, with their addresses. Names that did not are absent.
+    resolved: std::collections::BTreeMap<String, Vec<std::net::IpAddr>>,
+    /// The names the last refresh was started for, and when.
+    asked: Vec<String>,
+    asked_at: Option<std::time::Instant>,
+    in_flight: bool,
+}
+
+fn lock_names(m: &std::sync::Mutex<PeerNamesState>) -> std::sync::MutexGuard<'_, PeerNamesState> {
+    m.lock().unwrap_or_else(|p| p.into_inner())
+}
+
+/// Addresses of the hostnames in `elsewhere.known`. The tick only reads it;
+/// a short-lived thread does the lookups. Refreshed when the list of names
+/// changes and at most every five minutes.
+#[derive(Clone, Default)]
+pub(super) struct PeerNames(std::sync::Arc<std::sync::Mutex<PeerNamesState>>);
+
+impl PeerNames {
+    /// Never blocks on DNS. `resolve` runs on a spawned thread.
+    pub(super) fn matches(
+        &self,
+        hosts: &[String],
+        peer: std::net::IpAddr,
+        resolve: fn(&str) -> Vec<std::net::IpAddr>,
+    ) -> bool {
+        let mut names: Vec<String> = Vec::new();
+        for h in hosts {
+            match h.parse::<std::net::IpAddr>() {
+                Ok(ip) => {
+                    if ip == peer {
+                        return true;
+                    }
+                }
+                Err(_) => names.push(h.clone()),
+            }
+        }
+        if names.is_empty() {
+            return false;
+        }
+        let mut st = lock_names(&self.0);
+        let stale = st.asked != names
+            || st
+                .asked_at
+                .is_none_or(|t| t.elapsed() >= PEER_NAMES_REFRESH);
+        if stale && !st.in_flight {
+            st.in_flight = true;
+            st.asked = names.clone();
+            st.asked_at = Some(std::time::Instant::now());
+            let shared = self.0.clone();
+            let todo = names.clone();
+            let spawned = std::thread::Builder::new()
+                .name("peer-names".into())
+                .spawn(move || {
+                    let found: std::collections::BTreeMap<_, _> = todo
+                        .into_iter()
+                        .filter_map(|n| {
+                            let ips = resolve(&n);
+                            (!ips.is_empty()).then_some((n, ips))
+                        })
+                        .collect();
+                    let mut st = lock_names(&shared);
+                    st.resolved = found;
+                    st.in_flight = false;
+                });
+            if spawned.is_err() {
+                st.in_flight = false;
+            }
+        }
+        names
+            .iter()
+            .any(|n| st.resolved.get(n).is_some_and(|ips| ips.contains(&peer)))
+    }
+}
+
 fn first_backup_look_at(now: u64) -> u64 {
     now.saturating_add(BACKUP_AFTER_START_SECS)
 }
@@ -3730,7 +3827,69 @@ mod dials_have_a_deadline {
 }
 
 #[cfg(test)]
+mod peer_names_off_the_tick {
+    use super::PeerNames;
+    use std::net::IpAddr;
+    use std::time::{Duration, Instant};
+
+    fn slow(_: &str) -> Vec<IpAddr> {
+        std::thread::sleep(Duration::from_millis(300));
+        vec!["10.1.2.3".parse().unwrap()]
+    }
+
+    #[test]
+    fn an_unresolvable_name_does_not_hold_the_tick_and_a_literal_still_matches() {
+        let names = PeerNames::default();
+        let peer: IpAddr = "192.168.1.50".parse().unwrap();
+        let other: IpAddr = "192.168.1.51".parse().unwrap();
+        let hosts = vec![
+            "nonexistent.invalid".to_string(),
+            "192.168.1.50".to_string(),
+        ];
+        let t = Instant::now();
+        assert!(names.matches(&hosts, peer, super::resolve_host));
+        assert!(!names.matches(&hosts, other, super::resolve_host));
+        assert!(t.elapsed() < Duration::from_millis(50), "{:?}", t.elapsed());
+    }
+
+    #[test]
+    fn a_name_is_recognised_once_the_background_lookup_lands() {
+        let names = PeerNames::default();
+        let peer: IpAddr = "10.1.2.3".parse().unwrap();
+        let hosts = vec!["laptop.local".to_string()];
+        let t = Instant::now();
+        assert!(!names.matches(&hosts, peer, slow));
+        assert!(t.elapsed() < Duration::from_millis(50), "{:?}", t.elapsed());
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while !names.matches(&hosts, peer, slow) {
+            assert!(Instant::now() < deadline, "never resolved");
+            std::thread::sleep(Duration::from_millis(20));
+        }
+    }
+}
+
+#[cfg(test)]
 mod backup_startup_schedule {
+    #[test]
+    fn with_the_timer_off_no_look_happens_after_the_start_window() {
+        // 21 Oct 2026: tests that run past the first look (start + 120 s)
+        // and must not meet a backup call `Daemon::set_auto_backup(false)`.
+        let start = 10_000;
+        let first = super::first_backup_look_at(start);
+        for t in [first, first + 600, first + 6_000, first + 86_400] {
+            assert!(
+                super::backup_look_due(true, false, t, first, 0),
+                "on at {t}"
+            );
+            assert!(
+                !super::backup_look_due(false, false, t, first, 0),
+                "off at {t}"
+            );
+        }
+        // The very first tick only sets the delay, on or off.
+        assert!(!super::backup_look_due(true, true, start, 0, 0));
+    }
+
     #[test]
     fn the_zero_sentinel_is_replaced_by_a_delayed_first_look() {
         let now = 10_000;

@@ -737,3 +737,5 @@
 {"ts":"2026-10-21T07:32:40.328Z","who":"claude-outstanding","op":"done","id":"tune-trash"}
 {"ts":"2026-10-21T07:40:26.489Z","who":"claude-outstanding","op":"add","id":"gpu1-health","title":"GPU1: a model server whose log shows Vulkan device loss is not trusted even when /health says OK; checked before each request","home":"atlas/src/models.rs"}
 {"ts":"2026-10-21T07:40:27.461Z","who":"claude-outstanding","op":"done","id":"gpu1-health"}
+{"ts":"2026-10-21T07:40:39.327Z","who":"claude-outstanding","op":"add","id":"sec4-dns-q25","title":"SEC4 residual: keyless peer name lookups moved off the tick to a background cache; Q25: Daemon::set_auto_backup switch for tests","home":"atlas/src/daemon/tick.rs"}
+{"ts":"2026-10-21T07:40:40.191Z","who":"claude-outstanding","op":"done","id":"sec4-dns-q25"}
