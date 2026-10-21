@@ -2190,6 +2190,23 @@ impl<'a> Daemon<'a> {
             Some(n) if !n.enabled => return format!("\"{name}\" is greyed out in {where_}."),
             Some(_) => {}
         }
+        // 21 Oct 2026: charter section 8. The window may be a browser showing a
+        // shop or a bank; the label decides, and the window title tells which.
+        let title = format!(
+            "{where_} {}",
+            tree.as_ref().map(|t| t.name.as_str()).unwrap_or("")
+        );
+        if let Some(refusal) =
+            crate::finance::press_refusal(&title, &name, &self.tools_cfg().finance)
+        {
+            self.journal.record_at(
+                Act::Upkeep,
+                &format!("refused to press \"{name}\" in {where_}"),
+                false,
+                crate::store::now(),
+            );
+            return refusal;
+        }
         if crate::uia::cannot_be_undone(&name) {
             let q = format!("Press \"{name}\" in {where_}? That one can't be taken back.");
             self.session.ask(&q);
@@ -2205,6 +2222,22 @@ impl<'a> Daemon<'a> {
         name: &str,
         where_: &str,
     ) -> String {
+        // A press you approved earlier is checked again: the window may have
+        // changed, and approval is not permission to buy.
+        let title = self
+            .plat
+            .read_window(win)
+            .ok()
+            .flatten()
+            .map(|t| t.name)
+            .unwrap_or_default();
+        if let Some(refusal) = crate::finance::press_refusal(
+            &format!("{where_} {title}"),
+            name,
+            &self.tools_cfg().finance,
+        ) {
+            return refusal;
+        }
         match self.plat.press_named(win, name) {
             Ok(true) => {
                 self.journal.record_at(

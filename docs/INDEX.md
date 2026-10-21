@@ -35,6 +35,7 @@ Dates are UTC. The card at the top of `AGENTS.md` holds the facts; this file hol
 
 ## Recently done
 
+- `click-gate` Charter §8 click gate: refuse buy/order buttons anywhere and money/confirm buttons on bank or broker windows, at press_button and the screen-operating step (2026-10-21)
 - `i217d` Complete singular-candidate workspace handoff and inventory (2026-10-18)
 - `verify-harness` Independent real-runtime verification harness (2026-10-18)
 - `i65c1` Canonical open-work audit (2026-10-16)

@@ -464,6 +464,12 @@ impl<'a> Daemon<'a> {
         match action {
             Action::Click(n) | Action::Choose(n) => {
                 let t = target(*n)?;
+                // 21 Oct 2026: charter section 8, checked where the click happens.
+                if let Some(refusal) =
+                    crate::finance::press_refusal(&view.title, t.name(), &self.tools_cfg().finance)
+                {
+                    return Err(refusal);
+                }
                 if let Target::Control { path, role, .. } = &t {
                     for act in operate::acts_for(action, *role) {
                         if let Ok(true) = self.plat.act_on(win, path, &act) {

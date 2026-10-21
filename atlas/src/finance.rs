@@ -165,6 +165,25 @@ impl FinanceConfig {
             .iter()
             .any(|d| u.contains(&d.to_lowercase()))
     }
+
+    /// Is this window title a financial one? Window titles are not URLs: a
+    /// browser shows "Chase Online Banking - Google Chrome", not "chase.com".
+    /// So match a whole domain, or a word equal to a domain's stem.
+    pub fn is_financial_window(&self, title: &str) -> bool {
+        let t = title.to_lowercase();
+        let words: Vec<&str> = t
+            .split(|c: char| !c.is_alphanumeric())
+            .filter(|w| !w.is_empty())
+            .collect();
+        self.financial_domains.iter().any(|d| {
+            let d = d.to_lowercase();
+            if d.is_empty() {
+                return false;
+            }
+            let stem = d.split('.').next().unwrap_or("");
+            t.contains(&d) || (!stem.is_empty() && words.iter().any(|w| *w == stem))
+        })
+    }
 }
 
 /// Button labels that move money. Matched loosely on purpose — a false refusal
@@ -475,6 +494,83 @@ pub fn moves_money(label: &str) -> bool {
     })
 }
 
+/// Labels that buy or order something, on any window at all (21 Oct 2026).
+/// Charter section 8: Atlas never purchases, orders, moves money or trades.
+/// A shop is not on the financial list, so these cannot depend on the domain.
+const PURCHASE_ANYWHERE: &[&str] = &[
+    "buy now",
+    "place order",
+    "place your order",
+    "submit order",
+    "complete purchase",
+    "complete order",
+    "purchase",
+    "checkout",
+    "check out",
+    "pay now",
+    "confirm purchase",
+    "confirm order",
+    "place trade",
+    "submit trade",
+    "buy",
+    "sell",
+];
+
+/// Bare confirmations. On a bank or broker page "Yes" is the answer to "send
+/// $500?", so it is refused there even though the word moves nothing itself.
+const BARE_CONFIRM: &[&str] = &[
+    "yes", "ok", "okay", "accept", "agree", "i agree", "continue", "proceed",
+];
+
+fn is_purchase(label: &str) -> bool {
+    let lower = label.to_lowercase();
+    let words: Vec<&str> = lower
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|w| !w.is_empty())
+        .collect();
+    PURCHASE_ANYWHERE.iter().any(|entry| {
+        if entry.contains(' ') {
+            lower.contains(entry)
+        } else {
+            words.iter().any(|w| w == entry)
+        }
+    })
+}
+
+fn is_bare_confirm(label: &str) -> bool {
+    let l = label.trim().to_lowercase();
+    BARE_CONFIRM.contains(&l.as_str())
+}
+
+/// The gate for a click on a native window (a UI Automation press or a
+/// screen-operating click), where there is a window title and a label but no
+/// URL. Added 21 Oct 2026: `allowed` had no caller, so nothing was stopping
+/// "press Buy now" in a browser.
+pub fn click_verdict(window_title: &str, label: &str, cfg: &FinanceConfig) -> Verdict {
+    if is_purchase(label) {
+        return Verdict::Refused(format!(
+            "\"{label}\" would buy or order something — I don't do that; please press it yourself."
+        ));
+    }
+    if cfg.is_financial_window(window_title) && (moves_money(label) || is_bare_confirm(label)) {
+        return Verdict::Refused(format!(
+            "\"{label}\" looks like it moves money — I won't click that."
+        ));
+    }
+    Verdict::Allowed
+}
+
+/// The one question both click sites ask (a spoken "press the X button" and
+/// the screen-operating loop): should this click be refused, and if so, what
+/// do I say? Kept as a small pure function so the call sites are trivially
+/// right and the refusal is testable without a window.
+pub fn press_refusal(window_title: &str, label: &str, cfg: &FinanceConfig) -> Option<String> {
+    match click_verdict(window_title, label, cfg) {
+        Verdict::Allowed => None,
+        Verdict::Refused(why) => Some(why),
+    }
+}
+
 /// The gate. Every browser action on a financial domain passes through here.
 ///
 /// Fails closed: anything it doesn't positively recognise as safe is refused.
@@ -509,7 +605,7 @@ pub fn allowed(url: &str, action: &PageAction, cfg: &FinanceConfig) -> Verdict {
         ),
 
         PageAction::Click(label) => {
-            if moves_money(label) {
+            if moves_money(label) || is_bare_confirm(label) {
                 return Verdict::Refused(format!(
                     "\"{label}\" looks like it moves money — I won't click that."
                 ));
@@ -788,5 +884,74 @@ pub fn summary(flags: &[Flag]) -> String {
     match flags.len() {
         1 => format!("One thing: {first}"),
         n => format!("{n} things worth a look. First: {first}"),
+    }
+}
+
+#[cfg(test)]
+mod click_gate_tests {
+    use super::*;
+
+    fn cfg() -> FinanceConfig {
+        FinanceConfig::default()
+    }
+    const BANK: &str = "Chase Online Banking - Google Chrome";
+
+    #[test]
+    fn buy_now_is_refused_on_a_shop() {
+        let v = click_verdict("Amazon.com - Google Chrome", "Buy now", &cfg());
+        assert!(matches!(v, Verdict::Refused(m) if m.contains("would buy or order")));
+    }
+
+    #[test]
+    fn place_order_is_refused_anywhere() {
+        for w in ["Notepad", BANK, "Shop - Edge"] {
+            assert!(!click_verdict(w, "Place order", &cfg()).ok(), "{w}");
+        }
+    }
+
+    #[test]
+    fn yes_is_refused_on_a_bank_and_allowed_elsewhere() {
+        assert!(!click_verdict(BANK, "Yes", &cfg()).ok());
+        assert!(click_verdict("Notepad", "Yes", &cfg()).ok());
+    }
+
+    #[test]
+    fn ordinary_labels_on_a_bank_are_allowed() {
+        assert!(click_verdict(BANK, "Save", &cfg()).ok());
+        assert!(click_verdict(BANK, "Statements", &cfg()).ok());
+    }
+
+    #[test]
+    fn send_is_fine_in_email() {
+        assert!(click_verdict("Inbox - Mail", "Send", &cfg()).ok());
+    }
+
+    #[test]
+    fn send_is_refused_on_a_bank() {
+        assert!(!click_verdict(BANK, "Send", &cfg()).ok());
+    }
+
+    #[test]
+    fn a_financial_window_is_found_by_domain_or_stem() {
+        let c = cfg();
+        assert!(c.is_financial_window("https://www.chase.com/x"));
+        assert!(c.is_financial_window("Robinhood - Mozilla Firefox"));
+        assert!(!c.is_financial_window("Purchase order template - Word"));
+    }
+
+    #[test]
+    fn the_url_gate_refuses_a_bare_ok_on_a_bank() {
+        let v = allowed(
+            "https://www.chase.com",
+            &PageAction::Click("OK".into()),
+            &cfg(),
+        );
+        assert!(!v.ok());
+    }
+
+    #[test]
+    fn the_shared_refusal_helper_matches_the_verdict() {
+        assert!(press_refusal("Notepad", "Save", &cfg()).is_none());
+        assert!(press_refusal("Notepad", "Checkout", &cfg()).is_some());
     }
 }
