@@ -47,7 +47,6 @@ Dates are UTC. The card at the top of `AGENTS.md` holds the facts; this file hol
 - `verify-harness` Independent real-runtime verification harness (2026-10-18)
 - `i65c1` Canonical open-work audit (2026-10-16)
 - `filingbundle` Complete canonical Atlas filing bundle (2026-10-16)
-- `filingcheckpoint` Filing integrity checkpoint for canonical Atlas work (2026-10-15)
 
 ## Docs
 
