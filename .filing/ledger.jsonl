@@ -731,3 +731,5 @@
 {"ts":"2026-10-21T06:37:31.046Z","who":"claude","op":"add","id":"model-training","title":"Train Atlas's own model: data from Eric's own messages, clean open datasets, REA/Replica/Atlas repo; stages, cost, first 3 steps","home":"docs/ATLAS_MODEL_TRAINING_PLAN_2026-10-21.md"}
 {"ts":"2026-10-21T07:27:44.317Z","who":"claude-outstanding","op":"add","id":"click-gate","title":"Charter §8 click gate: refuse buy/order buttons anywhere and money/confirm buttons on bank or broker windows, at press_button and the screen-operating step","home":"atlas/src/finance.rs"}
 {"ts":"2026-10-21T07:27:45.983Z","who":"claude-outstanding","op":"done","id":"click-gate"}
+{"ts":"2026-10-21T07:30:44.681Z","who":"claude-outstanding","op":"add","id":"selftest-scratch","title":"SELFTEST1: self-test scratch cleanup removes junction links only, guarded to temp atlas-selftest-* folders, failures reported","home":"atlas/src/selftest.rs"}
+{"ts":"2026-10-21T07:30:45.836Z","who":"claude-outstanding","op":"done","id":"selftest-scratch"}
