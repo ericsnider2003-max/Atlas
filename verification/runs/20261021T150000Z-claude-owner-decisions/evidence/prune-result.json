@@ -1,0 +1,325 @@
+{
+    "current_sha256":  "B0CA6B2F85DBD1C261FE9ACAE7EF126281DC86C575897B453EC7FD979B589427",
+    "rollback":  "C:\\Users\\erics\\AppData\\Local\\Atlas\\atlas-0.1.0-dev.previous",
+    "rollback_sha256":  "3B38DE03B04A498CA1E1C97662CE379DC94E0ACFF77E3E1203BCF271AB20CADC",
+    "recycled_count":  52,
+    "recycled_mb":  2738.3,
+    "left":  [
+                 "atlas-0.1.0-dev.previous 71.2 MB",
+                 "atlas.exe 71.3 MB"
+             ],
+    "recycled":  [
+                     {
+                         "name":  "atlas-0.1.0-dev.previous.exe",
+                         "bytes":  54720000,
+                         "modified":  "2026-10-07T00:17:39",
+                         "sha256":  "1DCC0AB6CC52629006F7F80E59648B8590B1918617D19BAFE019C1A486372AB9"
+                     },
+                     {
+                         "name":  "atlas-bench.exe",
+                         "bytes":  48237568,
+                         "modified":  "2026-09-30T06:26:01",
+                         "sha256":  "87F0B1ACF81BC3B953549B893A028FF96519468D1F24A8E78EF223CBA032AAD9"
+                     },
+                     {
+                         "name":  "atlas.exe.27sep-backup",
+                         "bytes":  45299712,
+                         "modified":  "2026-09-27T19:25:24",
+                         "sha256":  "6C7693829254FC5073ECBEADECBA41DCB283C6AAD99E5AF029995275CB5EA53E"
+                     },
+                     {
+                         "name":  "atlas.exe.30sep-pre-merge",
+                         "bytes":  48200192,
+                         "modified":  "2026-09-30T00:19:32",
+                         "sha256":  "1D0AF69C479BAFD4C29DD2D160D534B52B234751BB6A5AF76C6DB785A047AD03"
+                     },
+                     {
+                         "name":  "atlas.exe.before-0930f",
+                         "bytes":  48989696,
+                         "modified":  "2026-09-30T19:45:48",
+                         "sha256":  "6A0BFAA95919E37F7AABE014E3AB8869A308530062DE84288BEF127EA108B141"
+                     },
+                     {
+                         "name":  "atlas.exe.before-1001",
+                         "bytes":  56139264,
+                         "modified":  "2026-10-01T06:01:16",
+                         "sha256":  "FB0E3AC458FC203AD060AAA652BA9E75E86AD7ADFF7C34E5E4E61B085DCF7F54"
+                     },
+                     {
+                         "name":  "atlas.exe.before-1001c",
+                         "bytes":  56493568,
+                         "modified":  "2026-10-01T16:01:46",
+                         "sha256":  "FA2E571E3D16329BF9AD8396F13D9993598A67D20D12D5ABDB1819A322A31186"
+                     },
+                     {
+                         "name":  "atlas.exe.before-1001d",
+                         "bytes":  56902144,
+                         "modified":  "2026-10-01T18:47:48",
+                         "sha256":  "1F53F9D01E9871A586EE28B25C4971869B7AEC9DB2A0A045EF278EF84C84C352"
+                     },
+                     {
+                         "name":  "atlas.exe.before-1001e",
+                         "bytes":  55762432,
+                         "modified":  "2026-10-01T16:34:42",
+                         "sha256":  "05CB6B7BA7EC9D06AE84C0105A8FC60A4354D87537D9B135AD997090073FE7B9"
+                     },
+                     {
+                         "name":  "atlas.exe.before-1001f",
+                         "bytes":  55842304,
+                         "modified":  "2026-10-01T19:10:40",
+                         "sha256":  "7F5591FEB636DFC84DE7984AE13C6DD2C2DF1DC9517040A057598E6079596339"
+                     },
+                     {
+                         "name":  "atlas.exe.before-1001g",
+                         "bytes":  50571264,
+                         "modified":  "2026-10-01T20:04:46",
+                         "sha256":  "D86B5841D266F58915546BADF17DDCADB4DD7DD92F3B756C354F5A2B0C175BF4"
+                     },
+                     {
+                         "name":  "atlas.exe.before-1002c",
+                         "bytes":  56944128,
+                         "modified":  "2026-10-01T20:21:00",
+                         "sha256":  "413EDD2234052E1DB0F0BFB632CF20C05A7BA881AC6E22439445D531CAE7CC54"
+                     },
+                     {
+                         "name":  "atlas.exe.before-1002d",
+                         "bytes":  50809344,
+                         "modified":  "2026-10-01T22:48:42",
+                         "sha256":  "9994D73E162CAB64037F711EFB5C790103EA6730DF7C7184565C471C5BCEC432"
+                     },
+                     {
+                         "name":  "atlas.exe.before-20261012",
+                         "bytes":  58966528,
+                         "modified":  "2026-10-09T04:08:41",
+                         "sha256":  "DC240893C5E5DE8042E8A573F173D17BB0ECAF24205CD115C5D64B27FC14C0D5"
+                     },
+                     {
+                         "name":  "atlas.exe.before-20261013",
+                         "bytes":  59072000,
+                         "modified":  "2026-10-12T12:42:13",
+                         "sha256":  "AC4692B84DE74220CE38DD12D8C3F3C7ACCDE81A29135AF3E74B97C635CF9A11"
+                     },
+                     {
+                         "name":  "atlas.exe.before-20261014-f0f3",
+                         "bytes":  59190272,
+                         "modified":  "2026-10-13T20:53:15",
+                         "sha256":  "D0F09CFD5301C17FFFA41AD5CA3B07C37C5DBFF5F94E39BC72B95B195D0B8C73"
+                     },
+                     {
+                         "name":  "atlas.exe.before-candidate-20261017T074730Z",
+                         "bytes":  59187200,
+                         "modified":  "2026-10-14T21:15:47",
+                         "sha256":  "B5D6D239A7C7FB4E6F18EFD0BF2400F7BDA71D45133BC064D68C6C06295182BA"
+                     },
+                     {
+                         "name":  "atlas.exe.before-candidate-20261017T084611Z",
+                         "bytes":  59838976,
+                         "modified":  "2026-10-17T00:43:45",
+                         "sha256":  "187918B56458B34E18E9BAB626B23ACBAB5D85147C171D8E17B0ADD4D0EC95DC"
+                     },
+                     {
+                         "name":  "atlas.exe.before-candidate-20261017T130532",
+                         "bytes":  59839488,
+                         "modified":  "2026-10-17T01:46:02",
+                         "sha256":  "FA61A885DE97051B38F0A53BB94D84C43FA4F97AB659DE5F6383EF5DB418F71E"
+                     },
+                     {
+                         "name":  "atlas.exe.before-chat-a-089e0f0",
+                         "bytes":  52322304,
+                         "modified":  "2026-10-04T20:57:03",
+                         "sha256":  "53D77AA399CBDF042BF38B88104483F4D674E8C9751121627FD0982AB0CDF551"
+                     },
+                     {
+                         "name":  "atlas.exe.before-chat-a-096a2bd0",
+                         "bytes":  53081088,
+                         "modified":  "2026-10-05T19:22:56",
+                         "sha256":  "EAB652440DF96AF41B69B8BAAD101F933D1FA37307F94500B6FEE20D7B9FE5F6"
+                     },
+                     {
+                         "name":  "atlas.exe.before-chat-a-2ea68b1",
+                         "bytes":  51892736,
+                         "modified":  "2026-10-02T15:44:49",
+                         "sha256":  "106CB95F170B25212940BDDC0331919E1040F202A3D66198BAEEF20DA34AC770"
+                     },
+                     {
+                         "name":  "atlas.exe.before-chat-a-346bd04b",
+                         "bytes":  54648320,
+                         "modified":  "2026-10-06T21:43:48",
+                         "sha256":  "F90FA7D3C982EFCD8BFFAE7C53C001EFA76141F0B891C7BFC48FFAACEF9CA6BE"
+                     },
+                     {
+                         "name":  "atlas.exe.before-chat-a-3d5a332",
+                         "bytes":  52183040,
+                         "modified":  "2026-10-04T17:40:47",
+                         "sha256":  "D044FE3F8CA8FCA681340D30BEC766C2E6A940A6AD0AA84175F21C967174B8CC"
+                     },
+                     {
+                         "name":  "atlas.exe.before-chat-a-4204c7a9",
+                         "bytes":  54545920,
+                         "modified":  "2026-10-06T07:32:57",
+                         "sha256":  "511E8237F141EC938A6C4803C63F9793E9146106C2EE16BF164BF30D2D5B6017"
+                     },
+                     {
+                         "name":  "atlas.exe.before-chat-a-454b5a0a",
+                         "bytes":  54696448,
+                         "modified":  "2026-10-06T23:09:58",
+                         "sha256":  "B9F2EEC7DD40FB6EF46068FB17B655A4EB398B8E4A650646D535530ECFDDD5E4"
+                     },
+                     {
+                         "name":  "atlas.exe.before-chat-a-4fc69a1b",
+                         "bytes":  52818432,
+                         "modified":  "2026-10-05T09:51:40",
+                         "sha256":  "C42F2BB19028529E93B9DB0A0869E6C48C65D7D9BE516A1D91C4AAFA7D2D84A5"
+                     },
+                     {
+                         "name":  "atlas.exe.before-chat-a-54096d4",
+                         "bytes":  56724992,
+                         "modified":  "2026-10-01T23:25:22",
+                         "sha256":  "F6E65529B89D99612AA3F19E6079D77183281D9075B714F17A038E940D65726C"
+                     },
+                     {
+                         "name":  "atlas.exe.before-chat-a-5a23cf9b",
+                         "bytes":  52835840,
+                         "modified":  "2026-10-05T13:47:01",
+                         "sha256":  "5E56E295AE2AFEA80645607E7FD21C677214841279742C4D60C86117AAEBF76A"
+                     },
+                     {
+                         "name":  "atlas.exe.before-chat-a-681c3ad0",
+                         "bytes":  52788736,
+                         "modified":  "2026-10-05T08:18:40",
+                         "sha256":  "D3206FE3F9B4BA042451955117DD43DC1C092F11D0F84FB38C7AB1A306828C83"
+                     },
+                     {
+                         "name":  "atlas.exe.before-chat-a-6a024ff",
+                         "bytes":  51526656,
+                         "modified":  "2026-10-02T13:06:56",
+                         "sha256":  "0E156FF5711FB075EE9230FB67BA8DA6DDD293D108EEE477F45B064B34064BEE"
+                     },
+                     {
+                         "name":  "atlas.exe.before-chat-a-7e7d8924",
+                         "bytes":  54430720,
+                         "modified":  "2026-10-05T21:35:23",
+                         "sha256":  "8A85753650DFE7439D72DCF0820DEF071B934ADFEE297DE72694DCA9F45A841B"
+                     },
+                     {
+                         "name":  "atlas.exe.before-chat-a-8419c5c",
+                         "bytes":  51074560,
+                         "modified":  "2026-10-02T03:59:52",
+                         "sha256":  "A85CACF17D1B16958A3E489612417F8F00B905D69DFA8A0183E6F82F333EE3BE"
+                     },
+                     {
+                         "name":  "atlas.exe.before-chat-a-8e1cc6c",
+                         "bytes":  51908608,
+                         "modified":  "2026-10-02T16:04:02",
+                         "sha256":  "F3326014F8FB188F9CF23E7A08C48F12A3EFD10A00E7E389AE54F6E5FBCA6AFF"
+                     },
+                     {
+                         "name":  "atlas.exe.before-chat-a-9061f855",
+                         "bytes":  52539392,
+                         "modified":  "2026-10-05T00:20:31",
+                         "sha256":  "BA79851EDB55F2A78C5213D844E8AECBFCDDC89076B74C933F615F06086BF84C"
+                     },
+                     {
+                         "name":  "atlas.exe.before-chat-a-90777847",
+                         "bytes":  52809216,
+                         "modified":  "2026-10-05T09:15:54",
+                         "sha256":  "9A47BC95AA954AEB86F22CF283BA1965BDC2370562B4021A82B0D53FBCA238F2"
+                     },
+                     {
+                         "name":  "atlas.exe.before-chat-a-924975f",
+                         "bytes":  51075072,
+                         "modified":  "2026-10-02T08:33:37",
+                         "sha256":  "3418AFA3EBB486210CCEA4442D20116A8D21417F8F729A9B08FC3B0C25F06501"
+                     },
+                     {
+                         "name":  "atlas.exe.before-chat-a-99b1e9ac",
+                         "bytes":  52862464,
+                         "modified":  "2026-10-05T14:14:50",
+                         "sha256":  "1CA04DA52EE95807AF3D58D50E5E73D4BE71F8C389B75026F5E7725C22E5ACF6"
+                     },
+                     {
+                         "name":  "atlas.exe.before-chat-a-a8cc6cc8",
+                         "bytes":  52818432,
+                         "modified":  "2026-10-05T13:08:56",
+                         "sha256":  "52292009EB4090A8E4E26A47A13D568F8AC539C899BA8AFEF3C27B316A7E85E8"
+                     },
+                     {
+                         "name":  "atlas.exe.before-chat-a-b7963002",
+                         "bytes":  54648320,
+                         "modified":  "2026-10-06T18:59:36",
+                         "sha256":  "652C38E6231C5A5C81D6A39277393FE46A14BE23667B61E24A105E1694E6A8CE"
+                     },
+                     {
+                         "name":  "atlas.exe.before-chat-a-chatb-aa4bdbb",
+                         "bytes":  51525632,
+                         "modified":  "2026-10-02T12:03:36",
+                         "sha256":  "F35E3B098929BFC9CD777E6872BCE5015DF8BD7D22CA10549D608BB661FB68E2"
+                     },
+                     {
+                         "name":  "atlas.exe.before-chat-a-d2e62e9",
+                         "bytes":  51378176,
+                         "modified":  "2026-10-02T10:44:38",
+                         "sha256":  "D01B4FD60098FFC802F93E1CF2FA3B552236BE4486AEF4A2E00A7099B5491AD1"
+                     },
+                     {
+                         "name":  "atlas.exe.before-chat-a-e9d70e7",
+                         "bytes":  51962880,
+                         "modified":  "2026-10-04T13:38:37",
+                         "sha256":  "7FF6B760466BADDC09B62A44C510586682B934B91358F64BE118B905F503AF02"
+                     },
+                     {
+                         "name":  "atlas.exe.before-chat-a-f14aa284",
+                         "bytes":  52735488,
+                         "modified":  "2026-10-05T06:28:42",
+                         "sha256":  "7637FAAB2BC6F8A179A49F42733195E63CA3759706A3B372ED5C9DC1831BA531"
+                     },
+                     {
+                         "name":  "atlas.exe.before-chat-b-a1ea710",
+                         "bytes":  51881984,
+                         "modified":  "2026-10-02T14:58:39",
+                         "sha256":  "B493B4BE9E808FCB5BB2FFDA37C9DD27063A1312F38B9483083083C0DFD40B6B"
+                     },
+                     {
+                         "name":  "atlas.exe.before-claude-label-20261020",
+                         "bytes":  42869760,
+                         "modified":  "2026-10-19T20:24:50",
+                         "sha256":  "9DB1759459BF14B8DD3C989A7B89135CC8E921EE141533D8988DFD3806234392"
+                     },
+                     {
+                         "name":  "atlas.exe.before-e2e1020-20261021",
+                         "bytes":  74142720,
+                         "modified":  "2026-10-19T22:05:48",
+                         "sha256":  "ACEF04E191EC1727E0D1C3852416EE32CCA4905498AC8A99BB375B0231FBA03D"
+                     },
+                     {
+                         "name":  "atlas.exe.before-e2e1020-r2-20261021",
+                         "bytes":  74706432,
+                         "modified":  "2026-10-21T04:44:24",
+                         "sha256":  "575B64E71BF07D346A5E93C0B8A634C3F3FC1B12808904A6402D068A18B292B3"
+                     },
+                     {
+                         "name":  "atlas.exe.before-integrated-20261013",
+                         "bytes":  79367680,
+                         "modified":  "2026-10-13T19:18:08",
+                         "sha256":  "9C570BC631B0AEE8E860E498C8826851AA08E3061E5465C6E0C9F2F4B929FE95"
+                     },
+                     {
+                         "name":  "atlas.exe.before-merge-20261021",
+                         "bytes":  74711040,
+                         "modified":  "2026-10-21T08:25:05",
+                         "sha256":  "3B38DE03B04A498CA1E1C97662CE379DC94E0ACFF77E3E1203BCF271AB20CADC"
+                     },
+                     {
+                         "name":  "atlas.exe.before-r10-1001e",
+                         "bytes":  50983936,
+                         "modified":  "2026-10-01T23:26:28",
+                         "sha256":  "5A00B943E0FF711CCA1E8571F71C82CCFD9CBC09BF3C30E95D8D766CCB4202EA"
+                     },
+                     {
+                         "name":  "atlas.exe.pre-charter-20261020",
+                         "bytes":  59839488,
+                         "modified":  "2026-10-17T01:46:02",
+                         "sha256":  "FA61A885DE97051B38F0A53BB94D84C43FA4F97AB659DE5F6383EF5DB418F71E"
+                     }
+                 ]
+}

@@ -81,9 +81,9 @@ impl Reason {
         match self {
             Reason::UserActive { .. } => "you're using the computer".into(),
             Reason::OnBattery => "it's running on battery".into(),
-            Reason::LowMemory { free_mb, need_mb } => format!(
-                "memory is short ({free_mb} MB free, {need_mb} MB needed)"
-            ),
+            Reason::LowMemory { free_mb, need_mb } => {
+                format!("memory is short ({free_mb} MB free, {need_mb} MB needed)")
+            }
         }
     }
 }
@@ -295,24 +295,6 @@ fn nap(gap: Duration, stop: Option<&dyn Fn() -> bool>) {
 /// The whole cycle with the machine and the clock passed in, so a test can
 /// play the owner coming and going. `track` hears each phase with a plain
 /// line; it never speaks.
-#[cfg(test)]
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn run_with(
-    sense: &dyn Fn() -> Reading,
-    poll: Duration,
-    cfg: &HeavyConfig,
-    track: &mut dyn FnMut(Phase, &str),
-    command: &mut std::process::Command,
-    limit: Duration,
-    cap: usize,
-    stop: Option<&dyn Fn() -> bool>,
-) -> ProcessRun {
-    run_gated(
-        sense, poll, cfg, track, command, limit, cap, None, stop, MAX_WAIT,
-    )
-    .0
-}
-
 /// The most wall-clock time heavy work may spend waiting for you to be away
 /// (21 Oct 2026). The run limit counts only time spent running, so without
 /// this a job on a computer that is never idle held its crew slot for ever.
@@ -658,7 +640,9 @@ pub(crate) fn run_feed(
                 ProcessEnd::Exited(_) => None,
                 ProcessEnd::Stopped if gave_up => Some((true, GAVE_UP.into())),
                 ProcessEnd::Stopped => Some((true, "Stopped because you asked me to.".into())),
-                ProcessEnd::TimedOut => Some((false, "It was still going when its time ran out.".into())),
+                ProcessEnd::TimedOut => {
+                    Some((false, "It was still going when its time ran out.".into()))
+                }
                 ProcessEnd::Failed(why) => Some((false, why.clone())),
             };
             if state.trouble.is_none() {
@@ -673,15 +657,29 @@ pub(crate) fn run_feed(
 mod tests {
     use super::*;
 
-    fn cfg() -> HeavyConfig {
-        HeavyConfig::default()
+    // Only the tests drive the controller with a scripted machine.
+    #[allow(clippy::too_many_arguments)]
+    fn run_with(
+        sense: &dyn Fn() -> Reading,
+        poll: Duration,
+        cfg: &HeavyConfig,
+        track: &mut dyn FnMut(Phase, &str),
+        command: &mut std::process::Command,
+        limit: Duration,
+        cap: usize,
+        stop: Option<&dyn Fn() -> bool>,
+    ) -> ProcessRun {
+        run_gated(
+            sense, poll, cfg, track, command, limit, cap, None, stop, MAX_WAIT,
+        )
+        .0
     }
 
     #[test]
     fn an_active_user_never_starts_it() {
         for idle in [0, 5, 599] {
             assert_eq!(
-                heavy_work_may_run(idle, true, 64_000, 4096, &cfg()),
+                heavy_work_may_run(idle, true, 64_000, 4096, &HeavyConfig::default()),
                 Verdict::Wait(Reason::UserActive {
                     idle_secs: idle,
                     need_secs: 600
@@ -693,19 +691,19 @@ mod tests {
     #[test]
     fn battery_and_low_memory_wait() {
         assert_eq!(
-            heavy_work_may_run(3600, false, 64_000, 4096, &cfg()),
+            heavy_work_may_run(3600, false, 64_000, 4096, &HeavyConfig::default()),
             Verdict::Wait(Reason::OnBattery)
         );
         // 4096 for the job + 2048 headroom: 6143 is one short.
         assert_eq!(
-            heavy_work_may_run(3600, true, 6143, 4096, &cfg()),
+            heavy_work_may_run(3600, true, 6143, 4096, &HeavyConfig::default()),
             Verdict::Wait(Reason::LowMemory {
                 free_mb: 6143,
                 need_mb: 6144
             })
         );
         assert_eq!(
-            heavy_work_may_run(3600, true, 6144, 4096, &cfg()),
+            heavy_work_may_run(3600, true, 6144, 4096, &HeavyConfig::default()),
             Verdict::Run
         );
     }
@@ -713,12 +711,12 @@ mod tests {
     #[test]
     fn idle_ac_and_memory_runs_and_the_idle_time_is_configurable() {
         assert_eq!(
-            heavy_work_may_run(600, true, 16_000, 4096, &cfg()),
+            heavy_work_may_run(600, true, 16_000, 4096, &HeavyConfig::default()),
             Verdict::Run
         );
         let quick = HeavyConfig {
             idle_minutes: 1,
-            ..cfg()
+            ..HeavyConfig::default()
         };
         assert!(heavy_work_may_run(60, true, 16_000, 4096, &quick).is_run());
         assert!(!heavy_work_may_run(59, true, 16_000, 4096, &quick).is_run());
@@ -726,7 +724,7 @@ mod tests {
 
     #[test]
     fn the_caps_follow_the_machine() {
-        let c = caps_for(&cfg(), 8, 32_768);
+        let c = caps_for(&HeavyConfig::default(), 8, 32_768);
         assert_eq!(
             c,
             Caps {
@@ -736,15 +734,15 @@ mod tests {
             }
         );
         // A quarter of an 8 GB machine, not 4 GB.
-        assert_eq!(caps_for(&cfg(), 8, 8192).memory_mb, 2048);
+        assert_eq!(caps_for(&HeavyConfig::default(), 8, 8192).memory_mb, 2048);
         // Never under what a compiler can work in; one core still builds.
-        assert_eq!(caps_for(&cfg(), 1, 1024).memory_mb, 512);
-        assert_eq!(caps_for(&cfg(), 1, 1024).jobs, 1);
+        assert_eq!(caps_for(&HeavyConfig::default(), 1, 1024).memory_mb, 512);
+        assert_eq!(caps_for(&HeavyConfig::default(), 1, 1024).jobs, 1);
         // Unreadable memory falls back to the configured cap.
-        assert_eq!(caps_for(&cfg(), 4, 0).memory_mb, 4096);
+        assert_eq!(caps_for(&HeavyConfig::default(), 4, 0).memory_mb, 4096);
         let wild = HeavyConfig {
             cpu_percent: 0,
-            ..cfg()
+            ..HeavyConfig::default()
         };
         assert_eq!(caps_for(&wild, 4, 16_384).cpu_percent, 5);
     }
@@ -812,7 +810,7 @@ mod tests {
         let run = run_with(
             &sense,
             Duration::from_millis(20),
-            &cfg(),
+            &HeavyConfig::default(),
             &mut track,
             &mut c,
             Duration::from_secs(30),
@@ -842,7 +840,7 @@ mod tests {
         let run = run_with(
             &sense,
             Duration::from_millis(100),
-            &cfg(),
+            &HeavyConfig::default(),
             &mut track,
             &mut c,
             Duration::from_secs(60),
@@ -868,7 +866,7 @@ mod tests {
         let run = run_with(
             &sense,
             Duration::from_millis(20),
-            &cfg(),
+            &HeavyConfig::default(),
             &mut track,
             &mut c,
             Duration::from_secs(30),
@@ -896,8 +894,15 @@ mod tests {
         std::fs::create_dir_all(&root).unwrap();
         let store = crate::store::Store::new(&root);
         {
-            let _g = SelfWork::enter("Self-repair: test", &cfg(), Some(store.clone()));
-            scope_track(Phase::Waiting, "Waiting for you to be away (x) before it starts.");
+            let _g = SelfWork::enter(
+                "Self-repair: test",
+                &HeavyConfig::default(),
+                Some(store.clone()),
+            );
+            scope_track(
+                Phase::Waiting,
+                "Waiting for you to be away (x) before it starts.",
+            );
             let open = crate::job::load_checked(&store).unwrap();
             assert_eq!(open.len(), 1);
             assert!(open[0].job_id.starts_with(JOB_PREFIX));
@@ -925,8 +930,15 @@ mod tests {
         std::fs::create_dir_all(&root).unwrap();
         let store = crate::store::Store::new(&root);
         {
-            let g = SelfWork::enter("Self-repair: test", &cfg(), Some(store.clone()));
-            scope_track(Phase::Waiting, "Waiting for you to be away (x) before it starts.");
+            let g = SelfWork::enter(
+                "Self-repair: test",
+                &HeavyConfig::default(),
+                Some(store.clone()),
+            );
+            scope_track(
+                Phase::Waiting,
+                "Waiting for you to be away (x) before it starts.",
+            );
             act(&g);
         }
         let job = crate::job::load_checked(&store).unwrap().remove(0);
@@ -975,7 +987,7 @@ mod tests {
         let (run, gave_up) = run_gated(
             &sense,
             Duration::from_millis(100),
-            &cfg(),
+            &HeavyConfig::default(),
             &mut track,
             &mut c,
             Duration::from_secs(60),
@@ -998,7 +1010,7 @@ mod tests {
         let (run, gave_up) = run_gated(
             &sense,
             Duration::from_millis(20),
-            &cfg(),
+            &HeavyConfig::default(),
             &mut track,
             &mut c,
             Duration::from_secs(30),
