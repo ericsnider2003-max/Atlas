@@ -371,6 +371,45 @@ fn a_folder_backup_asks_where_runs_off_the_loop_and_is_checked() {
     assert_eq!(std::fs::read_dir(&dest).unwrap().count(), 2);
 }
 
+/// "Is the backup of src finished?" with no model (21 Oct 2026, backup and
+/// restore e2e row 2: it was answered "I'm preparing your brief"). Answered from
+/// the job records: nothing yet, then done with when and where, and the
+/// completion the reply promised ("I'll tell you when it's done") is really
+/// collected for the caller to say.
+#[test]
+fn is_the_backup_finished_is_answered_from_the_job_with_no_model() {
+    let (mut d, dir) = daemon_with("backup-status", None);
+    let src = dir.join("src");
+    std::fs::create_dir_all(&src).unwrap();
+    std::fs::write(src.join("a.txt"), "alpha").unwrap();
+    let dest = dir.join("Backups");
+    std::fs::create_dir_all(&dest).unwrap();
+    let none = d.turn("is the backup of src finished?", T0);
+    assert_eq!(none, "I don't have a backup of src running or recently finished. Anything still open is on the Outstanding page.");
+    assert!(!none.contains("brief"), "{none}");
+    let said = format!("back up {} to {}", src.display(), dest.display());
+    let started = d.turn(&said, T0 + 1);
+    assert!(started.contains("I'll tell you when it's done"), "{started}");
+    // What it promised is collected when the backup ends.
+    let news = d.errands_done_for_test();
+    assert!(
+        news.iter().any(|n| n.contains("Backed up") && n.contains("SHA-256")),
+        "the completion is handed back to be said: {news:?}"
+    );
+    let done = d.turn("is the backup of src finished?", T0 + 2);
+    assert!(done.starts_with("Yes"), "{done}");
+    assert!(done.contains("src") && done.contains(&dest.display().to_string()), "{done}");
+    assert!(done.contains("finished at"), "says when: {done}");
+    // Several words for the same question, and a pronoun with a job behind it.
+    for q in ["is the backup done", "did the backup of src finish", "how's the backup going", "is it done?"] {
+        let r = d.turn(q, T0 + 3);
+        assert!(r.starts_with("Yes"), "{q:?} -> {r}");
+    }
+    // Asking about something that never ran is not answered with the backup.
+    let other = d.turn("has the download finished", T0 + 4);
+    assert_eq!(other, "I don't have a download running or recently finished. Anything still open is on the Outstanding page.");
+}
+
 fn wait_for_jobs(dir: &Path, stage: &str, n: usize) {
     let until = Instant::now() + Duration::from_secs(20);
     while jobs(dir)

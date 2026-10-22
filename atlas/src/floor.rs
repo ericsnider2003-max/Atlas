@@ -235,6 +235,12 @@ pub(crate) fn read_spoken(input: &str) -> Option<(Intent, &'static str)> {
     {
         return Some((Intent::QuitAtlas, "quit_atlas"));
     }
+    // "Is the backup finished?" is a question about a job, answered from the
+    // job records (`status_question`). It rides the floor's read command: it
+    // reads, changes nothing, and is already kept from a model's choice.
+    if status_question(said).is_some() {
+        return Some((Intent::ReadFile(said.to_string()), "read_file"));
+    }
     if opens_a_file(&w) {
         return Some((Intent::CreateFile(said.to_string()), "create_file"));
     }
@@ -1389,6 +1395,202 @@ pub fn say(a: &LowAsk) -> String {
     s
 }
 
+// ------------------------------------------------- "is the backup finished?"
+
+/// A question about how some work of Atlas's is going (21 Oct 2026). With no
+/// model, "is the backup of src finished?" fell through to the outstanding
+/// list and was answered "I'm preparing your brief" (backup/restore e2e,
+/// row 2). It is answered from the job records instead.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StatusAsk {
+    /// "backup", "download", "move", "restore" or "research"; `None` for "is
+    /// it done?", which means whatever ran last.
+    pub subject: Option<&'static str>,
+    /// A name that narrows it ("src" in "the backup of src"), lower case.
+    pub detail: Option<String>,
+}
+
+/// How a job stands, from either record kept for it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Life {
+    Running,
+    Done(String),
+    Failed(String),
+}
+
+/// One job, as the Hub's job list or the durable job records know it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct JobView {
+    pub label: String,
+    pub life: Life,
+    /// Wall-clock seconds when it ended.
+    pub ended: Option<u64>,
+}
+
+/// The kinds of work a status question can name: the word said, what the
+/// answer calls it, and what its job's label contains.
+const SUBJECTS: &[(&[&str], &str, &[&str])] = &[
+    (&["backup", "backups", "backing"], "backup", &["backing up", "backup", "back up"]),
+    (&["download", "downloads", "downloading"], "download", &["download"]),
+    (&["move", "moved", "moving"], "move", &["moving"]),
+    (&["restore", "restoring", "restored"], "restore", &["restor"]),
+    (&["research", "researching"], "research", &["research"]),
+];
+
+/// "Is the backup finished?", "how's the backup going", "did the backup of
+/// src finish", "is it done". `None` for anything else.
+pub(crate) fn status_question(raw: &str) -> Option<StatusAsk> {
+    let lower = raw.to_lowercase();
+    let mut w: Vec<String> = lower
+        .split_whitespace()
+        .map(|t| {
+            t.trim_matches(|c: char| matches!(c, '?' | '!' | ',' | '.' | '"' | '\''))
+                .to_string()
+        })
+        .filter(|t| !t.is_empty())
+        .collect();
+    while matches!(
+        w.first().map(String::as_str),
+        Some("please" | "hey" | "atlas" | "so" | "and" | "ok" | "okay")
+    ) {
+        w.remove(0);
+    }
+    let has = |set: &[&str]| w.iter().any(|t| set.contains(&t.as_str()));
+    let asks_done = matches!(
+        w.first().map(String::as_str),
+        Some("is" | "are" | "has" | "have" | "did" | "does" | "was")
+    ) && has(&["finished", "finish", "done", "complete", "completed", "ready"]);
+    let asks_going = has(&["how's", "hows"])
+        || (w.first().map(String::as_str) == Some("how")
+            && matches!(w.get(1).map(String::as_str), Some("is" | "are")));
+    let asks_going = asks_going && has(&["going", "progressing", "along", "doing"]);
+    let asks_status = w.windows(2).any(|p| {
+        matches!(
+            (p[0].as_str(), p[1].as_str()),
+            ("status", "of") | ("progress", "of") | ("progress", "on")
+        )
+    });
+    if !(asks_done || asks_going || asks_status) {
+        return None;
+    }
+    let subject = SUBJECTS
+        .iter()
+        .find(|(words, _, _)| has(words))
+        .map(|(_, noun, _)| *noun)
+        // "back up" said as two words
+        .or_else(|| {
+            w.windows(2)
+                .any(|p| p[0] == "back" && p[1] == "up")
+                .then_some("backup")
+        });
+    if subject.is_none() {
+        // Only a short "is it done" / "did that finish" is about the last
+        // job; a longer question about something else is not ours.
+        let pronoun = has(&["it", "that", "this"]);
+        if !(pronoun && w.len() <= 5) {
+            return None;
+        }
+    }
+    let detail = w
+        .iter()
+        .position(|t| t == "of" || t == "for")
+        .and_then(|at| {
+            w[at + 1..].iter().find(|t| {
+                !matches!(
+                    t.as_str(),
+                    "the" | "my" | "a" | "an" | "this" | "that" | "folder" | "directory"
+                )
+            })
+        })
+        .filter(|t| {
+            !matches!(
+                t.as_str(),
+                "finished" | "finish" | "done" | "complete" | "completed" | "it" | "going"
+            )
+        })
+        .map(|t| t.to_lowercase());
+    Some(StatusAsk { subject, detail })
+}
+
+/// "3 minutes ago" for something that ended `at`.
+fn ago(now: u64, at: u64) -> String {
+    let s = now.saturating_sub(at);
+    let plural = |n: u64, unit: &str| format!("{n} {unit}{} ago", if n == 1 { "" } else { "s" });
+    match s {
+        0..=59 => "just now".into(),
+        60..=3599 => plural(s / 60, "minute"),
+        3600..=86_399 => plural(s / 3600, "hour"),
+        _ => plural(s / 86_400, "day"),
+    }
+}
+
+/// The answer from the job records: running with what it is doing, done with
+/// when and where, failed with why, or that there is no such job. Which job:
+/// one still running first, else the newest that ended; a name in the
+/// question ("of src") narrows it.
+pub(crate) fn status_said(ask: &StatusAsk, jobs: &[JobView], now: u64, offset: i64) -> String {
+    let stems: &[&str] = ask
+        .subject
+        .and_then(|s| SUBJECTS.iter().find(|(_, noun, _)| *noun == s))
+        .map(|(_, _, stems)| *stems)
+        .unwrap_or(&[]);
+    let fits: Vec<&JobView> = jobs
+        .iter()
+        .filter(|j| {
+            let l = j.label.to_lowercase();
+            (stems.is_empty() || stems.iter().any(|s| l.contains(s)))
+                && ask.detail.as_deref().is_none_or(|d| l.contains(d))
+        })
+        .collect();
+    let pick = fits
+        .iter()
+        .find(|j| j.life == Life::Running)
+        .or_else(|| fits.iter().max_by_key(|j| j.ended.unwrap_or(0)));
+    let Some(job) = pick else {
+        let what = match (ask.subject, &ask.detail) {
+            (Some(s), Some(d)) => format!("a {s} of {d}"),
+            (Some(s), None) => format!("a {s}"),
+            (None, _) => "any work".to_string(),
+        };
+        return format!(
+            "I don't have {what} running or recently finished. Anything still open is on the Outstanding page."
+        );
+    };
+    let more = if fits.len() > 1 && ask.detail.is_none() {
+        let noun = ask.subject.unwrap_or("job");
+        format!(
+            " That is the latest of {} {noun}s I know about; name the folder if you meant another.",
+            fits.len()
+        )
+    } else {
+        String::new()
+    };
+    let when = |at: Option<u64>| match at {
+        Some(t) => format!(
+            "at {} ({})",
+            crate::localclock::hhmm(t, offset),
+            ago(now, t)
+        ),
+        None => "earlier".into(),
+    };
+    match &job.life {
+        Life::Running => format!(
+            "Not yet -- it is still running: {}. I only know it is under way (it gives no count while it copies); I'll say when it is done and checked.{more}",
+            job.label
+        ),
+        Life::Done(said) => format!(
+            "Yes -- {} finished {}. {said}{more}",
+            job.label,
+            when(job.ended)
+        ),
+        Life::Failed(why) => format!(
+            "No -- {} failed {}: {why}{more}",
+            job.label,
+            when(job.ended)
+        ),
+    }
+}
+
 /// What a reply to the choice means.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Follow {
@@ -1710,5 +1912,93 @@ mod tests {
             }
         }
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    // ---- "is the backup finished?" (21 Oct 2026) ------------------------
+
+    fn view(label: &str, life: Life, ended: Option<u64>) -> JobView {
+        JobView {
+            label: label.into(),
+            life,
+            ended,
+        }
+    }
+
+    #[test]
+    fn status_questions_are_read_and_other_talk_is_not() {
+        for (said, subject, detail) in [
+            ("is the backup of src finished?", Some("backup"), Some("src")),
+            ("Is the backup done?", Some("backup"), None),
+            ("how's the backup going", Some("backup"), None),
+            ("did the backup of Documents finish", Some("backup"), Some("documents")),
+            ("has the download finished", Some("download"), None),
+            ("is it done", None, None),
+            ("please, is the back up finished?", Some("backup"), None),
+        ] {
+            let ask = status_question(said).unwrap_or_else(|| panic!("{said:?} not read"));
+            assert_eq!(ask.subject, subject, "{said:?}");
+            assert_eq!(ask.detail.as_deref(), detail, "{said:?}");
+        }
+        for not in [
+            "back up my Documents folder to D:\\Backups",
+            "what's the weather",
+            "is the report finished being written by the intern in london today",
+            "how's the weather going",
+            "finish the backup",
+        ] {
+            assert!(status_question(not).is_none(), "{not:?} is not a status question");
+        }
+    }
+
+    #[test]
+    fn a_status_answer_comes_from_the_job_and_says_running_done_or_failed() {
+        let ask = status_question("is the backup of src finished?").unwrap();
+        let now = 1_000_000;
+        let label = "Backing up C:\\work\\src to D:\\b\\src backup 2026-10-21";
+        // Running: says so, and does not claim it is done.
+        let said = status_said(&ask, &[view(label, Life::Running, None)], now, 0);
+        assert!(said.starts_with("Not yet"), "{said}");
+        assert!(said.contains("still running") && said.contains("src"), "{said}");
+        // Done: when and where.
+        let said = status_said(
+            &ask,
+            &[view(
+                label,
+                Life::Done("Backed up C:\\work\\src to D:\\b: 3 files.".into()),
+                Some(now - 300),
+            )],
+            now,
+            0,
+        );
+        assert!(said.starts_with("Yes"), "{said}");
+        assert!(said.contains("5 minutes ago") && said.contains("D:\\b"), "{said}");
+        // Failed: why.
+        let said = status_said(
+            &ask,
+            &[view(label, Life::Failed("the disk is full".into()), Some(now - 30))],
+            now,
+            0,
+        );
+        assert!(said.starts_with("No") && said.contains("the disk is full"), "{said}");
+        // Another folder's backup is not this one's, and nothing at all is said as it is.
+        let other = view("Backing up C:\\work\\docs to D:\\b", Life::Running, None);
+        let said = status_said(&ask, &[other], now, 0);
+        assert_eq!(said, "I don't have a backup of src running or recently finished. Anything still open is on the Outstanding page.");
+        let said = status_said(&status_question("is the backup finished?").unwrap(), &[], now, 0);
+        assert_eq!(said, "I don't have a backup running or recently finished. Anything still open is on the Outstanding page.");
+    }
+
+    #[test]
+    fn a_running_job_is_picked_before_a_finished_one_and_a_name_narrows_it() {
+        let now = 1_000_000;
+        let jobs = [
+            view("Backing up C:\\a to D:\\x", Life::Done("ok".into()), Some(now - 100)),
+            view("Backing up C:\\b to D:\\x", Life::Running, None),
+        ];
+        let said = status_said(&status_question("is the backup finished").unwrap(), &jobs, now, 0);
+        assert!(said.starts_with("Not yet") && said.contains("C:\\b"), "{said}");
+        assert!(said.contains("latest of 2"), "{said}");
+        let said = status_said(&status_question("is the backup of c:\\a finished").unwrap(), &jobs, now, 0);
+        assert!(said.starts_with("Yes") && !said.contains("latest of"), "{said}");
     }
 }

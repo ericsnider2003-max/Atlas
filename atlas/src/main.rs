@@ -1552,17 +1552,49 @@ fn main() {
 
     if words.is_empty() {
         println!("atlas ready. type a command, 'help', or 'quit'.");
-        loop {
-            print!("> ");
-            atlas::heard!(io::stdout().flush());
+        // Lines are read on a thread so the prompt can still say what finished
+        // while it waits (21 Oct 2026: a backup that ended while nothing was
+        // being typed was never announced at this prompt).
+        let (lines_tx, lines_rx) = std::sync::mpsc::channel::<Option<String>>();
+        std::thread::spawn(move || loop {
             let mut line = String::new();
             // Nothing more to read (no keyboard: started by another program,
             // or its input closed) is the end, not an empty line: read as an
             // empty line it spun here for ever with no window (29 Sep 2026).
             match io::stdin().read_line(&mut line) {
-                Ok(0) | Err(_) => return,
-                Ok(_) => {}
+                Ok(0) | Err(_) => {
+                    // unheard-ok: the prompt side has already gone
+                    let _ = lines_tx.send(None);
+                    return;
+                }
+                Ok(_) => {
+                    if lines_tx.send(Some(line)).is_err() {
+                        return;
+                    }
+                }
             }
+        });
+        loop {
+            print!("> ");
+            atlas::heard!(io::stdout().flush());
+            let line = loop {
+                match lines_rx.recv_timeout(std::time::Duration::from_millis(500)) {
+                    Ok(Some(line)) => break line,
+                    Ok(None) | Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => return,
+                    Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                        if let Some(d) = shell.as_mut() {
+                            let news = d.crew_news_now(atlas::store::now());
+                            if !news.is_empty() {
+                                for line in news {
+                                    println!("\n{line}");
+                                }
+                                print!("> ");
+                                atlas::heard!(io::stdout().flush());
+                            }
+                        }
+                    }
+                }
+            };
             let line = line.trim().to_string();
             match line.as_str() {
                 "" => continue,

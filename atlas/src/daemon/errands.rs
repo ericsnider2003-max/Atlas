@@ -572,6 +572,21 @@ impl<'a> Daemon<'a> {
         self.talk_queue.clone()
     }
 
+    /// What the crew has finished since last asked, for a prompt with no tick
+    /// of its own (21 Oct 2026: at the typed prompt "I'll tell you when it's
+    /// done" was never kept, because nothing collected the ending until the
+    /// next line). Kept in the conversation as the tick keeps it.
+    pub fn crew_news_now(&mut self, t: u64) -> Vec<String> {
+        let news = self.take_crew_news(t);
+        for line in &news {
+            self.thread.append("", line, None, t);
+        }
+        if !news.is_empty() {
+            self.session.note_outside("a crew report");
+        }
+        news
+    }
+
     /// For a test: let every errand the crew has in hand finish, taking what
     /// each came to as the tick would. Gives up after thirty seconds.
     pub fn errands_done_for_test(&mut self) -> Vec<String> {

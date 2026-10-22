@@ -114,6 +114,10 @@ impl<'a> Daemon<'a> {
 
     /// "Read atlas-test.txt on my Desktop": changes nothing, so no job.
     pub(super) fn on_read_file(&mut self, raw: &str) -> String {
+        // "Is the backup finished?" asks about a job, not a file.
+        if let Some(ask) = crate::floor::status_question(raw) {
+            return self.on_job_status(&ask);
+        }
         let Some((name, folder)) = crate::floor::read_file_ask(raw) else {
             return "Which file? Say it like: read notes.txt on my Desktop.".into();
         };
@@ -128,6 +132,60 @@ impl<'a> Daemon<'a> {
             Ok(p) => crate::floor::read_file(&p).said,
             Err(why) => why,
         }
+    }
+
+    /// "Is the backup of src finished?" (21 Oct 2026), answered from the Hub's
+    /// job list and the durable job records -- no model. Running, done with
+    /// when and where, failed with why, or that there is no such job.
+    fn on_job_status(&mut self, ask: &crate::floor::StatusAsk) -> String {
+        use crate::floor::{JobView, Life};
+        let mut views: Vec<JobView> = self
+            .hub_jobs
+            .snapshot()
+            .into_iter()
+            .map(|j| JobView {
+                label: j.label.clone(),
+                ended: j.finished_at(),
+                life: match &j.state {
+                    crate::hubjobs::State::Running => Life::Running,
+                    crate::hubjobs::State::Done(s) => Life::Done(s.clone()),
+                    crate::hubjobs::State::Failed(s) => Life::Failed(s.clone()),
+                },
+            })
+            .collect();
+        // The durable records too, for work the Hub never listed (Atlas's own
+        // backup of its state). The floor's own jobs are in both: the Hub's
+        // copy carries the fuller label.
+        for r in crate::job::load_checked(&self.store).unwrap_or_default() {
+            if r.internal || r.job_id.starts_with("errand:floor-") {
+                continue;
+            }
+            let said = r.receipt.as_ref().map(|x| x.detail.clone()).unwrap_or_default();
+            let life = match r.state {
+                crate::job::State::Succeeded => Life::Done(said),
+                crate::job::State::Failed => Life::Failed(said),
+                crate::job::State::Uncertain => Life::Failed(format!(
+                    "it was cut off and is not known to have finished. {said}"
+                )),
+                crate::job::State::Cancelled | crate::job::State::RolledBack => {
+                    Life::Failed(format!("it was stopped before it finished. {said}"))
+                }
+                crate::job::State::AwaitingApproval => continue,
+                _ => Life::Running,
+            };
+            let ended = r.state.terminal().then_some(r.updated_at);
+            views.push(JobView {
+                label: r.stage.clone(),
+                life,
+                ended,
+            });
+        }
+        crate::floor::status_said(
+            ask,
+            &views,
+            crate::store::now(),
+            crate::localclock::offset_secs(),
+        )
     }
 
     /// "Move x.txt from my Desktop to my Documents folder".
@@ -184,10 +242,38 @@ impl<'a> Daemon<'a> {
                 None => format!("I couldn't find a place called \"{w}\" to put the backup. Name a folder or a full path."),
             },
             None => {
-                let q = format!(
-                    "Where should I put the backup of {}? Say a folder, like \"D:\\Backups\" or \"my Documents folder\". I'll make a new dated folder inside it and never overwrite anything there.",
-                    src.display()
-                );
+                // No place said: read it against what is known first (21 Oct
+                // 2026): the last backup's destination, or a folder that is
+                // open. One clear reading starts the backup and says why; a
+                // choice is one question offering them; nothing is today's
+                // question, which already says what is missing. The source
+                // itself is never offered as its own destination.
+                let ctx = self.resolution_context();
+                let r = crate::understood::resolve("folder", "where the backup should go", &ctx);
+                let q = match &r {
+                    crate::understood::Resolution::Clear { value, .. }
+                        if !value.eq_ignore_ascii_case(&src.display().to_string())
+                            && std::path::Path::new(value).is_dir()
+                            && !crate::floor::dest_inside_source(
+                                &src,
+                                std::path::Path::new(value),
+                            ) =>
+                    {
+                        let dest = std::path::PathBuf::from(value);
+                        let said = crate::understood::stated(
+                            &format!("Backing up to {}", dest.display()),
+                            &r,
+                        )
+                        .unwrap_or_default();
+                        let started = self.start_folder_backup(src, dest);
+                        return format!("{said} {started}");
+                    }
+                    crate::understood::Resolution::Choose { question, .. } => question.clone(),
+                    _ => format!(
+                        "Where should I put the backup of {}? Say a folder, like \"D:\\Backups\" or \"my Documents folder\". I'll make a new dated folder inside it and never overwrite anything there.",
+                        src.display()
+                    ),
+                };
                 self.floor.pending = Some(crate::floor::Pending::BackupDest { folder: src });
                 self.session.ask(&q);
                 q
