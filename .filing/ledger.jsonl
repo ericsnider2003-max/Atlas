@@ -754,3 +754,11 @@
 {"ts":"2026-10-21T17:47:03.334Z","who":"claude-items","op":"note","id":"offline-assistant","text":"2026-10-21: Eric chose the smaller core set, about 4.3 GB (Qwen3-4B-Instruct-2507 Q4_K_M plus Qwen3-1.7B Q4; docs/OFFLINE_ASSISTANT_DESIGN_2026-10-20.md section 8), not the 16.2 GB pieces set and not the 2.5 GB single 4B. online_second stays ON. Download is handled by another session; not claimed done. See docs/CURRENT_STATE_2026-10-21.md."}
 {"ts":"2026-10-21T17:47:03.744Z","who":"claude-items","op":"note","id":"own-model","text":"2026-10-21: summary of model planning and Eric's model choice (core 4B+1.7B, about 4.3 GB) in docs/CURRENT_STATE_2026-10-21.md section (e)."}
 {"ts":"2026-10-21T17:47:04.168Z","who":"claude-items","op":"note","id":"model-training","text":"2026-10-21: summary of model planning and Eric's model choice (core 4B+1.7B, about 4.3 GB) in docs/CURRENT_STATE_2026-10-21.md section (e)."}
+{"ts":"2026-10-22T01:13:31.799Z","who":"claude-items","op":"add","id":"backup-e2e-1021","title":"Backup and restore proved end to end (folder copy hash-checked, state backup, real restore); backup list shows real size and age","home":"verification/runs/20261021T160000Z-claude-backup-restore-e2e/RESULTS.md"}
+{"ts":"2026-10-22T01:13:32.310Z","who":"claude-items","op":"done","id":"backup-e2e-1021"}
+{"ts":"2026-10-22T01:13:55.467Z","who":"claude-items","op":"add","id":"quiet-failures","title":"Quiet failures made visible: full disk, file index, clock jumps, unreadable settings","home":"atlas/src/diagnose.rs"}
+{"ts":"2026-10-22T01:13:56.982Z","who":"claude-items","op":"done","id":"quiet-failures"}
+{"ts":"2026-10-22T01:13:58.303Z","who":"claude-items","op":"add","id":"ui-leftovers-1021","title":"Hub wording leftovers from the 20 Oct run (kept notes, updates page, sidebar, subtitle, internet health)","home":"atlas/src/hub/frame.rs"}
+{"ts":"2026-10-22T01:13:59.652Z","who":"claude-items","op":"done","id":"ui-leftovers-1021"}
+{"ts":"2026-10-22T01:14:00.933Z","who":"claude-items","op":"add","id":"completion-path","title":"One completion path + context-before-asking: built in owned files; wiring in run_command/spoken_steps/tasks/floor/brain and the approval contract handed off","home":"docs/HANDOFF_ONE_COMPLETION_PATH_2026-10-21.md"}
+{"ts":"2026-10-22T01:14:02.360Z","who":"claude-items","op":"start","id":"completion-path"}

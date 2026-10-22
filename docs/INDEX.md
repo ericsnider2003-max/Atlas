@@ -23,6 +23,7 @@ Dates are UTC. The card at the top of `AGENTS.md` holds the facts; this file hol
 - `efficiency` Atlas-wide efficiency and device adaptation: tiers T0-T3, processing, memory, storage, learning budgets, acting ahead with guardrails, any-device platform record — home: [docs/ATLAS_EFFICIENCY_AND_ADAPTATION_DESIGN_2026-10-20.md](ATLAS_EFFICIENCY_AND_ADAPTATION_DESIGN_2026-10-20.md) — open since 2026-10-21 (claude)
 - `model-training` Train Atlas's own model: data from Eric's own messages, clean open datasets, REA/Replica/Atlas repo; stages, cost, first 3 steps — home: [docs/ATLAS_MODEL_TRAINING_PLAN_2026-10-21.md](ATLAS_MODEL_TRAINING_PLAN_2026-10-21.md) — open since 2026-10-21 (claude)
 - `owner-after-e2e1020` Owner decisions after e2e fixes: approve 16.2 GB pieces, program-copy cleanup (2.27 GB), self-audit act-without-asking runs cargo, panel outlives Atlas, owner desktop re-run — home: [verification/runs/20261021T110000Z-claude-e2e1020-fixes/RESULTS.md](../verification/runs/20261021T110000Z-claude-e2e1020-fixes/RESULTS.md) — open since 2026-10-21 (claude)
+- `completion-path` One completion path + context-before-asking: built in owned files; wiring in run_command/spoken_steps/tasks/floor/brain and the approval contract handed off — home: [docs/HANDOFF_ONE_COMPLETION_PATH_2026-10-21.md](HANDOFF_ONE_COMPLETION_PATH_2026-10-21.md) — doing since 2026-10-22 (claude-items)
 
 ## Last session
 
@@ -37,6 +38,9 @@ Dates are UTC. The card at the top of `AGENTS.md` holds the facts; this file hol
 
 ## Recently done
 
+- `ui-leftovers-1021` Hub wording leftovers from the 20 Oct run (kept notes, updates page, sidebar, subtitle, internet health) (2026-10-22)
+- `quiet-failures` Quiet failures made visible: full disk, file index, clock jumps, unreadable settings (2026-10-22)
+- `backup-e2e-1021` Backup and restore proved end to end (folder copy hash-checked, state backup, real restore); backup list shows real size and age (2026-10-22)
 - `current-state` Current-state consolidation doc (build, tests, readiness, vault, models, parked, historical) (2026-10-21)
 - `desktop-e2e-1020` Desktop E2E acceptance run 2026-10-20: fix false progress claims, Hub failed/done states, restart reconciliation, backup, mic (2026-10-21)
 - `sec4-dns-q25` SEC4 residual: keyless peer name lookups moved off the tick to a background cache; Q25: Daemon::set_auto_backup switch for tests (2026-10-21)
@@ -44,9 +48,6 @@ Dates are UTC. The card at the top of `AGENTS.md` holds the facts; this file hol
 - `tune-trash` PC tidy-up moves old temp files to Atlas's trash (restorable, 30 days) instead of deleting them (2026-10-21)
 - `selftest-scratch` SELFTEST1: self-test scratch cleanup removes junction links only, guarded to temp atlas-selftest-* folders, failures reported (2026-10-21)
 - `click-gate` Charter §8 click gate: refuse buy/order buttons anywhere and money/confirm buttons on bank or broker windows, at press_button and the screen-operating step (2026-10-21)
-- `i217d` Complete singular-candidate workspace handoff and inventory (2026-10-18)
-- `verify-harness` Independent real-runtime verification harness (2026-10-18)
-- `i65c1` Canonical open-work audit (2026-10-16)
 
 ## Docs
 
@@ -126,6 +127,7 @@ One line per doc. "Last true" is the date the doc declares (`Last updated: YYYY-
 | [docs/FOUNDATION_IMPLEMENTATION_2026-10-15.md](FOUNDATION_IMPLEMENTATION_2026-10-15.md) | Foundation implementation handoff — 2026-10-15 | — |
 | [docs/GOALS_AND_VERIFICATION_2026-10-18.md](GOALS_AND_VERIFICATION_2026-10-18.md) | Atlas goals and verification order — 2026-10-18 | — |
 | [docs/HANDOFF_2026-10-19_CREATIVE_WORKSPACE.md](HANDOFF_2026-10-19_CREATIVE_WORKSPACE.md) | Atlas Creative Workspace Handoff — 2026-10-19 | — |
+| [docs/HANDOFF_ONE_COMPLETION_PATH_2026-10-21.md](HANDOFF_ONE_COMPLETION_PATH_2026-10-21.md) | Hand-off: finishing "one completion path" (item 6) | 2026-10-21 |
 | [docs/INTEGRATION_REVIEW_2026-10-15.md](INTEGRATION_REVIEW_2026-10-15.md) | Canonical integration review — 2026-10-15 | — |
 | [docs/OFFLINE_ASSISTANT_DESIGN_2026-10-20.md](OFFLINE_ASSISTANT_DESIGN_2026-10-20.md) | Atlas as a full offline assistant that keeps the PC usable | 2026-10-20 |
 | [docs/OPEN_WORK_AUDIT_2026-10-15.md](OPEN_WORK_AUDIT_2026-10-15.md) | Atlas open-work audit — 2026-10-15 | 2026-10-20 |

@@ -36,15 +36,12 @@ Every answer is here or in ONE file named here. All docs, one line each, open it
 ### Runbooks (open the one you need)
 
 - `docs/ATLAS_DISPOSABLE_RESTORE_2026-10-17.md` — Atlas disposable restore evidence — 2026-10-17
+- `verification/runs/20261021T160000Z-claude-backup-restore-e2e/RESULTS.md` — Backup and restore, end to end — 2026-10-21 (Claude)
 - `verification/runs/20261021T160000Z-claude-backup-restore-e2e/backups-list.txt` — 0: 1792604854 — 40 files, 0 bytes
 - `verification/runs/20261021T160000Z-claude-backup-restore-e2e/dest-hashes.txt` — b6a98d9ce9a2d9149288fa3df42d377c3e42737afdcdaf714e33c0a100b51060 ./a.txt
-- `verification/runs/20261021T160000Z-claude-backup-restore-e2e/dest/src backup 2026-10-21 10-46-01/a.txt` — alpha
-- `verification/runs/20261021T160000Z-claude-backup-restore-e2e/dest/src backup 2026-10-21 10-46-01/sub/c.md` — nested
 - `verification/runs/20261021T160000Z-claude-backup-restore-e2e/folder-backup-transcript.txt` — I wrote my settings into C:\Users\erics\Atlas\wt-items\verification\runs\20261021T160000Z-claude-bac
 - `verification/runs/20261021T160000Z-claude-backup-restore-e2e/restore-transcript.txt` — Restored 40 file(s).
 - `verification/runs/20261021T160000Z-claude-backup-restore-e2e/src-hashes.txt` — b6a98d9ce9a2d9149288fa3df42d377c3e42737afdcdaf714e33c0a100b51060 ./a.txt
-- `verification/runs/20261021T160000Z-claude-backup-restore-e2e/src/a.txt` — alpha
-- `verification/runs/20261021T160000Z-claude-backup-restore-e2e/src/sub/c.md` — nested
 - `verification/runs/20261021T160000Z-claude-backup-restore-e2e/state-backup-transcript.txt` — atlas ready. type a command, 'help', or 'quit'.
 
 ### Superseded docs
