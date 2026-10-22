@@ -1220,6 +1220,10 @@ pub struct Daemon<'a> {
     /// When Atlas last started its model server, while that start is still
     /// being watched for dying young.
     model_started: Option<std::time::Instant>,
+    /// What the running model server's start is being measured for (21 Oct
+    /// 2026): available memory before it, the lowest since, and the key its
+    /// cost is kept under (`models::ModelCosts`). `None` when not running.
+    model_settle: Option<model::Settle>,
     /// Model servers that ended soon after being started, in a row: each
     /// doubles the pause before the next try (29 Sep 2026).
     model_deaths: u32,
@@ -2162,6 +2166,7 @@ impl<'a> Daemon<'a> {
             model_warmed: Default::default(),
             model_start_tried: None,
             model_started: None,
+            model_settle: None,
             model_deaths: 0,
             model_recovering: false,
             model_in_safe_mode: false,
