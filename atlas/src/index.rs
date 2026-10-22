@@ -162,6 +162,13 @@ pub struct Missed {
     pub undated: u32,
     /// A few of each, for working out the cause.
     pub examples: Vec<String>,
+    /// Why the saved index (or the scan that should have replaced it) did not
+    /// arrive, in plain words (21 Oct 2026). Set when the load thread died or
+    /// the saved file had to be set aside; without it an index that failed to
+    /// load looked exactly like an empty disk. Never saved: it describes this
+    /// run, and a new scan that works clears it.
+    #[serde(skip)]
+    pub not_loaded: Option<String>,
 }
 
 /// How many example paths to keep.
@@ -190,7 +197,8 @@ impl Missed {
     }
 
     pub fn anything(&self) -> bool {
-        self.unreadable_dirs > 0
+        self.not_loaded.is_some()
+            || self.unreadable_dirs > 0
             || self.unreadable_files > 0
             || self.too_deep > 0
             || self.undated > 0
@@ -203,6 +211,18 @@ impl Missed {
     pub fn caveat(&self) -> Option<String> {
         if !self.anything() {
             return None;
+        }
+        if let Some(why) = &self.not_loaded {
+            let rest = Missed {
+                not_loaded: None,
+                ..self.clone()
+            }
+            .caveat()
+            .map(|c| format!(" {c}"))
+            .unwrap_or_default();
+            return Some(format!(
+                "My file index didn't load ({why}), so I may be missing files --                  say 'rebuild the index' and I'll read your folders again.{rest}"
+            ));
         }
         let mut bits = Vec::new();
         if self.unreadable_dirs > 0 {
@@ -329,6 +349,10 @@ impl Index {
                 .spawn(move || drop(old)));
         }
         self.last_scan = fresh.last_scan;
+        // What this walk could not read replaces what the last one could not;
+        // it was never copied over before. A walk that completed also ends
+        // any "didn't load" note: there is a real index now.
+        self.missed = fresh.missed;
         c
     }
 
@@ -498,6 +522,25 @@ pub struct Loading {
     rx: Option<std::sync::mpsc::Receiver<Index>>,
 }
 
+/// The saved index, with a plain reason on it if the file had to be set aside
+/// while reading (damaged, locked, or too big): `Index::load` answers an empty
+/// index for those, and an empty index must not pass for "no files".
+fn read_saved_index(store: &Store) -> Index {
+    let began = now();
+    let mut index = Index::load(store);
+    if let Some(aside) = crate::store::set_aside_since(store, began)
+        .into_iter()
+        .find(|s| s.name == "index")
+    {
+        index.missed.not_loaded = Some(match aside.why.as_str() {
+            "oversized" => "the saved list had grown too big to read".to_string(),
+            "unreadable" => "the saved list was damaged or locked".to_string(),
+            other => format!("the saved list was set aside: {other}"),
+        });
+    }
+    index
+}
+
 /// What `Loading::settle` found.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Settled {
@@ -520,14 +563,19 @@ impl Loading {
         let started = std::thread::Builder::new()
             .name("atlas-index-load".into())
             .spawn(move || {
-                let _ = tx.send(Index::load(&theirs));
+                let index = read_saved_index(&theirs);
+                crate::heard!(tx
+                    .send(index)
+                    .map_err(|_| "nothing was waiting for the saved file index any more"));
             });
         match started {
             Ok(_) => Loading { rx: Some(rx) },
             // No thread: read it here, as before, rather than not at all.
             Err(_) => {
                 let (tx, rx) = std::sync::mpsc::channel();
-                let _ = tx.send(Index::load(store));
+                crate::heard!(tx
+                    .send(read_saved_index(store))
+                    .map_err(|_| "nothing was waiting for the saved file index"));
                 Loading { rx: Some(rx) }
             }
         }
@@ -554,9 +602,17 @@ impl Loading {
         let loaded = match rx.try_recv() {
             Ok(i) => i,
             Err(std::sync::mpsc::TryRecvError::Empty) => return Settled::StillLoading,
-            // The reading thread ended without an answer: nothing to take.
+            // The reading thread ended without an answer. Not "no files": say
+            // so, where a search will read it (21 Oct 2026).
             Err(std::sync::mpsc::TryRecvError::Disconnected) => {
                 self.rx = None;
+                if current.written_as() == (0, 0) {
+                    current.missed.not_loaded =
+                        Some("the part of me that reads it stopped before it finished".into());
+                    crate::heard!(Err::<(), _>(
+                        "the file index load thread ended without an answer"
+                    ));
+                }
                 return Settled::Ready;
             }
         };
@@ -723,5 +779,40 @@ mod tests {
         assert!(store.preserved().is_empty(), "{:?}", store.preserved());
         assert!(crate::store::take_failed_saves(&dir).is_empty());
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_load_thread_that_died_says_so_instead_of_an_empty_ready_index() {
+        let (mut loading, tx) = Loading::held_for_test();
+        drop(tx);
+        let mut index = Index::default();
+        assert_eq!(loading.settle(&mut index), Settled::Ready);
+        let said = index.missed.caveat().expect("a caveat, not silence");
+        assert!(said.contains("didn't load"), "{said}");
+        assert!(said.contains("rebuild the index"), "{said}");
+    }
+
+    #[test]
+    fn a_saved_index_that_cannot_be_read_is_reported_when_it_is_loaded() {
+        let dir = std::env::temp_dir().join(format!("atlas-index-bad-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let store = Store::new(&dir);
+        std::fs::write(dir.join("index.json"), "{ this is not an index").unwrap();
+        let mut loading = Loading::start(&store);
+        let mut index = Index::default();
+        loading.wait(&mut index, std::time::Duration::from_secs(10));
+        let said = index.missed.caveat().expect("a caveat, not an empty Ready");
+        assert!(said.contains("didn't load"), "{said}");
+        assert!(said.contains("rebuild the index"), "{said}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_fresh_walk_clears_the_didnt_load_note() {
+        let mut index = Index::default();
+        index.missed.not_loaded = Some("test".into());
+        index.apply(Index::default());
+        assert!(index.missed.caveat().is_none());
     }
 }

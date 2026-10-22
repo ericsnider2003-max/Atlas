@@ -107,15 +107,32 @@ impl Integration {
     }
 
     pub fn health(&self, now: u64) -> Health {
+        let seen = if self.name == INTERNET {
+            internet_answered_at()
+        } else {
+            None
+        };
+        self.health_seen(now, seen)
+    }
+
+    /// `health`, given a success seen somewhere else (an online answer that
+    /// came back). A seen success newer than the last failure clears it.
+    fn health_seen(&self, now: u64, seen: Option<u64>) -> Health {
         if !self.enabled {
             return Health::Off;
         }
+        let last_ok = match (self.last_ok, seen) {
+            (Some(a), Some(b)) => Some(a.max(b)),
+            (a, b) => a.or(b),
+        };
+        let failed_at = self.last_fail.as_ref().map_or(0, |(t, _)| *t);
+        let cleared = seen.is_some_and(|s| s >= failed_at);
         // A failure since the last success is the current state, however long
         // ago the success was.
-        if self.failures_running > 0 {
+        if self.failures_running > 0 && !cleared {
             return Health::Failing;
         }
-        match self.last_ok {
+        match last_ok {
             None => Health::Unknown,
             Some(t) if now.saturating_sub(t) <= QUIET_AFTER_SECS => Health::Working,
             Some(_) => Health::Quiet,
@@ -251,6 +268,27 @@ impl Board {
 /// The name the internet is recorded under.
 pub const INTERNET: &str = "the internet";
 
+/// When a free online answer last came back (seconds), 0 for never. Written
+/// by `freeonline`, read by `Integration::health` for the internet.
+///
+/// 21 Oct 2026: Health said "the internet -- never seen it work" while online
+/// answers were working, because only the tick probe and errands marked it.
+/// An answer that came back over the network is the internet working.
+static INTERNET_ANSWERED_AT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// Write down that the internet worked at `t`.
+pub(crate) fn note_internet_worked(t: u64) {
+    INTERNET_ANSWERED_AT.fetch_max(t, std::sync::atomic::Ordering::Relaxed);
+}
+
+/// When the internet last worked for an online answer, if it has.
+fn internet_answered_at() -> Option<u64> {
+    match INTERNET_ANSWERED_AT.load(std::sync::atomic::Ordering::Relaxed) {
+        0 => None,
+        t => Some(t),
+    }
+}
+
 /// The name the reasoning model is recorded under.
 pub const MODEL: &str = "the language model";
 
@@ -361,4 +399,35 @@ pub fn mark(answer: &str, used: &[&str], board: &Board, now: u64) -> String {
         gaps.join(", "),
         if gaps.len() == 1 { "it" } else { "they" }
     )
+}
+
+#[cfg(test)]
+mod internet_seen_tests {
+    use super::*;
+
+    #[test]
+    fn an_online_answer_counts_as_the_internet_working() {
+        let i = Integration::new(INTERNET, "x");
+        assert_eq!(i.health_seen(1_000, None), Health::Unknown);
+        assert_eq!(i.health_seen(1_000, Some(990)), Health::Working);
+    }
+
+    #[test]
+    fn a_later_answer_clears_an_earlier_failure_but_not_a_later_one() {
+        let mut i = Integration::new(INTERNET, "x");
+        i.failed(500, "no route out");
+        assert_eq!(i.health_seen(1_000, Some(600)), Health::Working);
+        assert_eq!(i.health_seen(1_000, Some(400)), Health::Failing);
+    }
+
+    #[test]
+    fn the_board_reads_a_recorded_answer() {
+        let now = crate::store::now();
+        note_internet_worked(now);
+        assert!(internet_answered_at().is_some());
+        let b = dependencies();
+        let i = b.integrations.iter().find(|i| i.name == INTERNET).unwrap();
+        assert_eq!(i.health(now), Health::Working);
+        assert!(!i.line(now).contains("never seen"));
+    }
 }

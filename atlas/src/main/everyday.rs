@@ -1743,7 +1743,14 @@ pub(super) fn run_backups(args: &[String]) {
             }
             for (i, b) in backups.iter().enumerate() {
                 let files = b.files.map(|f| f.to_string()).unwrap_or_else(|| "?".into());
-                println!("  {i}: {} — {files} files, {} bytes", b.at, b.bytes);
+                // 21 Oct 2026: when it was taken, in words, and a readable size.
+                let size = if b.bytes >= 1024 * 1024 {
+                    format!("{:.1} MB", b.bytes as f64 / (1024.0 * 1024.0))
+                } else {
+                    format!("{:.1} KB", b.bytes as f64 / 1024.0)
+                };
+                let age = atlas::freshness::ago(atlas::store::now().saturating_sub(b.at));
+                println!("  {i}: taken {age} — {files} files, {size}");
             }
             println!("\natlas backups restore <n>");
         }

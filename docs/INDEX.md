@@ -22,6 +22,8 @@ Dates are UTC. The card at the top of `AGENTS.md` holds the facts; this file hol
 - `offline-assistant` Full offline assistant that keeps the PC usable: design (memory tiers, voice loop, governor) and benchmark plan — home: [docs/OFFLINE_ASSISTANT_DESIGN_2026-10-20.md](OFFLINE_ASSISTANT_DESIGN_2026-10-20.md) — open since 2026-10-21 (claude)
 - `efficiency` Atlas-wide efficiency and device adaptation: tiers T0-T3, processing, memory, storage, learning budgets, acting ahead with guardrails, any-device platform record — home: [docs/ATLAS_EFFICIENCY_AND_ADAPTATION_DESIGN_2026-10-20.md](ATLAS_EFFICIENCY_AND_ADAPTATION_DESIGN_2026-10-20.md) — open since 2026-10-21 (claude)
 - `model-training` Train Atlas's own model: data from Eric's own messages, clean open datasets, REA/Replica/Atlas repo; stages, cost, first 3 steps — home: [docs/ATLAS_MODEL_TRAINING_PLAN_2026-10-21.md](ATLAS_MODEL_TRAINING_PLAN_2026-10-21.md) — open since 2026-10-21 (claude)
+- `owner-after-e2e1020` Owner decisions after e2e fixes: approve 16.2 GB pieces, program-copy cleanup (2.27 GB), self-audit act-without-asking runs cargo, panel outlives Atlas, owner desktop re-run — home: [verification/runs/20261021T110000Z-claude-e2e1020-fixes/RESULTS.md](../verification/runs/20261021T110000Z-claude-e2e1020-fixes/RESULTS.md) — open since 2026-10-21 (claude)
+- `completion-path` One completion path + context-before-asking: built in owned files; wiring in run_command/spoken_steps/tasks/floor/brain and the approval contract handed off — home: [docs/HANDOFF_ONE_COMPLETION_PATH_2026-10-21.md](HANDOFF_ONE_COMPLETION_PATH_2026-10-21.md) — doing since 2026-10-22 (claude-items)
 
 ## Last session
 
@@ -37,6 +39,10 @@ Dates are UTC. The card at the top of `AGENTS.md` holds the facts; this file hol
 ## Recently done
 
 - `owner-after-e2e1020` Owner decisions after e2e fixes: approve 16.2 GB pieces, program-copy cleanup (2.27 GB), self-audit act-without-asking runs cargo, panel outlives Atlas, owner desktop re-run (2026-10-22)
+- `ui-leftovers-1021` Hub wording leftovers from the 20 Oct run (kept notes, updates page, sidebar, subtitle, internet health) (2026-10-22)
+- `quiet-failures` Quiet failures made visible: full disk, file index, clock jumps, unreadable settings (2026-10-22)
+- `backup-e2e-1021` Backup and restore proved end to end (folder copy hash-checked, state backup, real restore); backup list shows real size and age (2026-10-22)
+- `current-state` Current-state consolidation doc (build, tests, readiness, vault, models, parked, historical) (2026-10-21)
 - `desktop-e2e-1020` Desktop E2E acceptance run 2026-10-20: fix false progress claims, Hub failed/done states, restart reconciliation, backup, mic (2026-10-21)
 - `sec4-dns-q25` SEC4 residual: keyless peer name lookups moved off the tick to a background cache; Q25: Daemon::set_auto_backup switch for tests (2026-10-21)
 - `gpu1-health` GPU1: a model server whose log shows Vulkan device loss is not trusted even when /health says OK; checked before each request (2026-10-21)
@@ -115,6 +121,7 @@ One line per doc. "Last true" is the date the doc declares (`Last updated: YYYY-
 | [docs/CHAT_HANDOFF_2026-10-18.md](CHAT_HANDOFF_2026-10-18.md) | Atlas chat handoff — 2026-10-18 | — |
 | [docs/CLAUDE_DESKTOP_ATLAS_ACCEPTANCE_HANDOFF_2026-10-20.md](CLAUDE_DESKTOP_ATLAS_ACCEPTANCE_HANDOFF_2026-10-20.md) | Atlas desktop acceptance handoff — 2026-10-20 | — |
 | [docs/CREATIVE_WORKSPACE_CORE_SCOPE_2026-10-18.md](CREATIVE_WORKSPACE_CORE_SCOPE_2026-10-18.md) | Creative Workspace Core — scope and acceptance | — |
+| [docs/CURRENT_STATE_2026-10-21.md](CURRENT_STATE_2026-10-21.md) | Current state, 21 October 2026 | 2026-10-21 |
 | [docs/EXECUTION_EFFICIENCY_PLAN.md](EXECUTION_EFFICIENCY_PLAN.md) | Atlas execution-efficiency plan | — |
 | [docs/F0_SHARED_RECORD_WIRING_2026-10-15.md](F0_SHARED_RECORD_WIRING_2026-10-15.md) | F0 shared capability record wiring — 2026-10-15 | — |
 | [docs/F1_DURABLE_JOB_COMPILE_FIX_2026-10-15.md](F1_DURABLE_JOB_COMPILE_FIX_2026-10-15.md) | F1 durable job compile fix — 2026-10-15 | — |
@@ -124,6 +131,7 @@ One line per doc. "Last true" is the date the doc declares (`Last updated: YYYY-
 | [docs/FOUNDATION_IMPLEMENTATION_2026-10-15.md](FOUNDATION_IMPLEMENTATION_2026-10-15.md) | Foundation implementation handoff — 2026-10-15 | — |
 | [docs/GOALS_AND_VERIFICATION_2026-10-18.md](GOALS_AND_VERIFICATION_2026-10-18.md) | Atlas goals and verification order — 2026-10-18 | — |
 | [docs/HANDOFF_2026-10-19_CREATIVE_WORKSPACE.md](HANDOFF_2026-10-19_CREATIVE_WORKSPACE.md) | Atlas Creative Workspace Handoff — 2026-10-19 | — |
+| [docs/HANDOFF_ONE_COMPLETION_PATH_2026-10-21.md](HANDOFF_ONE_COMPLETION_PATH_2026-10-21.md) | Hand-off: finishing "one completion path" (item 6) | 2026-10-21 |
 | [docs/INTEGRATION_REVIEW_2026-10-15.md](INTEGRATION_REVIEW_2026-10-15.md) | Canonical integration review — 2026-10-15 | — |
 | [docs/OFFLINE_ASSISTANT_DESIGN_2026-10-20.md](OFFLINE_ASSISTANT_DESIGN_2026-10-20.md) | Atlas as a full offline assistant that keeps the PC usable | 2026-10-20 |
 | [docs/OPEN_WORK_AUDIT_2026-10-15.md](OPEN_WORK_AUDIT_2026-10-15.md) | Atlas open-work audit — 2026-10-15 | 2026-10-20 |
@@ -139,7 +147,7 @@ One line per doc. "Last true" is the date the doc declares (`Last updated: YYYY-
 | [docs/REA_REPLICA_ADAPTATION_2026-10-16.md](REA_REPLICA_ADAPTATION_2026-10-16.md) | REA and replica adaptation notes — 2026-10-16 | — |
 | [docs/STALE_RECONCILIATION_2026-10-15.md](STALE_RECONCILIATION_2026-10-15.md) | Filing stale-reference reconciliation — 2026-10-15 | 2026-10-20 |
 | [docs/START_HERE.md](START_HERE.md) | Atlas — current starting point | 2026-10-20 |
-| [docs/STATUS.md](STATUS.md) | Status | 2026-10-20 |
+| [docs/STATUS.md](STATUS.md) | Status | 2026-10-21 |
 | [docs/TEST_COUNT_RECONCILIATION_2026-10-18.md](TEST_COUNT_RECONCILIATION_2026-10-18.md) | Test-count reconciliation — 2026-10-18 | — |
 | [docs/VERIFICATION_CAMPAIGN_2026-10-18.md](VERIFICATION_CAMPAIGN_2026-10-18.md) | Verification campaign — 2026-10-18 | — |
 | [docs/WORK_ITEMS_1_7_STATUS_2026-10-18.md](WORK_ITEMS_1_7_STATUS_2026-10-18.md) | Work Items 1–7 status — 2026-10-18 | — |

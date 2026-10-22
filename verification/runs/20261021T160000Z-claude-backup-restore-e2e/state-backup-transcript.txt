@@ -1,0 +1,3 @@
+atlas ready. type a command, 'help', or 'quit'.
+> Backed up 40 files for you.
+> 

@@ -989,9 +989,13 @@ pub fn previous_build(install_root: &Path) -> Option<(String, PathBuf)> {
         .flatten()
         .filter_map(|e| {
             let name = e.file_name().to_string_lossy().to_string();
+            // `.previous.exe` is what a Windows install keeps beside
+            // atlas.exe (21 Oct 2026: the page said nothing was kept while
+            // `atlas-0.1.0-dev.previous.exe` sat there).
             let v = name
                 .strip_prefix("atlas-")?
-                .strip_suffix(".previous")?
+                .strip_suffix(".previous.exe")
+                .or_else(|| name.strip_prefix("atlas-")?.strip_suffix(".previous"))?
                 .to_string();
             let at = e.metadata().and_then(|m| m.modified()).ok()?;
             Some((at, v, e.path()))
@@ -1001,6 +1005,30 @@ pub fn previous_build(install_root: &Path) -> Option<(String, PathBuf)> {
     found
         .pop()
         .map(|(_, v, p)| (upgrade::tag_version(&v).to_string(), p))
+}
+
+/// Copies of atlas.exe somebody set aside by hand beside it
+/// (`atlas.exe.before-*`, `atlas.exe.pre-*`): (file name, saved), newest
+/// first. Only listed. Going back to one is a manual step; nothing here
+/// offers to, or touches them.
+pub(crate) fn manual_copies(install_root: &Path) -> Vec<(String, std::time::SystemTime)> {
+    let mut found: Vec<(String, std::time::SystemTime)> = std::fs::read_dir(install_root)
+        .map(|d| {
+            d.flatten()
+                .filter_map(|e| {
+                    let name = e.file_name().to_string_lossy().to_string();
+                    let rest = name.strip_prefix("atlas.exe.")?;
+                    if !(rest.starts_with("before-") || rest.starts_with("pre-")) {
+                        return None;
+                    }
+                    let meta = e.metadata().ok().filter(|m| m.is_file())?;
+                    Some((name, meta.modified().ok()?))
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    found.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+    found
 }
 
 /// Go back one version: the kept previous build returns to `running`'s name,
@@ -1118,4 +1146,63 @@ pub fn heard_rotation_with(store: &Store, body: &str, recovery: &[u8; 32]) -> Op
 
 fn hex32(b: &[u8; 32]) -> String {
     b.iter().map(|x| format!("{x:02x}")).collect()
+}
+
+#[cfg(test)]
+mod kept_copies_tests {
+    use super::*;
+
+    fn dir(tag: &str) -> PathBuf {
+        let d = std::env::temp_dir().join(format!("atlas-kept-{tag}-{}", std::process::id()));
+        std::fs::remove_dir_all(&d).ok();
+        std::fs::create_dir_all(&d).unwrap();
+        d
+    }
+
+    #[test]
+    fn a_previous_exe_beside_atlas_is_found() {
+        let d = dir("exe");
+        std::fs::write(d.join("atlas-0.1.0-dev.previous.exe"), b"x").unwrap();
+        std::fs::write(d.join("atlas.exe"), b"y").unwrap();
+        let (v, p) = previous_build(&d).expect("the kept build is found");
+        assert_eq!(v, "0.1.0-dev");
+        assert!(p.ends_with("atlas-0.1.0-dev.previous.exe"));
+        std::fs::remove_dir_all(&d).ok();
+    }
+
+    #[test]
+    fn the_old_previous_name_still_counts() {
+        let d = dir("old");
+        std::fs::write(d.join("atlas-0.0.9.previous"), b"x").unwrap();
+        assert_eq!(previous_build(&d).map(|(v, _)| v), Some("0.0.9".into()));
+        std::fs::remove_dir_all(&d).ok();
+    }
+
+    #[test]
+    fn manual_copies_are_listed_and_never_taken_as_a_rollback() {
+        let d = dir("manual");
+        for n in [
+            "atlas.exe.before-merge-20261021",
+            "atlas.exe.pre-charter-20261020",
+            "atlas.exe.before-old",
+            "atlas.exe",
+            "atlas.exe.log",
+        ] {
+            std::fs::write(d.join(n), b"x").unwrap();
+        }
+        let got = manual_copies(&d);
+        assert_eq!(got.len(), 3);
+        assert!(got
+            .iter()
+            .all(|(n, _)| n != "atlas.exe" && n != "atlas.exe.log"));
+        assert!(
+            previous_build(&d).is_none(),
+            "a hand copy is not an automatic rollback"
+        );
+        assert!(
+            d.join("atlas.exe.before-old").exists(),
+            "nothing is deleted"
+        );
+        std::fs::remove_dir_all(&d).ok();
+    }
 }

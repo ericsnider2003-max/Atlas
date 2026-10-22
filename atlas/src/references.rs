@@ -211,7 +211,11 @@ fn ambiguity_question(text: &str) -> String {
         Kind::App => "Which app?".into(),
         Kind::File => "Which file?".into(),
         Kind::Topic => "About what?".into(),
-        Kind::Any => "Which one?".into(),
+        // Never a bare "Which one?" (21 Oct 2026): with nothing behind the
+        // pronoun, say what kind of answer would settle it. The daemon swaps
+        // in the likeliest candidates from context when it has any
+        // (`Daemon::context_question`).
+        Kind::Any => "I don't know what you mean by that one yet. Name it -- a file, an app or a person, like report.docx or Chrome.".into(),
     }
 }
 

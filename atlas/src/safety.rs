@@ -954,9 +954,15 @@ fn copy_state_into_skipping(
 /// Recursive, so `handoffs/` and `landed-over/` count; and skipping anything
 /// still carrying `PART_PREFIX`, so a copy that died half way cannot make an
 /// empty backup look like a real one.
-fn count_real_files(dir: &Path) -> Option<usize> {
+/// Files and their total size in a backup folder. (Was `count_real_files`,
+/// which counted but never measured; the doc notes above still use that name
+/// for the counting rules.)
+///
+/// 21 Oct 2026: the list said "0 bytes" for every backup, because the size
+/// was never measured: a 16 KB backup read as an empty one.
+fn real_files_and_bytes(dir: &Path) -> Option<(usize, u64)> {
     let rd = std::fs::read_dir(dir).ok()?;
-    let mut n = 0;
+    let (mut n, mut bytes) = (0usize, 0u64);
     for e in rd {
         let e = e.ok()?;
         let name = e.file_name().to_string_lossy().to_string();
@@ -965,12 +971,15 @@ fn count_real_files(dir: &Path) -> Option<usize> {
         }
         let p = e.path();
         if p.is_dir() {
-            n += count_real_files(&p)?;
+            let (sub_n, sub_bytes) = real_files_and_bytes(&p)?;
+            n += sub_n;
+            bytes += sub_bytes;
         } else {
             n += 1;
+            bytes += e.metadata().ok()?.len();
         }
     }
-    Some(n)
+    Some((n, bytes))
 }
 
 /// What is on disk, or why it can't be listed.
@@ -1012,12 +1021,12 @@ pub fn list_backups(cfg: &BackupConfig) -> Vec<Backup> {
         // subfolder counted as one file however much was in it, and a
         // leftover temp file from a backup that died mid-copy counted as a
         // backed-up file. See `count_real_files`.
-        let files = count_real_files(&p);
+        let counted = real_files_and_bytes(&p);
         out.push(Backup {
             path: p,
             at,
-            files,
-            bytes: 0,
+            files: counted.map(|(n, _)| n),
+            bytes: counted.map(|(_, b)| b).unwrap_or(0),
         });
     }
     out.sort_by_key(|b| b.at);
@@ -2617,6 +2626,24 @@ mod failed_move_tests {
         }
         assert!(d.join("a.tmp").exists() && d.join("c.tmp").exists());
         assert!(trash.ledger().is_empty());
+        crate::heard!(std::fs::remove_dir_all(&d));
+    }
+}
+
+#[cfg(test)]
+mod backup_size_tests {
+    use super::real_files_and_bytes;
+
+    #[test]
+    fn a_backup_lists_its_real_size_not_zero() {
+        let d = std::env::temp_dir().join(format!("atlas-backup-size-{}", std::process::id()));
+        crate::heard!(std::fs::remove_dir_all(&d));
+        std::fs::create_dir_all(d.join("sub")).unwrap_or_else(|e| panic!("make dir: {e}"));
+        std::fs::write(d.join("a.json"), vec![b'x'; 1000]).unwrap_or_else(|e| panic!("{e}"));
+        std::fs::write(d.join("sub").join("b.json"), vec![b'y'; 24])
+            .unwrap_or_else(|e| panic!("{e}"));
+        std::fs::write(d.join(super::BACKUP_MANIFEST), b"{}").unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(real_files_and_bytes(&d), Some((2, 1024)));
         crate::heard!(std::fs::remove_dir_all(&d));
     }
 }

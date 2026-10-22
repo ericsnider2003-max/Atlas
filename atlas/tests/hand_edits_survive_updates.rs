@@ -171,3 +171,40 @@ fn an_update_reports_the_edits_it_is_keeping() {
     keep_hand_edits_with(&dir, &release_2(), &[], "2");
     assert_eq!(yourchanges::kept_count(&dir), 1);
 }
+
+#[test]
+fn a_broken_edit_reaches_the_health_report_not_only_doctor() {
+    let dir = install("healthreport");
+    fs::create_dir_all(dir.join("local")).unwrap();
+    let overlay = yourchanges::overlay_path(&dir, "tools.yaml");
+    fs::write(
+        &overlay,
+        "changes:
+  - path: [record_seconds]
+    yours: \"not a number\"
+    was: 8
+",
+    )
+    .unwrap();
+    Config::load(&dir).unwrap();
+    let mine: Vec<_> = atlas::config::broken_edits()
+        .into_iter()
+        .filter(|b| b.path == overlay.display().to_string())
+        .collect();
+    assert_eq!(mine.len(), 1, "{mine:?}");
+    let v = atlas::diagnose::Vitals {
+        config_loaded: true,
+        state_writable: true,
+        disk_free_gb: 200.0,
+        backups_ever: 1,
+        broken_edits: mine,
+        ..Default::default()
+    };
+    let said = atlas::diagnose::diagnose(&v);
+    assert!(
+        said[0].what.contains("shipped tools.yaml settings"),
+        "{}",
+        said[0].what
+    );
+    assert!(said[0].what.contains("tools.yaml"), "{}", said[0].what);
+}

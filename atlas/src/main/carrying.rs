@@ -362,6 +362,87 @@ fn laptop_reachable(dir: &std::path::Path, to: Option<&str>) -> Option<(String, 
     Some((contact.name.clone(), atlas::watch::reachable(&address, 800)))
 }
 
+/// The durable job record's id for a remote request (21 Oct 2026): the
+/// request number alone is reused if the queue is ever started afresh, so the
+/// day it was asked is part of the name.
+fn remote_job_id(r: &atlas::remote::Request) -> String {
+    format!("remote:{}:{}", r.id, r.asked_at)
+}
+
+/// What the job record calls a remote request.
+fn remote_stage(r: &atlas::remote::Request) -> String {
+    let what: String = r.what.chars().take(60).collect();
+    format!("Remote request: {what}")
+}
+
+/// Write down that a remote request began, so a restart that cuts it off
+/// leaves an uncertain record rather than a request that is Running forever.
+fn begin_remote_job(store: &atlas::store::Store, r: &atlas::remote::Request) {
+    keep(
+        atlas::job::begin(store, &remote_job_id(r), &remote_stage(r), "Started"),
+        "job",
+    );
+}
+
+/// Give a remote request's record its ending. A record a restart already made
+/// uncertain is not rewritten (it cannot be); the owner has now said how it
+/// went, so it is marked reviewed and leaves the Interrupted lane.
+fn end_remote_job(
+    store: &atlas::store::Store,
+    r: &atlas::remote::Request,
+    state: atlas::job::State,
+    detail: &str,
+) {
+    let id = remote_job_id(r);
+    let was_uncertain = atlas::job::load_checked(store)
+        .map(|all| {
+            all.iter()
+                .any(|j| j.job_id == id && j.state == atlas::job::State::Uncertain)
+        })
+        .unwrap_or(false);
+    if was_uncertain {
+        keep(atlas::job::dismiss(store, &id), "job");
+    } else {
+        keep(
+            atlas::job::finish(store, &id, &remote_stage(r), state, detail, "remote queue"),
+            "job",
+        );
+    }
+}
+
+/// One line for a request that is Running, for `atlas remote list`: whether it
+/// is still going or a restart cut it off. A request nobody wrote a start for
+/// (begun before records were kept) says so rather than guessing.
+fn remote_running_line(
+    r: &atlas::remote::Request,
+    jobs: &[atlas::job::Record],
+    now: u64,
+) -> String {
+    let id = remote_job_id(r);
+    match jobs.iter().find(|j| j.job_id == id) {
+        Some(j) if j.state == atlas::job::State::Uncertain => format!(
+            "{}  {}  interrupted at {}: {} Check whether it finished before running it again.",
+            r.id,
+            r.what,
+            atlas::localclock::hhmm_here(j.updated_at),
+            j.receipt
+                .as_ref()
+                .map(|x| x.detail.as_str())
+                .unwrap_or("Atlas stopped while this was running.")
+        ),
+        Some(j) => format!(
+            "{}  {}  running for {} min",
+            r.id,
+            r.what,
+            now.saturating_sub(j.updated_at) / 60
+        ),
+        None => format!(
+            "{}  {}  marked running, but nothing recorded it starting; check whether it is still going",
+            r.id, r.what
+        ),
+    }
+}
+
 /// `atlas remote` — the queue of things that need the other machine.
 ///
 /// The phone half of this does not exist. The queue, the states, the
@@ -404,6 +485,26 @@ pub(super) fn run_remote(cfg: &Config, dir: &std::path::Path, args: &[String]) {
             for r in q.given_up(now, &rcfg) {
                 let days = now.saturating_sub(r.asked_at) / 86_400;
                 println!("  {}", remote::never_ran(r, days));
+            }
+            // Running ones are listed too: a request must not be able to
+            // sit as "running" with nobody saying what became of it.
+            let running: Vec<_> = q
+                .requests
+                .iter()
+                .filter(|r| r.state == State::Running)
+                .collect();
+            if !running.is_empty() {
+                match atlas::job::load_checked(&store) {
+                    Ok(jobs) => {
+                        for r in running {
+                            println!("  {}", remote_running_line(r, &jobs, now));
+                        }
+                    }
+                    Err(e) => println!(
+                        "  {} running, but the saved job records could not be read: {e}",
+                        running.len()
+                    ),
+                }
             }
             println!();
             println!("atlas remote ask <what>          queue it");
@@ -472,6 +573,9 @@ pub(super) fn run_remote(cfg: &Config, dir: &std::path::Path, args: &[String]) {
                     Some(said) => println!("{said}"),
                     None if q.set(id, State::Running) => {
                         keep(store.save("remote_queue", &q), "store");
+                        if let Some(r) = q.requests.iter().find(|r| r.id == id) {
+                            begin_remote_job(&store, r);
+                        }
                         println!("#{id} running.");
                     }
                     None => println!("No request #{id}."),
@@ -504,6 +608,16 @@ pub(super) fn run_remote(cfg: &Config, dir: &std::path::Path, args: &[String]) {
             let Some(r) = q.requests.iter().find(|r| r.id == id) else {
                 return;
             };
+            end_remote_job(
+                &store,
+                r,
+                if failed {
+                    atlas::job::State::Failed
+                } else {
+                    atlas::job::State::Succeeded
+                },
+                if result.is_empty() { "—" } else { &result },
+            );
             match remote::finished(r, took, if result.is_empty() { "—" } else { &result }) {
                 Some(said) => println!("{said}"),
                 None => println!(
@@ -515,6 +629,19 @@ pub(super) fn run_remote(cfg: &Config, dir: &std::path::Path, args: &[String]) {
         Some("drop") => match id_arg() {
             Some(id) if q.set(id, State::Dropped) => {
                 keep(store.save("remote_queue", &q), "store");
+                if let Some(r) = q.requests.iter().find(|r| r.id == id) {
+                    // Only a request that had begun has a record to close.
+                    if atlas::job::load_checked(&store)
+                        .is_ok_and(|all| all.iter().any(|j| j.job_id == remote_job_id(r)))
+                    {
+                        end_remote_job(
+                            &store,
+                            r,
+                            atlas::job::State::Cancelled,
+                            "Dropped by the owner.",
+                        );
+                    }
+                }
                 println!("#{id} dropped.");
             }
             Some(id) => println!("No request #{id}."),
@@ -859,4 +986,82 @@ pub(super) fn run_sync_setup(cfg: &Config, args: &[String]) -> bool {
         println!("  {place}");
     }
     true
+}
+
+#[cfg(test)]
+mod remote_job_tests {
+    use super::*;
+    use atlas::remote::{How, Needs, Queue, State as Q};
+
+    fn scratch(name: &str) -> (std::path::PathBuf, atlas::store::Store) {
+        let root = std::env::temp_dir().join(format!(
+            "atlas-carry-{name}-{}-{}",
+            std::process::id(),
+            atlas::store::now()
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+        let store = atlas::store::Store::new(&root);
+        (root, store)
+    }
+
+    fn asked() -> (Queue, u64) {
+        let mut q = Queue::default();
+        let id = q.ask("render the draft", Needs::TheLaptop, How::InYourEar, 1_000);
+        (q, id)
+    }
+
+    #[test]
+    fn a_running_request_is_shown_as_interrupted_after_a_restart() {
+        let (root, store) = scratch("interrupted");
+        let (mut q, id) = asked();
+        q.set(id, Q::Running);
+        begin_remote_job(&store, &q.requests[0]);
+        let jobs = atlas::job::load_checked(&store).unwrap();
+        let now = jobs[0].updated_at + 120;
+        assert!(remote_running_line(&q.requests[0], &jobs, now).contains("running for 2 min"));
+
+        // The daemon starts again: what was Running is cut off.
+        atlas::job::reconcile_after_restart(&store).unwrap();
+        store.save("remote_queue", &q).unwrap();
+        let q2: Queue = store.load("remote_queue");
+        let jobs = atlas::job::load_checked(&store).unwrap();
+        let line = remote_running_line(&q2.requests[0], &jobs, now + 900);
+        assert!(line.contains("interrupted at"), "{line}");
+        assert!(line.contains("before running it again"), "{line}");
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn a_reported_ending_closes_the_record_and_clears_an_interruption() {
+        let (root, store) = scratch("ending");
+        let (mut q, id) = asked();
+        q.set(id, Q::Running);
+        begin_remote_job(&store, &q.requests[0]);
+        end_remote_job(&store, &q.requests[0], atlas::job::State::Succeeded, "ok");
+        let rec = atlas::job::load_checked(&store).unwrap().remove(0);
+        assert_eq!(rec.state, atlas::job::State::Succeeded);
+
+        // A second request, cut off by a restart, then reported failed.
+        let id2 = q.ask("send the files", Needs::TheLaptop, How::InYourEar, 2_000);
+        q.set(id2, Q::Running);
+        begin_remote_job(&store, &q.requests[1]);
+        atlas::job::reconcile_after_restart(&store).unwrap();
+        end_remote_job(&store, &q.requests[1], atlas::job::State::Failed, "no");
+        let all = atlas::job::load_checked(&store).unwrap();
+        let cut = all
+            .iter()
+            .find(|j| j.job_id == remote_job_id(&q.requests[1]))
+            .unwrap();
+        assert_eq!(cut.state, atlas::job::State::Uncertain);
+        assert!(cut.dismissed, "the owner's report should clear it");
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn a_running_request_nobody_recorded_says_so() {
+        let (mut q, id) = asked();
+        q.set(id, Q::Running);
+        let line = remote_running_line(&q.requests[0], &[], 5_000);
+        assert!(line.contains("nothing recorded it starting"), "{line}");
+    }
 }

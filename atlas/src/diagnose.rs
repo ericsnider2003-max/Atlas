@@ -69,6 +69,38 @@ pub struct Vitals {
     /// Slowest stage of a turn, and how long it took.
     pub slowest_stage: Option<(String, u64)>,
     pub backups_ever: usize,
+    /// The computer's clock jumping, if it did lately: which way, how many
+    /// seconds, and the local time of day it happened ("14:03").
+    pub clock_jump: Option<ClockJump>,
+    /// Settings edits of yours that could not be used, as
+    /// (file, where your edit is, why). Atlas ran on the shipped file instead.
+    pub broken_edits: Vec<BrokenEdit>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ClockJump {
+    pub backwards: bool,
+    pub secs: u64,
+    pub at_local: String,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct BrokenEdit {
+    pub file: String,
+    pub path: String,
+    pub reason: String,
+}
+
+/// "2 hours", "45 minutes", "30 seconds" -- a span in plain words.
+pub(crate) fn plain_span(secs: u64) -> String {
+    let (n, unit) = if secs >= 3600 {
+        ((secs + 1800) / 3600, "hour")
+    } else if secs >= 60 {
+        ((secs + 30) / 60, "minute")
+    } else {
+        (secs, "second")
+    };
+    format!("{n} {unit}{}", if n == 1 { "" } else { "s" })
 }
 
 pub fn diagnose(v: &Vitals) -> Vec<Symptom> {
@@ -161,10 +193,48 @@ pub fn diagnose(v: &Vitals) -> Vec<Symptom> {
         out.push(Symptom {
             id: "disk".into(),
             impact: Impact::Fatal,
-            what: "There's almost no disk left — I can't even save what I learn.".into(),
+            what: format!(
+                "There's almost no disk left ({:.1} GB free) — I can't even save what I learn. Free some space on that disk and I'll carry on.",
+                v.disk_free_gb
+            ),
             remedy: Remedy::Offer {
                 action: "clear my own captures and scratch files".into(),
                 what_changes: "deletes screenshots and temporary audio, nothing of yours".into(),
+            },
+        });
+    }
+
+    // The computer's own clock moved (21 Oct 2026). Reminders and schedules go
+    // by it, so say so, with what to do if it keeps happening.
+    if let Some(j) = &v.clock_jump {
+        let way = if j.backwards { "back" } else { "forward" };
+        out.push(Symptom {
+            id: "clock".into(),
+            impact: Impact::Degraded,
+            what: format!(
+                "Your computer's clock jumped {way} {} at {} — reminders and schedules follow that clock, so anything due around then may have run early, late or twice.",
+                plain_span(j.secs),
+                j.at_local
+            ),
+            remedy: Remedy::Yours {
+                action: "check the clock's internet time setting if this keeps happening".into(),
+            },
+        });
+    }
+
+    // An edit of yours that can't be read: Atlas is running on the shipped
+    // settings instead, and says so rather than letting you wonder why the
+    // change did nothing.
+    for b in &v.broken_edits {
+        out.push(Symptom {
+            id: format!("edit:{}", b.file),
+            impact: Impact::Degraded,
+            what: format!(
+                "Running on the shipped {} settings because your edit at {} can't be read ({}).",
+                b.file, b.path, b.reason
+            ),
+            remedy: Remedy::Yours {
+                action: "fix or delete that line, or say 'open settings'".into(),
             },
         });
     }
@@ -248,8 +318,12 @@ pub fn report(symptoms: &[Symptom]) -> String {
 
     if let Some(f) = symptoms.iter().find(|s| s.impact == Impact::Fatal) {
         parts.push(f.what.clone());
-        if let Remedy::Yours { action } = &f.remedy {
-            parts.push(format!("You'd need to {action}."));
+        match &f.remedy {
+            Remedy::Yours { action } => parts.push(format!("You'd need to {action}.")),
+            // A fatal problem with a fix on offer must say so too (21 Oct
+            // 2026): "no disk left" with no next step is a dead end.
+            Remedy::Offer { action, .. } => parts.push(format!("I could {action} if you want.")),
+            _ => {}
         }
         return parts.join(" ");
     }
@@ -303,4 +377,82 @@ pub fn detail(symptoms: &[Symptom]) -> String {
         }
     }
     s
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn fine() -> Vitals {
+        Vitals {
+            config_loaded: true,
+            state_writable: true,
+            disk_free_gb: 200.0,
+            backups_ever: 1,
+            ..Vitals::default()
+        }
+    }
+
+    #[test]
+    fn a_clock_that_jumped_back_is_reported_with_size_time_and_next_step() {
+        let v = Vitals {
+            clock_jump: Some(ClockJump {
+                backwards: true,
+                secs: 7200,
+                at_local: "14:03".into(),
+            }),
+            ..fine()
+        };
+        let s = diagnose(&v);
+        assert_eq!(s.len(), 1);
+        assert!(
+            s[0].what.contains("jumped back 2 hours at 14:03"),
+            "{}",
+            s[0].what
+        );
+        assert!(
+            matches!(&s[0].remedy, Remedy::Yours { action } if action.contains("internet time"))
+        );
+    }
+
+    #[test]
+    fn a_broken_edit_says_which_file_it_is_running_without() {
+        let v = Vitals {
+            broken_edits: vec![BrokenEdit {
+                file: "tools.yaml".into(),
+                path: "config/local/tools.yaml".into(),
+                reason: "a number was expected".into(),
+            }],
+            ..fine()
+        };
+        let s = diagnose(&v);
+        assert!(
+            s[0].what.contains("shipped tools.yaml settings"),
+            "{}",
+            s[0].what
+        );
+        assert!(s[0].what.contains("config/local/tools.yaml"));
+        assert!(
+            matches!(&s[0].remedy, Remedy::Yours { action } if action.contains("open settings"))
+        );
+    }
+
+    #[test]
+    fn almost_no_disk_comes_with_a_next_step_when_read_out() {
+        let v = Vitals {
+            disk_free_gb: 0.5,
+            ..fine()
+        };
+        let said = report(&diagnose(&v));
+        assert!(said.contains("Free some space"), "{said}");
+        assert!(said.contains("I could clear my own captures"), "{said}");
+    }
+
+    #[test]
+    fn spans_read_in_plain_words() {
+        assert_eq!(plain_span(7200), "2 hours");
+        assert_eq!(plain_span(3600), "1 hour");
+        assert_eq!(plain_span(2700), "45 minutes");
+        assert_eq!(plain_span(30), "30 seconds");
+    }
 }

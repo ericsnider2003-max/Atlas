@@ -869,6 +869,53 @@ impl Parser {
             .collect()
     }
 
+    /// Up to `n` short command phrases that share words with `input`, best
+    /// first (21 Oct 2026). What Atlas offers when it did not recognise a line,
+    /// so the reply can say what it heard and what it could have been, rather
+    /// than "I didn't catch that". One phrase per command; a word within the
+    /// usual typo allowance counts.
+    pub fn closest_commands(&self, input: &str, n: usize) -> Vec<String> {
+        let phrases: Vec<&str> = self
+            .table
+            .iter()
+            .filter(|r| (1..=4).contains(&r.phrase.split_whitespace().count()))
+            .map(|r| r.phrase.as_str())
+            .collect();
+        let mut score = vec![0usize; phrases.len()];
+        for w in normalize(input).split_whitespace().filter(|w| w.len() >= 3) {
+            if matches!(
+                w,
+                "the" | "and" | "for" | "you" | "can" | "please" | "that" | "this" | "with"
+            ) {
+                continue;
+            }
+            for (i, _) in crate::typos::suggest(w, &phrases) {
+                score[i] += 1;
+            }
+        }
+        let mut order: Vec<usize> = (0..phrases.len()).filter(|i| score[*i] > 0).collect();
+        order.sort_by_key(|i| (std::cmp::Reverse(score[*i]), phrases[*i].len()));
+        let mut seen_intent: Vec<&str> = Vec::new();
+        let mut out = Vec::new();
+        for i in order {
+            let intent = self
+                .table
+                .iter()
+                .find(|r| r.phrase == phrases[i])
+                .map(|r| r.intent.as_str())
+                .unwrap_or("");
+            if seen_intent.contains(&intent) {
+                continue;
+            }
+            seen_intent.push(intent);
+            out.push(phrases[i].to_string());
+            if out.len() >= n {
+                break;
+            }
+        }
+        out
+    }
+
     /// Is `arg` a name this command may take? Always, until names are known.
     fn is_a_known_name(&self, intent: &str, arg: &str) -> bool {
         let Some(n) = &self.names else { return true };

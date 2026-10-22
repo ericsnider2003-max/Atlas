@@ -1,0 +1,5 @@
+I wrote my settings into C:\Users\erics\Atlas\wt-items\verification\runs\20261021T160000Z-claude-backup-restore-e2e\home\config.
+atlas ready. type a command, 'help', or 'quit'.
+> Backing up C:\Users\erics\Atlas\wt-items\verification\runs\20261021T160000Z-claude-backup-restore-e2e\src in the background into a new folder inside C:\Users\erics\Atlas\wt-items\verification\runs\20261021T160000Z-claude-backup-restore-e2e\dest. It's in Outstanding while it runs; I'll tell you when it's done and checked (file count and a hash of every file).
+> I'm preparing your brief. I'll show it when it's ready.
+> 

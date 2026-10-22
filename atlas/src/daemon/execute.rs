@@ -1401,6 +1401,15 @@ impl<'a> Daemon<'a> {
                 }
                 Ok(said)
             }
+            // A full disk gets a plain sentence and a next step, not the raw
+            // error text (21 Oct 2026).
+            Err(crate::error::AtlasError::Io(io)) if crate::store::is_disk_full(&io) => {
+                Err(crate::store::plain_write_failure(
+                    "the backup",
+                    std::path::Path::new(&cfg.dir),
+                    &io,
+                ))
+            }
             Err(e) => Err(format!("Backup failed: {e}")),
         };
         self.hub_jobs.finish(job, said.clone(), false);
@@ -3102,10 +3111,131 @@ impl<'a> Daemon<'a> {
                          The hub's Health page says where it stands."
                     )
                     }
-                    None => "I didn't catch that.".into(),
+                    None => self.unrecognised_line(raw),
                 },
             },
         }
+    }
+
+    /// A line nothing could place (21 Oct 2026). Says what was heard and what
+    /// it might have been, instead of "I didn't catch that": the closest
+    /// commands Atlas knows, and the window you have open when there is one.
+    fn unrecognised_line(&self, raw: &str) -> String {
+        let heard: String = raw.trim().chars().take(60).collect();
+        if heard.is_empty() {
+            return "I heard nothing to act on. Say a request, like \"open Notepad\" or \"what's on my agenda\"."
+                .into();
+        }
+        let close = self.parser.closest_commands(raw, 3);
+        let window = self.resolution_context().active_window;
+        let here = window
+            .map(|w| {
+                format!(
+                    " You have {w} open, so tell me what to do there if that is what you meant."
+                )
+            })
+            .unwrap_or_default();
+        if close.is_empty() {
+            format!(
+                "I heard \"{heard}\", but it isn't a command I know.{here} Try a plain request, like \"open Notepad\" or \"what's on my agenda\"."
+            )
+        } else {
+            let quoted: Vec<String> = close.iter().map(|c| format!("\"{c}\"")).collect();
+            format!(
+                "I heard \"{heard}\", but it isn't a command I know. The closest I do know: {}.{here} Say one of those, or tell me more.",
+                quoted.join(", ")
+            )
+        }
+    }
+
+    /// Read what Atlas already knows about this moment, for
+    /// `understood::resolve` (21 Oct 2026; Eric: "Atlas should ask and think
+    /// with context"). Built only from what is already kept: the last turns,
+    /// the window in focus, and the last 50 journal lines, whose folders,
+    /// files, apps and people are counted into habits. Cheap on purpose.
+    pub(crate) fn resolution_context(&self) -> crate::understood::Context {
+        use std::collections::HashMap;
+        let mut ctx = crate::understood::Context::default();
+        let turns = &self.session.turns;
+        let from = turns.len().saturating_sub(50);
+        let mut said: Vec<String> = turns[from..]
+            .iter()
+            .rev()
+            .take(6)
+            .map(|t| t.said.clone())
+            .collect();
+        said.reverse();
+        if !self.last_said.is_empty() && said.last() != Some(&self.last_said) {
+            said.push(self.last_said.clone());
+        }
+        ctx.recent_said = said;
+        if let Ok(Some(w)) = self.plat.active_window() {
+            let t = w.title.trim();
+            ctx.active_window = Some(if t.is_empty() {
+                w.process
+            } else {
+                t.to_string()
+            })
+            .filter(|s| !s.trim().is_empty());
+        }
+        // (kind, value) -> (times, newest)
+        let mut seen: HashMap<(String, String), (u32, u64)> = HashMap::new();
+        let mut note = |text: &str, at: u64| {
+            for (k, v) in crate::understood::targets_in(text) {
+                let e = seen.entry((k, v)).or_insert((0, 0));
+                e.0 += 1;
+                e.1 = e.1.max(at);
+            }
+        };
+        for t in &turns[from..] {
+            note(&t.said, t.at);
+            note(&t.reply, t.at);
+        }
+        for e in self.journal.events.iter().rev().take(50) {
+            if !e.kind.internal() {
+                note(&e.what, e.at);
+            }
+        }
+        for ((k, v), (n, at)) in seen {
+            if n >= 2 {
+                ctx.habits.push((k.clone(), v.clone(), n));
+            }
+            ctx.recent_targets.push((k, v, at));
+        }
+        ctx.recent_targets
+            .sort_by(|a, b| b.2.cmp(&a.2).then(a.1.cmp(&b.1)));
+        ctx.habits.sort_by(|a, b| b.2.cmp(&a.2).then(a.1.cmp(&b.1)));
+        ctx
+    }
+
+    /// A pronoun with nothing behind it ("close it"): the question, built
+    /// from context where there is any. `generic` is what `references` would
+    /// have asked; the candidates here are what you mentioned, have open,
+    /// used last or usually pick.
+    pub(crate) fn context_question(&self, said: &str, generic: &str) -> String {
+        let kinds: &[&str] = match generic {
+            "Which app?" => &["app"],
+            "Which file?" => &["file"],
+            "About what?" => return generic.to_string(),
+            _ => &["file", "app", "folder", "person"],
+        };
+        let ctx = self.resolution_context();
+        let mut options: Vec<String> = Vec::new();
+        for k in kinds {
+            match crate::understood::resolve(k, "", &ctx) {
+                crate::understood::Resolution::Clear { value, because } => {
+                    options.push(format!("{value} ({because})"))
+                }
+                crate::understood::Resolution::Choose { options: o, .. } => options.extend(o),
+                crate::understood::Resolution::Missing { .. } => {}
+            }
+        }
+        options.truncate(3);
+        if options.is_empty() {
+            return generic.to_string();
+        }
+        let short: String = said.trim().chars().take(40).collect();
+        crate::understood::ask_with_options(&format!("\"{short}\""), &options)
     }
 
     /// Errand kinds that call `crew::Control::checkpoint` at safe points, so
@@ -3130,3 +3260,61 @@ impl<'a> Daemon<'a> {
 const DRAFT_SYSTEM: &str = "Write one short social media post in the user's own voice, first person, for the channel named. \
 Plain and specific, no hashtag walls (two at most), no emoji unless the channel is Instagram, no preamble or quotation marks: \
 only the post itself. LinkedIn: three to five short sentences. X: under 270 characters.";
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::platform::mock::MockPlatform;
+
+    fn daemon_with<'a>(
+        cfg: &'a crate::config::Config,
+        p: &'a MockPlatform,
+        tag: &str,
+    ) -> Daemon<'a> {
+        let root = std::env::temp_dir().join(format!("atlas-execute-ctx-{tag}"));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        Daemon::new(
+            cfg,
+            p,
+            None,
+            crate::store::Store::new(root),
+            crate::proactive::Proactive::new(crate::proactive::ProactiveConfig::default()),
+        )
+    }
+
+    /// 21 Oct 2026: a pronoun with nothing behind it offers the window in
+    /// front, and with nothing known keeps the plain question.
+    #[test]
+    fn a_pronoun_question_offers_what_context_has() {
+        let cfg = crate::config::Config::load(std::path::Path::new("config")).unwrap();
+        let p = MockPlatform::new(vec![]);
+        p.focus_on("notepad.exe", "Draft - Notepad");
+        let d = daemon_with(&cfg, &p, "window");
+        let q = d.context_question("close it", "Which app?");
+        assert!(
+            q.contains("Notepad") && q.contains("the one you have open"),
+            "{q}"
+        );
+        p.focus_on("", "");
+        let d = daemon_with(&cfg, &p, "none");
+        assert_eq!(d.context_question("close it", "Which app?"), "Which app?");
+    }
+
+    #[test]
+    fn the_context_reads_the_last_things_said_and_done() {
+        let cfg = crate::config::Config::load(std::path::Path::new("config")).unwrap();
+        let p = MockPlatform::new(vec![]);
+        let mut d = daemon_with(&cfg, &p, "turns");
+        let said = r"back up to D:\Backups";
+        d.session
+            .record(said, &Intent::Unknown(said.into()), r"Done, in D:\Backups.");
+        let ctx = d.resolution_context();
+        assert_eq!(ctx.recent_said, vec![said.to_string()]);
+        assert!(ctx
+            .recent_targets
+            .iter()
+            .any(|t| t.0 == "folder" && t.1 == r"D:\Backups"));
+        assert!(ctx.habits.iter().any(|h| h.1 == r"D:\Backups" && h.2 >= 2));
+    }
+}

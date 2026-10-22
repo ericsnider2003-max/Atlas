@@ -348,9 +348,9 @@ pub fn activity_state(kind: crate::activity::Kind, ok: bool, what: &str) -> Acti
 /// The Activity page: each line with its state as an icon and a word, and the
 /// time on your clock. Lines are (state, text, time).
 pub fn activity_page(items: &[(ActivityState, String, String)]) -> String {
-    let mut body = String::from(
-        "<p class=note>Everything I did without being watched. Each line says whether it worked.</p>",
-    );
+    // The page's own subtitle is printed by the frame (`Page::note`); it was
+    // printed twice until 21 Oct 2026.
+    let mut body = String::new();
     if items.is_empty() {
         body.push_str(&nothing("Nothing on this list right now."));
     }
@@ -990,6 +990,18 @@ mod work_state_tests {
         assert!(html.contains("st-waiting") && html.contains("Needs you</span>"));
         assert!(html.contains("<time>09:01</time>"));
         assert!(html.contains("<svg"), "an icon beside the word");
+    }
+
+    #[test]
+    fn the_activity_page_leaves_its_subtitle_to_the_frame() {
+        // `activity_page` is the whole page: the frame prints the subtitle once.
+        let page = activity_page(&[]);
+        assert!(!page.contains("Everything I did"), "{page}");
+        assert_eq!(
+            page.matches("class=pagenote>Everything Atlas did").count(),
+            1
+        );
+        assert!(!page.contains("class=note>Everything"));
     }
 
     #[test]

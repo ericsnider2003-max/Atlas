@@ -23,10 +23,17 @@ use crate::store::Store;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::sync::Mutex;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
-/// How long a finished job is kept for its page to show.
+/// How long a job that went well is kept for its page to show.
 const KEEP_FINISHED: Duration = Duration::from_secs(10 * 60);
+/// How long a failed or interrupted job is kept (21 Oct 2026): at least a
+/// day, counted from when it failed, so a restart does not start the clock
+/// again and a failure is not gone before the owner has seen it.
+const KEEP_FAILED: Duration = Duration::from_secs(24 * 60 * 60);
+/// What a job that was running when Atlas stopped says. It may well have
+/// finished, so it is not offered for a replay.
+pub const INTERRUPTED: &str = "Interrupted: Atlas stopped while this was running; check whether it finished before running it again.";
 /// How many jobs are remembered at once.
 const MOST: usize = 64;
 const STORE_NAME: &str = "hub_jobs";
@@ -47,6 +54,10 @@ struct PersistedJob {
     label: String,
     state: State,
     seen: bool,
+    /// When it ended, in wall-clock seconds, so a restart keeps the real time
+    /// (older files have none).
+    #[serde(default)]
+    finished_at: Option<u64>,
 }
 
 #[derive(Debug, Clone)]
@@ -58,7 +69,8 @@ pub struct Job {
     pub state: State,
     /// Its answer has been shown.
     pub seen: bool,
-    finished: Option<Instant>,
+    /// Wall-clock seconds when it ended.
+    finished: Option<u64>,
 }
 
 /// Every hub job, by number. Shared with the crew threads doing them.
@@ -82,6 +94,11 @@ impl Jobs {
     /// running when Atlas stopped cannot be replayed safely, so it returns as
     /// an explicit failure rather than disappearing or claiming success.
     pub fn from_store(store: &Store) -> Self {
+        Self::from_store_at(store, crate::store::now())
+    }
+
+    /// As `from_store`, with the clock given so a test can move it.
+    fn from_store_at(store: &Store, now: u64) -> Self {
         let (persisted, can_persist) =
             match store.load_checked_bounded::<Vec<PersistedJob>>(STORE_NAME, STORE_LIMIT) {
                 Ok(Some(value)) => (value, true),
@@ -109,10 +126,12 @@ impl Jobs {
             .chain(terminal.into_iter().take(terminal_keep))
         {
             next = next.max(item.id);
+            let finished = match item.state {
+                State::Running => Some(now),
+                _ => item.finished_at.or(Some(now)),
+            };
             let state = match item.state {
-                State::Running => State::Failed(
-                    "Atlas restarted before this Hub job finished; review and retry it.".into(),
-                ),
+                State::Running => State::Failed(INTERRUPTED.into()),
                 state => state,
             };
             jobs.insert(
@@ -122,10 +141,12 @@ impl Jobs {
                     label: item.label,
                     state,
                     seen: item.seen,
-                    finished: Some(Instant::now()),
+                    finished,
                 },
             );
         }
+        // A failure counts its day from when it failed, not from this boot.
+        forget_old_at(&mut jobs, now);
         let out = Self {
             inner: Mutex::new((next, jobs)),
             store: Some(store.clone()),
@@ -173,7 +194,7 @@ impl Jobs {
                     Ok(s) => State::Done(s),
                     Err(s) => State::Failed(s),
                 };
-                j.finished = Some(Instant::now());
+                j.finished = Some(crate::store::now());
             }
         }
         forget_old(&mut g.1);
@@ -203,7 +224,7 @@ impl Jobs {
     pub fn age_finished(&self, id: u64, by: Duration) {
         let mut g = self.held();
         if let Some(j) = g.1.get_mut(&id) {
-            j.finished = j.finished.and_then(|f| f.checked_sub(by));
+            j.finished = j.finished.map(|f| f.saturating_sub(by.as_secs()));
         }
     }
 
@@ -266,6 +287,7 @@ impl Jobs {
                     label: job.label.clone(),
                     state: job.state.clone(),
                     seen: job.seen,
+                    finished_at: job.finished,
                 })
                 .collect();
         drop(g);
@@ -291,11 +313,13 @@ impl Jobs {
 /// Keep the list bounded without losing work (28 Sep 2026).
 ///
 /// A finished job is forgotten `KEEP_FINISHED` after it finished, shown or
-/// not: an answer nobody came back for used to be kept forever. Past `MOST`,
+/// not: an answer nobody came back for used to be kept forever. A failed or
+/// interrupted one is kept `KEEP_FAILED`, counted from the wall-clock time it
+/// failed and kept across restarts (21 Oct 2026). Past `MOST`,
 /// the oldest *finished* jobs go first; a running job is never forgotten --
 /// it was, when 64 jobs piled up, and its answer then had nowhere to land.
 fn forget_old(jobs: &mut BTreeMap<u64, Job>) {
-    jobs.retain(|_, j| !j.finished.is_some_and(|f| f.elapsed() > KEEP_FINISHED));
+    forget_old_at(jobs, crate::store::now());
     while jobs.len() > MOST {
         let Some(oldest_finished) = jobs
             .iter()
@@ -306,6 +330,19 @@ fn forget_old(jobs: &mut BTreeMap<u64, Job>) {
         };
         jobs.remove(&oldest_finished);
     }
+}
+
+/// The time part of `forget_old`, with the clock given so a test can move it.
+fn forget_old_at(jobs: &mut BTreeMap<u64, Job>, now: u64) {
+    jobs.retain(|_, j| {
+        let keep = if matches!(j.state, State::Failed(_)) {
+            KEEP_FAILED
+        } else {
+            KEEP_FINISHED
+        };
+        !j.finished
+            .is_some_and(|f| now.saturating_sub(f) > keep.as_secs())
+    });
 }
 
 /// The notice a page shows for a job it asked about, and whether the page
@@ -399,10 +436,74 @@ mod tests {
         );
         assert_eq!(
             restored.look(running).unwrap().state,
-            State::Failed(
-                "Atlas restarted before this Hub job finished; review and retry it.".into()
-            )
+            State::Failed(INTERRUPTED.into())
         );
+        assert!(INTERRUPTED.contains("check whether it finished"));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_failure_keeps_its_own_finish_time_across_restarts_and_lasts_a_day() {
+        let dir = std::env::temp_dir().join(format!(
+            "atlas-hubjobs-failtime-{}-{}",
+            std::process::id(),
+            crate::store::now()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let store = Store::new(&dir);
+        let jobs = Jobs::from_store(&store);
+        let failed = jobs.start(Page::Friends, "Knocking");
+        jobs.finish(failed, Err("No answer.".into()), false);
+        let done = jobs.start(Page::Documents, "Sending");
+        jobs.finish(done, Ok("Sent.".into()), false);
+        let running = jobs.start(Page::Friends, "Still going");
+        let failed_at = jobs.held().1[&failed].finished.unwrap();
+        let t0 = crate::store::now();
+
+        // An hour later, after a restart: the failure is still listed, with
+        // the time it really failed; the success has run out its ten minutes.
+        let hour = Jobs::from_store_at(&store, t0 + 3_600);
+        assert_eq!(hour.held().1[&failed].finished, Some(failed_at));
+        assert_eq!(hour.failures().len(), 2, "failure and interrupted one");
+        assert!(hour.look(done).is_none(), "a success outlived ten minutes");
+        assert_eq!(
+            hour.look(running).unwrap().state,
+            State::Failed(INTERRUPTED.into())
+        );
+
+        // A second restart does not restart the clock.
+        let again = Jobs::from_store_at(&store, t0 + 3_700);
+        assert_eq!(again.held().1[&failed].finished, Some(failed_at));
+        assert_eq!(again.failures().len(), 2);
+
+        // Past a day from the failure it is gone.
+        let later = Jobs::from_store_at(&store, failed_at + 24 * 3_600 + 60);
+        assert!(later.look(failed).is_none(), "a failure outlived a day");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_hub_job_file_from_before_finish_times_still_loads() {
+        let dir = std::env::temp_dir().join(format!(
+            "atlas-hubjobs-old-{}-{}",
+            std::process::id(),
+            crate::store::now()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let store = Store::new(&dir);
+        let jobs = Jobs::from_store(&store);
+        let id = jobs.start(Page::Friends, "Knocking");
+        jobs.finish(id, Err("No answer.".into()), false);
+        let text = std::fs::read_to_string(dir.join("hub_jobs.json")).unwrap();
+        let mut value: serde_json::Value = serde_json::from_str(&text).unwrap();
+        for job in value["data"].as_array_mut().unwrap() {
+            job.as_object_mut().unwrap().remove("finished_at");
+        }
+        let old = serde_json::to_string(&value).unwrap();
+        assert!(!old.contains("finished_at"), "{old}");
+        std::fs::write(dir.join("hub_jobs.json"), old).unwrap();
+        let restored = Jobs::from_store(&store);
+        assert_eq!(restored.failures().len(), 1);
         let _ = std::fs::remove_dir_all(dir);
     }
 

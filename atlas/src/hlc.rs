@@ -254,6 +254,106 @@ impl Clock {
     }
 }
 
+// ===== Noticing the computer's clock jump (21 Oct 2026) =====
+//
+// `Clock::tick` holds quietly when the OS clock goes back, which keeps the
+// order right but tells nobody. A clock that jumps (sleep and resume, a manual
+// change, an internet-time correction) also moves every reminder and schedule
+// that goes by the wall clock. So `store::now()` hands each reading here; at
+// most once a second it compares how far the wall clock moved with how far a
+// steady timer moved, and a big enough gap is kept for `diagnose` to report.
+// Nothing about scheduling changes: this only watches and remembers.
+
+/// How far back the wall clock may step (seconds beyond the steady timer)
+/// before it counts as a jump. Small steps are ordinary time corrections.
+pub const JUMP_BACK_SECS: i64 = 300;
+/// How far forward before it counts: an hour more than the steady timer saw.
+pub const JUMP_FORWARD_SECS: i64 = 3600;
+
+/// One time the computer's clock jumped.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Jump {
+    /// The wall clock reading just after the jump (seconds since 1970).
+    pub at: u64,
+    /// How big it was, in seconds.
+    pub secs: u64,
+    /// True if the clock went back.
+    pub backwards: bool,
+}
+
+/// Did the wall clock move differently from the steady timer between two
+/// looks? `*_mono` are readings of a steady timer (time since some fixed
+/// start), so they are not affected by anyone changing the clock.
+pub(crate) fn jump_between(
+    prev_wall: u64,
+    prev_mono: std::time::Duration,
+    now_wall: u64,
+    now_mono: std::time::Duration,
+) -> Option<Jump> {
+    let wall_moved = now_wall as i64 - prev_wall as i64;
+    let steady_moved = now_mono.as_secs() as i64 - prev_mono.as_secs() as i64;
+    let gap = wall_moved - steady_moved;
+    if gap < -JUMP_BACK_SECS {
+        Some(Jump {
+            at: now_wall,
+            secs: gap.unsigned_abs(),
+            backwards: true,
+        })
+    } else if gap > JUMP_FORWARD_SECS {
+        Some(Jump {
+            at: now_wall,
+            secs: gap as u64,
+            backwards: false,
+        })
+    } else {
+        None
+    }
+}
+
+struct Watch {
+    last: Option<(u64, std::time::Duration)>,
+    jumps: Vec<Jump>,
+}
+
+static WATCH: std::sync::Mutex<Watch> = std::sync::Mutex::new(Watch {
+    last: None,
+    jumps: Vec::new(),
+});
+static STEADY_START: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
+const MOST_JUMPS_KEPT: usize = 8;
+
+/// Look at the wall clock reading `wall` (called from `store::now()`).
+/// Cheap: at most one comparison a second, and never waits for a lock.
+pub(crate) fn watch_the_clock(wall: u64) {
+    let steady = STEADY_START.get_or_init(std::time::Instant::now).elapsed();
+    let Ok(mut w) = WATCH.try_lock() else {
+        return;
+    };
+    match w.last {
+        Some((_, then)) if steady.saturating_sub(then) < std::time::Duration::from_secs(1) => {}
+        Some((prev_wall, then)) => {
+            if let Some(j) = jump_between(prev_wall, then, wall, steady) {
+                if w.jumps.len() >= MOST_JUMPS_KEPT {
+                    w.jumps.remove(0);
+                }
+                w.jumps.push(j);
+            }
+            w.last = Some((wall, steady));
+        }
+        None => w.last = Some((wall, steady)),
+    }
+}
+
+/// The latest jump seen since Atlas started, if any.
+pub(crate) fn latest_jump() -> Option<Jump> {
+    WATCH
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .jumps
+        .last()
+        .copied()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -430,5 +530,46 @@ mod tests {
             c.tick(300) > used,
             "a restart must not hand out a stamp at or before the last used"
         );
+    }
+
+    #[test]
+    fn a_clock_that_moves_with_the_steady_timer_is_no_jump() {
+        use std::time::Duration as D;
+        assert_eq!(
+            jump_between(1000, D::from_secs(10), 1005, D::from_secs(15)),
+            None
+        );
+        // a small correction either way is ordinary
+        assert_eq!(
+            jump_between(1000, D::from_secs(10), 1100, D::from_secs(15)),
+            None
+        );
+        assert_eq!(
+            jump_between(1000, D::from_secs(10), 1000, D::from_secs(15)),
+            None
+        );
+    }
+
+    #[test]
+    fn a_clock_that_goes_back_is_a_backward_jump() {
+        use std::time::Duration as D;
+        let j = jump_between(
+            100_000,
+            D::from_secs(10),
+            100_000 - 7200 + 5,
+            D::from_secs(15),
+        )
+        .unwrap();
+        assert!(j.backwards);
+        assert_eq!(j.secs, 7200);
+        assert_eq!(j.at, 100_000 - 7200 + 5);
+    }
+
+    #[test]
+    fn a_clock_that_leaps_ahead_is_a_forward_jump() {
+        use std::time::Duration as D;
+        let j = jump_between(1000, D::from_secs(10), 1000 + 5 + 7200, D::from_secs(15)).unwrap();
+        assert!(!j.backwards);
+        assert_eq!(j.secs, 7200);
     }
 }

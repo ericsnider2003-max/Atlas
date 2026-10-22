@@ -176,7 +176,7 @@ impl Daemon<'_> {
             .iter()
             .map(|w| sentence(&w.asked))
             .collect();
-        let held: Vec<String> = self.outbox.held.iter().map(|n| n.title.clone()).collect();
+        let held = held_lines(&self.outbox.held);
         let Some(w) = self
             .mind
             .focus()
@@ -630,5 +630,85 @@ pub(super) fn area_of(space: &crate::earned::Space) -> String {
     match space {
         crate::earned::Space::Personal => "Personal".into(),
         crate::earned::Space::Business(b) => b.clone(),
+    }
+}
+
+/// How kept notes read on the Now page, so two of them can be told apart:
+/// "title -- first words of the body", or just the body when the title is only
+/// "Atlas". A private note shows its title and nothing of its body. Lines that
+/// still come out the same are shown once, with "(2)".
+///
+/// 21 Oct 2026: the page said "Atlas, Atlas" for two different notes.
+fn held_lines(notes: &[crate::notify::Note]) -> Vec<String> {
+    let mut lines: Vec<(String, usize)> = Vec::new();
+    for n in notes {
+        let title = n.title.trim();
+        let body: String = if n.private {
+            String::new()
+        } else {
+            let flat = n.body.split_whitespace().collect::<Vec<_>>().join(" ");
+            let mut cut: String = flat.chars().take(60).collect();
+            if flat.chars().count() > 60 {
+                cut.push('…');
+            }
+            cut
+        };
+        let line = match (
+            title.is_empty() || title.eq_ignore_ascii_case("atlas"),
+            body.is_empty(),
+        ) {
+            (_, true) if title.is_empty() => "A note".to_string(),
+            (_, true) => title.to_string(),
+            (true, false) => body,
+            (false, false) => format!("{title} — {body}"),
+        };
+        match lines.iter_mut().find(|(l, _)| *l == line) {
+            Some((_, c)) => *c += 1,
+            None => lines.push((line, 1)),
+        }
+    }
+    lines
+        .into_iter()
+        .map(|(l, c)| if c > 1 { format!("{l} ({c})") } else { l })
+        .collect()
+}
+
+#[cfg(test)]
+mod held_lines_tests {
+    use super::*;
+    use crate::notify::{Note, Urgency};
+
+    fn note(title: &str, body: &str) -> Note {
+        Note::new(title, body, Urgency::Routine, 1)
+    }
+
+    #[test]
+    fn two_different_notes_titled_atlas_read_differently() {
+        let got = held_lines(&[
+            note("Atlas", "Your backup finished."),
+            note("Atlas", "The update is ready."),
+        ]);
+        assert_eq!(got, vec!["Your backup finished.", "The update is ready."]);
+    }
+
+    #[test]
+    fn a_real_title_keeps_it_and_the_body_is_cut() {
+        let long = "word ".repeat(40);
+        let got = held_lines(&[note("Backup", &long)]);
+        assert!(got[0].starts_with("Backup — word word"));
+        assert!(got[0].ends_with('…'));
+    }
+
+    #[test]
+    fn identical_notes_show_once_with_a_count() {
+        let got = held_lines(&[note("Atlas", "Same."), note("Atlas", "Same.")]);
+        assert_eq!(got, vec!["Same. (2)"]);
+    }
+
+    #[test]
+    fn a_private_note_shows_no_body() {
+        let mut n = note("Atlas", "secret words");
+        n.private = true;
+        assert_eq!(held_lines(&[n]), vec!["Atlas"]);
     }
 }

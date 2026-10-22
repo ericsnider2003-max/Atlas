@@ -412,6 +412,22 @@ debug = false
 [profile.dev]
 debug = false
 
+# Argon2 at the vault's 64 MiB x 3 passes takes seconds per key in an unoptimised
+# build, which made the signing tests (15 s receipt deadline, several keys each)
+# fail whenever the machine was busy. Optimised here, tests and dev alike (21 Oct 2026).
+[profile.dev.package.argon2]
+opt-level = 3
+[profile.dev.package.blake2]
+opt-level = 3
+[profile.dev.package.chacha20]
+opt-level = 3
+[profile.dev.package.poly1305]
+opt-level = 3
+[profile.dev.package.chacha20poly1305]
+opt-level = 3
+[profile.dev.package.sha2]
+opt-level = 3
+
 [patch.crates-io]
 # hubwin: so atlas.exe starts without WebView2Loader.dll beside it. See
 # vendor/webview2-com-sys/ATLAS_VENDORED.md.
