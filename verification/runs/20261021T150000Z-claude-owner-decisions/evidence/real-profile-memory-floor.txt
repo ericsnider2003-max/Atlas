@@ -1,0 +1,6 @@
+Real profile, installed build 4546DC3D (memory-floor fix), 2026-10-21:
+model memory: Qwen3-1.7B-Q8_0: available before the start 5279 MB, lowest since 2792 MB, measured cost 2487 MB, floor 2048 MB: settled, cost kept for the next tier choice
+Independent sample over 60 s while running: min free 2787 MB; atlas 803 MB, llama-server 2525 MB working set.
+Clean stop: "stopped cleanly -- 0 errand(s) called off, 1 helper(s) shut down"; nothing left running.
+Earlier build 2C44EF8D (before the fix) on the same profile: lowest free 1160 MB (below the floor), relief stopped the model.
+Verifier 14/14 on 4546DC3D.
