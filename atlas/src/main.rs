@@ -73,8 +73,8 @@ atlas — local workspace assistant
 
   atlas doctor                    inspect this machine, print config to paste
   atlas doctor --retry-gpu        try the graphics again after a safe-mode fallback
-  atlas selftest [--no-model]     try every command on this machine, safely,
-                                  and write what works to data/selftest/
+  atlas selftest [--no-model]     try every command safely; --no-model skips
+                                  chat inference (camera/mic remain rehearsed)
   atlas selftest --coverage       (in Atlas's source folder) the same, built
                                   with coverage: which functions it reached
   atlas \"boot workspace\"          run one command
@@ -1522,6 +1522,7 @@ fn main() {
         };
         let mut d = daemon
             .starting_the_model_server()
+            .with_quick_model_bridge()
             .with_typed_prompt(Box::new(atlas::typed::Console))
             .watch_settings(atlas::roots::config_dir());
         d.autonomy = Autonomy::Supervised;

@@ -6,8 +6,10 @@
 //! `atlas selftest` (or "test everything") asks Atlas for every command it
 //! has, the way it would be said, plus a list of everyday sentences with the
 //! tool each should reach, through the front door (`Daemon::turn`) -- on
-//! this machine, with its real settings, its real model and its real
-//! screens -- and writes what happened to `data/selftest/`.
+//! this machine, with its real settings and screen/window metadata -- and
+//! writes what happened to `data/selftest/`. It never opens the camera or
+//! microphone, or starts an inference model; those sensitive commands are
+//! rehearsed even when the conversational model is enabled.
 //!
 //! ## Why it can't do damage
 //!
@@ -97,13 +99,10 @@ pub fn tier(kind: &str) -> Tier {
         "say",
         "ask",
         "unknown",
-        "capture_webcam",
         "got_it_wrong",
         "apply_lesson",
         "rehearse",
         "ask_the_room",
-        "whats_there",
-        "whats_this",
         "find_file",
         "habit",
         "cards",
@@ -128,8 +127,6 @@ pub fn tier(kind: &str) -> Tier {
         "snippet",
         "teach_gesture",
         "set_key",
-        "this_is_me",
-        "name_this",
         "address_as",
         "wit",
         "mute_topic",
@@ -155,7 +152,6 @@ pub fn tier(kind: &str) -> Tier {
         "draft_post",
         "schedule_post",
         "rebuild_index",
-        "use_mic",
         "finish_setup",
     ];
     const STAND_IN: &[&str] = &[
@@ -177,10 +173,8 @@ pub fn tier(kind: &str) -> Tier {
         "operate",
     ];
     // Never run, whatever else is true: they change Atlas's own install,
-    // which the scratch copy can't fully hold (the program file itself).
-    // Nor what writes your own files, records you, or types for you on its
-    // own thread: rehearsed, so a test can't move, convert or capture
-    // anything real whatever its settings point at.
+    // write personal state, capture sensitive hardware, or type/record on
+    // their own thread. A scratch copy cannot make those effects safe.
     const NEVER: &[&str] = &[
         "self_test",
         "hand_over",
@@ -190,6 +184,12 @@ pub fn tier(kind: &str) -> Tier {
         "undo",
         "sync",
         "capture",
+        "capture_webcam",
+        "whats_this",
+        "whats_there",
+        "name_this",
+        "this_is_me",
+        "use_mic",
         "refile",
         "files",
         "unzip",
@@ -980,7 +980,9 @@ pub fn summary(rows: &[Row]) -> String {
 /// A scratch copy of the install at `real`, in `scratch`: settings and state
 /// copied, the big read-only folders linked. Returns what couldn't be linked.
 pub fn scratch_copy(real: &Path, scratch: &Path) -> std::io::Result<Vec<String>> {
-    crate::heard!(std::fs::remove_dir_all(scratch));
+    // Never erase a stale or pre-existing path to make room for a test copy:
+    // it may contain useful recovery evidence or a junction we did not make.
+    std::fs::create_dir(scratch)?;
     std::fs::create_dir_all(scratch.join("data"))?;
     copy_tree(&real.join("config"), &scratch.join("config"))?;
     let state = real.join("data").join("state");
@@ -1002,17 +1004,54 @@ pub fn scratch_copy(real: &Path, scratch: &Path) -> std::io::Result<Vec<String>>
 }
 
 fn copy_tree(from: &Path, to: &Path) -> std::io::Result<()> {
+    let metadata = std::fs::symlink_metadata(from)?;
+    if is_reparse_point(&metadata) {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "refusing to follow a symbolic link or junction in the self-test copy",
+        ));
+    }
+    if !metadata.is_dir() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "self-test copy source is not a directory",
+        ));
+    }
     std::fs::create_dir_all(to)?;
-    for e in std::fs::read_dir(from)?.flatten() {
+    for e in std::fs::read_dir(from)? {
+        let e = e?;
         let p = e.path();
         let dest = to.join(e.file_name());
-        if p.is_dir() {
+        let metadata = std::fs::symlink_metadata(&p)?;
+        if is_reparse_point(&metadata) {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "refusing to follow a symbolic link or junction in the self-test copy",
+            ));
+        } else if metadata.is_dir() {
             copy_tree(&p, &dest)?;
-        } else {
+        } else if metadata.is_file() {
             std::fs::copy(&p, &dest)?;
+        } else {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "unsupported filesystem entry in the self-test copy",
+            ));
         }
     }
     Ok(())
+}
+
+#[cfg(windows)]
+fn is_reparse_point(metadata: &std::fs::Metadata) -> bool {
+    use std::os::windows::fs::MetadataExt;
+    const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x0400;
+    metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0
+}
+
+#[cfg(not(windows))]
+fn is_reparse_point(metadata: &std::fs::Metadata) -> bool {
+    metadata.file_type().is_symlink()
 }
 
 fn link_dir(from: &Path, to: &Path) -> std::io::Result<()> {
@@ -1141,6 +1180,63 @@ mod tests {
         }
         assert_eq!(tier("open_app"), Tier::StandIn);
         assert_eq!(tier("clock"), Tier::Run);
+    }
+
+    #[test]
+    fn camera_microphone_and_personal_profiles_are_never_touched() {
+        for kind in [
+            "capture_webcam",
+            "whats_this",
+            "whats_there",
+            "name_this",
+            "this_is_me",
+            "use_mic",
+        ] {
+            assert_eq!(tier(kind), Tier::Rehearse, "{kind}");
+        }
+    }
+
+    #[test]
+    fn scratch_cleanup_removes_a_junction_not_its_target() {
+        let root = std::env::temp_dir().join(format!(
+            "atlas-selftest-links-{}-{}",
+            std::process::id(),
+            crate::store::now()
+        ));
+        std::fs::create_dir(&root).unwrap();
+        let target = root.join("outside");
+        let scratch = root.join("scratch");
+        std::fs::create_dir(&target).unwrap();
+        std::fs::create_dir(&scratch).unwrap();
+        let marker = target.join("keep.txt");
+        std::fs::write(&marker, b"preserve the target").unwrap();
+        link_dir(&target, &scratch.join("models")).unwrap();
+
+        std::fs::remove_dir_all(&scratch).expect("remove only the scratch junction");
+        assert!(marker.is_file(), "scratch cleanup followed its junction");
+        assert!(!scratch.exists(), "scratch directory remains");
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn scratch_copy_refuses_an_existing_path_without_erasing_it() {
+        let root = std::env::temp_dir().join(format!(
+            "atlas-selftest-existing-{}-{}",
+            std::process::id(),
+            crate::store::now()
+        ));
+        std::fs::create_dir(&root).unwrap();
+        let real = root.join("real");
+        let scratch = root.join("scratch");
+        std::fs::create_dir(&real).unwrap();
+        std::fs::create_dir(&real.join("config")).unwrap();
+        std::fs::create_dir(&scratch).unwrap();
+        let marker = scratch.join("preserve.txt");
+        std::fs::write(&marker, b"preserve prior scratch").unwrap();
+
+        assert!(scratch_copy(&real, &scratch).is_err());
+        assert!(marker.is_file(), "pre-existing scratch was erased");
+        std::fs::remove_dir_all(&root).unwrap();
     }
 }
 

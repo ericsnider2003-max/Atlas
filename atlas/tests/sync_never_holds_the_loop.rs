@@ -23,7 +23,7 @@ fn tmp(tag: &str) -> std::path::PathBuf {
     p
 }
 
-/// A device that takes the connection and never says anything back.
+/// A paired device that takes the connection and never says anything back.
 fn asleep() -> (u16, std::sync::Arc<std::sync::atomic::AtomicUsize>) {
     let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
     let port = l.local_addr().unwrap().port();
@@ -62,11 +62,19 @@ fn a_device_that_never_answers_doesnt_stop_atlas() {
         sync_port: Some(port),
         ..Default::default()
     }];
+    let store = Store::new(tmp("asleep"));
+    let phrase = atlas::sync::new_key_phrase();
+    store
+        .save(
+            atlas::sync::KEY_FILE,
+            &atlas::sync::KeptKey::keeping(&phrase, 1_700_000_000),
+        )
+        .unwrap();
     let mut d = Daemon::new(
         &c,
         &p,
         None,
-        Store::new(tmp("asleep")),
+        store,
         Proactive::new(ProactiveConfig::default()),
     );
     let t = 1_000 + atlas::daemon::AUTO_SYNC_EVERY_SECS;
@@ -93,6 +101,50 @@ fn a_device_that_never_answers_doesnt_stop_atlas() {
     let started = Instant::now();
     d.tick(t + 5);
     crate::common::assert_prompt(started.elapsed(), Duration::from_secs(2), "took too long");
+}
+
+#[test]
+fn direct_only_sync_never_dials_a_named_peer_without_the_household_key() {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    listener.set_nonblocking(true).unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let p = MockPlatform::new(vec![Monitor {
+        id: 1,
+        x: 0,
+        y: 0,
+        width: 1920,
+        height: 1040,
+        primary: true,
+    }]);
+    let mut c = Config::load(Path::new("config")).unwrap();
+    let tools = c.tools.as_mut().unwrap();
+    tools.sync.enabled = true;
+    tools.sync.automatic = true;
+    tools.sync.folder.clear();
+    tools.elsewhere.known = vec![atlas::elsewhere::Elsewhere {
+        name: "phone".into(),
+        host: "127.0.0.1".into(),
+        port: 1,
+        sync_port: Some(port),
+        ..Default::default()
+    }];
+    let store = Store::new(tmp("no-household-key"));
+    let mut d = Daemon::new(
+        &c,
+        &p,
+        None,
+        store,
+        Proactive::new(ProactiveConfig::default()),
+    );
+
+    let at = 1_000 + atlas::daemon::AUTO_SYNC_EVERY_SECS;
+    d.tick(at);
+    assert_eq!(d.last_auto_sync, at, "the no-folder direct sync path ran");
+    std::thread::sleep(Duration::from_millis(150));
+    assert!(
+        matches!(listener.accept(), Err(ref error) if error.kind() == std::io::ErrorKind::WouldBlock),
+        "named address alone must not trigger a connection"
+    );
 }
 
 #[test]

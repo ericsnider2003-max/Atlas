@@ -901,7 +901,7 @@ pub fn start_background_watched(
     watch: std::time::Duration,
 ) -> Result<(), String> {
     crate::heard!(std::fs::remove_file(start_problem_file(root)));
-    let mut child = spawn_quietly(exe, &["--daemon"])
+    let mut child = spawn_quietly(exe, &["--watchdog"])
         .map_err(|e| format!("I couldn't start Atlas in the background: {e}"))?;
     let until = std::time::Instant::now() + watch;
     while std::time::Instant::now() < until {

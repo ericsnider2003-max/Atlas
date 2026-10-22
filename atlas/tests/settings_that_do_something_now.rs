@@ -2290,7 +2290,8 @@ fn it_does_not_claim_to_hold_a_shelf_it_has_never_fetched() {
 // 100.x on the WireGuard/Tailscale path already in the tree); the daemon now
 // dials it directly on the sync port. This stands a real socket up as that
 // peer, points the daemon at it by address alone, and proves the bundle crosses
-// straight across — not through the folder.
+// straight across — not through the folder. The household key is present on
+// both devices and the socket bundles are sealed even when folder sealing is off.
 #[test]
 fn a_peer_named_by_address_syncs_straight_across_off_the_local_network() {
     use atlas::daemon::Daemon;
@@ -2299,7 +2300,9 @@ fn a_peer_named_by_address_syncs_straight_across_off_the_local_network() {
     use atlas::platform::Monitor;
     use atlas::proactive::{Proactive, ProactiveConfig};
     use atlas::store::Store;
-    use atlas::sync::{make_bundle, read_bundle, Log, What};
+    use atlas::sync::{
+        key_from_phrase, make_bundle, read_bundle, seal, KeptKey, Log, What, KEY_FILE,
+    };
     use atlas::transport::Server;
     use std::sync::{Arc, Mutex};
     use std::time::Duration;
@@ -2322,7 +2325,9 @@ fn a_peer_named_by_address_syncs_straight_across_off_the_local_network() {
     );
     let mut peer_bundle = make_bundle(&peer_log, "homelab", 0, 600);
     peer_bundle.belongs_to = "personal".into();
-    let reply = serde_json::to_vec(&peer_bundle).unwrap();
+    let phrase = atlas::sync::new_key_phrase();
+    let key = key_from_phrase(&phrase).unwrap();
+    let reply = seal(&peer_bundle, &key).unwrap().into_bytes();
 
     let got: Arc<Mutex<Option<Vec<u8>>>> = Arc::new(Mutex::new(None));
     let got_w = got.clone();
@@ -2344,6 +2349,10 @@ fn a_peer_named_by_address_syncs_straight_across_off_the_local_network() {
     let _ = std::fs::remove_dir_all(&root);
     let folder = root.join("carrier");
     std::fs::create_dir_all(&folder).expect("carrier");
+    let store = Store::new(root.join("state"));
+    store
+        .save(KEY_FILE, &KeptKey::keeping(&phrase, 1_700_000_000))
+        .expect("keep the household key");
 
     let mut c = Config::load(Path::new("config")).expect("config/ loads");
     {
@@ -2377,7 +2386,7 @@ fn a_peer_named_by_address_syncs_straight_across_off_the_local_network() {
         &c,
         &p,
         None,
-        Store::new(root.join("state")),
+        store,
         Proactive::new(ProactiveConfig::default()),
     );
 
@@ -2403,7 +2412,7 @@ fn a_peer_named_by_address_syncs_straight_across_off_the_local_network() {
         .take()
         .expect("the peer got dialed at all");
     let text = String::from_utf8(received).expect("utf8 bundle");
-    let crossed = read_bundle(&text, None).expect("a plaintext bundle");
+    let crossed = read_bundle(&text, Some(&key)).expect("a household-key-sealed bundle");
     assert!(
         crossed
             .events

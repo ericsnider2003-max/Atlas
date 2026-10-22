@@ -530,11 +530,73 @@ pub fn reply(daemon: &mut Daemon, action: Action) -> Reply {
 
 /// Build an immutable view without consuming notices, changing read receipts,
 /// approving work, or exposing accounts. Query/action pages are never cached.
-pub(crate) fn readonly_pages(daemon: &Daemon) -> Vec<(Page, Reply)> {
+pub(crate) fn readonly_pages(daemon: &mut Daemon<'_>) -> Vec<(Page, Reply)> {
     let now = crate::store::now();
+    let off = crate::localclock::offset_secs();
     [
+        (Page::Dashboard, {
+            let cards = daemon.dashboard_cards(now);
+            let waiting = daemon.waiting_count(now);
+            let deck = daemon.deck(now, off);
+            hub::dashboard_deck(&daemon.dashboard, &cards, daemon.arranging, waiting, &deck)
+        }),
+        (Page::Status, daemon.status_page_snapshot()),
         (Page::Now, daemon.now_page_live()),
         (Page::Outstanding, daemon.outstanding_page_live(now)),
+        (
+            Page::Calendar,
+            hub::calendar_page(&daemon.calendar, now, &daemon.home_zone()),
+        ),
+        (
+            Page::Activity,
+            hub::list_page_at(
+                Some(Page::Activity),
+                "What I did",
+                "Everything I did without being watched.",
+                &daemon.activity_lines(now),
+            ),
+        ),
+        (Page::Workspace, daemon.workspace_page_live(now)),
+        (Page::Workshop, {
+            let page = hub::workshop_page(&daemon.workshop);
+            let form = crate::hubpages::new_project_form();
+            match page.rfind("</main>") {
+                Some(at) => format!("{}{}{}", &page[..at], form, &page[at..]),
+                None => page,
+            }
+        }),
+        (Page::Help, {
+            let (y, m, d) = crate::hubpages::ymd(crate::localclock::day(now, off));
+            let reviewed = format!("{d} {} {y}", crate::hubpages::MONTHS[(m - 1) as usize]);
+            crate::hubpages::help_page(&reviewed, None)
+        }),
+        (Page::Settings, {
+            let kept = crate::settingswin::current_settings(&crate::roots::config_dir())
+                .unwrap_or_else(|_| crate::settings::registry(&daemon.tools_cfg()));
+            hub::settings_page(&kept)
+        }),
+        (
+            Page::Permissions,
+            hub::permissions_page(
+                &crate::settings::registry(&daemon.tools_cfg()),
+                &daemon.permissions.granted_apps(),
+            ),
+        ),
+        (Page::Gestures, {
+            let cfg = daemon.tools_cfg();
+            let mine = daemon.gestures.gestures.clone();
+            let showing = if mine.is_empty() {
+                crate::handshape::as_demonstrated()
+            } else {
+                mine
+            };
+            hub::gestures_page(
+                &showing,
+                &crate::handshape::needs_deciding(),
+                cfg.answering.accept_gestures,
+                cfg.answering.gestures_may_approve_anything,
+            )
+        }),
     ]
     .into_iter()
     .map(|(page, html)| {
@@ -1296,8 +1358,8 @@ impl Daemon<'_> {
                 let symptoms = crate::diagnose::diagnose(&self.vitals());
                 let mut lines = self.status_lines();
                 if !symptoms.is_empty() {
-                    lines.push((
-                        "Wrong with me".to_string(),
+                    lines.push(hub::StatusLine::new(
+                        "Wrong with me",
                         crate::diagnose::report(&symptoms),
                     ));
                 }

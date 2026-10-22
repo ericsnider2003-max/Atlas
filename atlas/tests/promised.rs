@@ -496,8 +496,8 @@ const PROMISED: &[(&str, &str, &str, &str)] = &[
     (
         "26 Sep (ruling)",
         "src/appearance.rs",
-        "/// Warm Paper: Eric's ruling of 26 Sep 2026.",
-        "Warm Paper is the default colourway",
+        "/// Follow the system appearance unless a person chooses a colourway.",
+        "Follow this computer is the default",
     ),
     (
         "26 Sep (ruling)",

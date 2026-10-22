@@ -43,6 +43,9 @@ use std::collections::{BTreeMap, VecDeque};
 pub const HARD_CEILING: u32 = 300;
 /// The most kept in each remembered list, oldest dropped first.
 pub const KEEP_SEEN: usize = 5000;
+pub const KEEP_BRIEFED: usize = KEEP_SEEN;
+/// Do not let a single large feed response fan out into an unbounded listing batch.
+pub const MAX_HUNT_FEED_ITEMS: usize = 500;
 pub const KEEP_SHORTLIST: usize = 200;
 pub const KEEP_REJECTED: usize = 2000;
 pub const KEEP_SAVED_RECENT: usize = 100;
@@ -826,6 +829,7 @@ pub fn feed_items(xml: &str, source: Source, kind: Kind, now: u64) -> Result<Vec
     Ok(parsed
         .items
         .into_iter()
+        .take(MAX_HUNT_FEED_ITEMS)
         .filter_map(|i| {
             let link = crate::feeds::clean_link(&i.link)?;
             let summary = plain_text(&i.summary);
@@ -1416,7 +1420,19 @@ impl HuntState {
     /// Take what a read found: dedupe, filter, weigh, keep.
     pub fn merge(&mut self, found: Vec<Found>, you: &Interests, now: u64) -> Merged {
         let mut m = Merged::default();
-        for f in found {
+        for mut f in found {
+            if f.id.chars().count() > 512 {
+                f.id = crate::digest::sha256_hex(f.id.as_bytes());
+            }
+            f.title = clip(&f.title, 140);
+            f.summary = clip(&f.summary, 600);
+            f.pay = f.pay.map(|pay| clip(&pay, 64));
+            if f.link.chars().count() > 2048 {
+                m.rejected += 1;
+                self.rejected
+                    .insert(f.id, "listing link exceeds 2048 characters".into());
+                continue;
+            }
             let key = canonical_key(&f);
             let tk = title_key(&f.title);
             if self.seen.contains_key(&key)
@@ -1497,11 +1513,26 @@ impl HuntState {
             }
         }
         self.bound_rejection_words();
-        self.briefed
-            .retain(|_, at| now.saturating_sub(*at) < 30 * 86_400);
+        self.bound_briefed(now);
         self.offered.retain(|id, (at, _)| {
             now.saturating_sub(*at) < 86_400 && self.shortlist.iter().any(|r| &r.found.id == id)
         });
+    }
+
+    fn bound_briefed(&mut self, now: u64) {
+        self.briefed
+            .retain(|_, at| now.saturating_sub(*at) < 30 * 86_400);
+        if self.briefed.len() > KEEP_BRIEFED {
+            let mut oldest: Vec<_> = self
+                .briefed
+                .iter()
+                .map(|(id, at)| (*at, id.clone()))
+                .collect();
+            oldest.sort();
+            for (_, id) in oldest.into_iter().take(self.briefed.len() - KEEP_BRIEFED) {
+                self.briefed.remove(&id);
+            }
+        }
     }
 
     pub fn bound_rejection_words(&mut self) {
@@ -1605,6 +1636,7 @@ impl HuntState {
                 self.offered.remove(id);
             }
         }
+        self.bound_briefed(now);
         changed
     }
 
@@ -1815,6 +1847,66 @@ mod retention_and_delivery_tests {
         assert!(state.acknowledge_text(&visible, NOW + 1));
         assert!(state.briefed.contains_key(&prepared[0].found.id));
         assert!(!state.briefed.contains_key(&prepared[1].found.id));
+    }
+
+    #[test]
+    fn briefed_receipts_are_capped_oldest_first() {
+        let mut state = HuntState::default();
+        for index in 0..=KEEP_BRIEFED {
+            state
+                .briefed
+                .insert(format!("receipt-{index}"), NOW + index as u64);
+        }
+        state.prune(NOW + KEEP_BRIEFED as u64);
+        assert_eq!(state.briefed.len(), KEEP_BRIEFED);
+        assert!(!state.briefed.contains_key("receipt-0"));
+        assert!(state
+            .briefed
+            .contains_key(&format!("receipt-{KEEP_BRIEFED}")));
+    }
+
+    #[test]
+    fn merge_bounds_listing_fields_and_rejects_oversized_links() {
+        let mut state = HuntState::default();
+        let mut item = found(1);
+        item.id = "x".repeat(513);
+        item.title = "t".repeat(300);
+        item.summary = "s".repeat(1000);
+        item.pay = Some("p".repeat(100));
+        assert_eq!(state.merge(vec![item], &Interests::default(), NOW).new, 1);
+        let saved = &state.shortlist[0].found;
+        assert_eq!(saved.id.len(), 64);
+        assert_eq!(saved.title.chars().count(), 141);
+        assert_eq!(saved.summary.chars().count(), 601);
+        assert_eq!(saved.pay.as_ref().unwrap().chars().count(), 65);
+
+        let mut bad_link = found(2);
+        bad_link.link = format!("https://example.org/{}", "x".repeat(2048));
+        assert_eq!(
+            state
+                .merge(vec![bad_link], &Interests::default(), NOW)
+                .rejected,
+            1
+        );
+        assert!(state
+            .rejected
+            .values()
+            .any(|why| why == "listing link exceeds 2048 characters"));
+        assert!(state
+            .shortlist
+            .iter()
+            .all(|r| r.found.link.chars().count() <= 2048));
+    }
+
+    #[test]
+    fn feed_conversion_caps_each_batch() {
+        let entries = (0..=MAX_HUNT_FEED_ITEMS)
+            .map(|n| format!("<item><guid>{n}</guid><title>Listing {n}</title><link>https://example.org/{n}</link></item>"))
+            .collect::<String>();
+        let xml = format!("<rss><channel>{entries}</channel></rss>");
+        let items = feed_items(&xml, Source::Feeds, Kind::Lead, NOW).unwrap();
+        assert_eq!(items.len(), MAX_HUNT_FEED_ITEMS);
+        assert_eq!(items[0].title, "Listing 0");
     }
 
     #[test]

@@ -15,11 +15,11 @@ impl Daemon<'_> {
         o.needs_you + o.overdue + self.backlog.items.iter().filter(|i| !i.done).count()
     }
 
-    pub(super) fn status_lines(&self) -> Vec<(String, String)> {
+    pub(super) fn status_lines(&self) -> Vec<hub::StatusLine> {
         let r = self.plat.readings();
         let mut out = vec![
-            (
-                "Listening".to_string(),
+            hub::StatusLine::new(
+                "Listening",
                 // 30 Sep 2026: this said "Yes." whenever Atlas wasn't
                 // paused -- with no microphone running, or after the wake
                 // word had dropped to push-to-talk. Now it's what the loop is
@@ -44,8 +44,8 @@ impl Daemon<'_> {
                     }
                 },
             ),
-            (
-                "Things open".to_string(),
+            hub::StatusLine::new(
+                "Things open",
                 format!(
                     "{}",
                     self.workspace.iter().filter(|i| i.status.live()).count()
@@ -86,12 +86,12 @@ impl Daemon<'_> {
                     ));
                 }
             }
-            out.push(("Work in hand".to_string(), line));
+            out.push(hub::StatusLine::new("Work in hand", line));
         }
         // What watching your folders costs, as a number: scans since start
         // and the gap to the next, which grows while nothing changes.
-        out.push((
-            "Folder scans".to_string(),
+        out.push(hub::StatusLine::new(
+            "Folder scans",
             format!(
                 "{} since I started; next in about {}.",
                 self.awareness.scans(),
@@ -99,14 +99,24 @@ impl Daemon<'_> {
             ),
         ));
         if r.ram_total_gb > 0.0 {
-            out.push((
-                "Memory".to_string(),
+            out.push(hub::StatusLine::new(
+                "Memory",
                 format!("{:.1} GB of {:.1} GB in use", r.ram_used_gb, r.ram_total_gb),
             ));
         }
+        let history = crate::memwatch::trend_history();
+        let trend = crate::memtrend::presentation(&history, crate::store::now());
+        out.push(hub::StatusLine::required_memory_trend(
+            trend.summary,
+            trend.sparkline,
+        ));
+        let decisions = crate::decision::recent(3);
+        let summary = crate::decision::recent_summary(&decisions)
+            .unwrap_or_else(|| "No resource decisions have been recorded yet.".into());
+        out.push(hub::StatusLine::required_runtime_decisions(summary));
         if r.disk_total_gb > 0.0 {
-            out.push((
-                "Disk".to_string(),
+            out.push(hub::StatusLine::new(
+                "Disk",
                 format!("{:.0} GB free of {:.0} GB", r.disk_free_gb, r.disk_total_gb),
             ));
         }
@@ -115,6 +125,32 @@ impl Daemon<'_> {
 
     pub(super) fn now_page_live(&self) -> String {
         hub::now_page(&self.now_view())
+    }
+
+    pub(super) fn status_page_snapshot(&self) -> String {
+        let settings = crate::settings::registry(&self.tools_cfg());
+        let symptoms = crate::diagnose::diagnose(&self.vitals());
+        let mut lines = self.status_lines();
+        if !symptoms.is_empty() {
+            lines.push(hub::StatusLine::new(
+                "Wrong with me",
+                crate::diagnose::report(&symptoms),
+            ));
+        }
+        let page = hub::status_page(&lines, settings.changed().len());
+        if crate::phonemode::on() {
+            with_block(page, &self.space_section_snapshot())
+        } else {
+            with_block(
+                page,
+                &format!(
+                    "{}{}{}",
+                    self.space_section_snapshot(),
+                    hub::speed_section(),
+                    hub::sorting_section()
+                ),
+            )
+        }
     }
 
     /// Where a live page stands, as a number that changes when what it

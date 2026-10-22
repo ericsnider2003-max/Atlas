@@ -647,70 +647,43 @@ fn the_sync_port_answers_only_your_own_devices() {
     b.belongs_to = "personal".into();
     let plain = serde_json::to_vec(&b).unwrap();
 
-    // No key: only a named device (or this machine) is answered.
+    // A named address is routing only: remote plaintext is never accepted.
     assert!(
-        !may_answer_wire(stranger, &plain, None, &[phone], "laptop", "personal"),
+        !may_answer_wire(stranger, &plain, None, "laptop", "personal"),
         "a stranger on the Wi-Fi gets nothing"
     );
-    assert!(may_answer_wire(
-        phone,
-        &plain,
-        None,
-        &[phone],
-        "laptop",
-        "personal"
-    ));
-    assert!(may_answer_wire(
-        home,
-        &plain,
-        None,
-        &[],
-        "laptop",
-        "personal"
-    ));
+    assert!(
+        !may_answer_wire(phone, &plain, None, "laptop", "personal"),
+        "even a named peer must prove the household key"
+    );
+    assert!(may_answer_wire(home, &plain, None, "laptop", "personal"));
     // Junk, our own bundle back, or another Atlas's: nothing.
     assert!(!may_answer_wire(
         phone,
         b"ATL1 junk",
         None,
-        &[phone],
         "laptop",
         "personal"
     ));
-    assert!(!may_answer_wire(
-        phone,
-        &plain,
-        None,
-        &[phone],
-        "phone",
-        "personal"
-    ));
-    assert!(!may_answer_wire(
-        phone,
-        &plain,
-        None,
-        &[phone],
-        "laptop",
-        "work"
-    ));
+    assert!(!may_answer_wire(phone, &plain, None, "phone", "personal"));
+    assert!(!may_answer_wire(phone, &plain, None, "laptop", "work"));
 
     // With a key: sealed with it from anywhere, yes; plain, or another key, no.
     let key = key_from_phrase(&new_key_phrase()).unwrap();
     let other = key_from_phrase(&new_key_phrase()).unwrap();
     let sealed = seal(&b, &key).unwrap().into_bytes();
     assert!(
-        may_answer_wire(stranger, &sealed, Some(&key), &[], "laptop", "personal"),
+        may_answer_wire(stranger, &sealed, Some(&key), "laptop", "personal"),
         "a device holding the key is answered wherever it is"
     );
     assert!(
-        !may_answer_wire(phone, &plain, Some(&key), &[phone], "laptop", "personal"),
+        !may_answer_wire(phone, &plain, Some(&key), "laptop", "personal"),
         "a plain bundle is refused once there's a key"
     );
     assert!(!may_answer_wire(
         stranger,
         &seal(&b, &other).unwrap().into_bytes(),
         Some(&key),
-        &[],
         "laptop",
         "personal"
     ));

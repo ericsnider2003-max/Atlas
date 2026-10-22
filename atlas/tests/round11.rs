@@ -893,6 +893,29 @@ mod rss {
     }
 
     #[test]
+    fn parsing_a_feed_caps_the_intermediate_item_vector() {
+        let items = (0..=MAX_SEEN)
+            .map(|n| format!("<item><guid>{n}</guid><title>Listing {n}</title><link>https://example.org/{n}</link></item>"))
+            .collect::<String>();
+        let parsed = parse(&format!("<rss><channel>{items}</channel></rss>")).unwrap();
+        assert_eq!(parsed.items.len(), MAX_SEEN);
+        assert_eq!(parsed.items[0].title, "Listing 0");
+    }
+
+    #[test]
+    fn an_oversized_xml_field_is_bounded_and_its_item_is_skipped() {
+        // Three-byte UTF-8 forces the 64 KiB boundary into the middle of a code point.
+        let large = "€".repeat(64 * 1024);
+        let xml = format!(
+            "<rss><channel><item><guid>too-large</guid><title>{large}</title></item><item><guid>kept</guid><title>Small</title><link>https://example.org/small</link></item></channel></rss>"
+        );
+        let parsed = parse(&xml).unwrap();
+        assert_eq!(parsed.items.len(), 1);
+        assert_eq!(parsed.items[0].id, "kept");
+        assert_eq!(parsed.items[0].title, "Small");
+    }
+
+    #[test]
     fn a_first_read_lists_three_and_later_reads_only_whats_new() {
         let mut f = Feeds::default();
         f.follow("https://ex.com/feed", "").unwrap();

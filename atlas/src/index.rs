@@ -418,7 +418,9 @@ impl Index {
         store.load("index")
     }
     pub fn save(&self, store: &Store) -> Result<()> {
-        store.save("index", self)
+        store.save("index", self)?;
+        crate::memwatch::record_event("index_saved");
+        Ok(())
     }
     /// What changes whenever the index does: how many entries, and when it
     /// was last scanned (`apply` sets that on every scan). Cheap to ask

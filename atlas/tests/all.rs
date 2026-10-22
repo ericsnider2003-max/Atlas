@@ -470,6 +470,8 @@ mod nudge;
 mod off_the_tick;
 #[path = "offline_and_cdp.rs"]
 mod offline_and_cdp;
+#[path = "offline_progress.rs"]
+mod offline_progress;
 #[path = "older_atlas_keeps_newer_fields.rs"]
 mod older_atlas_keeps_newer_fields;
 #[path = "one_name_one_record.rs"]

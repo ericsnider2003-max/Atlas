@@ -369,9 +369,36 @@ fn the_page_works_with_no_internet_and_no_javascript_framework() {
 
 #[test]
 fn the_status_page_says_how_much_you_have_changed() {
-    let page = status_page(&[("Listening".into(), "the webcam".into())], 3);
+    let page = status_page(&[atlas::hub::StatusLine::new("Listening", "the webcam")], 3);
     assert!(page.contains("the webcam"));
     assert!(page.contains("3 settings changed"));
+}
+
+#[test]
+fn the_status_page_marks_the_memory_trend_as_required_and_hides_only_its_bars() {
+    let page = status_page(
+        &[atlas::hub::StatusLine::required_memory_trend(
+            "Private memory · Growing — +21.0 MB/h",
+            Some("▁▂▄█".into()),
+        )],
+        0,
+    );
+    assert!(page.contains("data-required=\"memory-trend\""));
+    assert!(page.contains("Private memory · Growing — +21.0 MB/h"));
+    assert!(page.contains("aria-hidden=true"));
+    assert!(page.contains("▁▂▄█</span>"));
+}
+
+#[test]
+fn the_status_page_marks_recent_resource_decisions_as_required() {
+    let page = status_page(
+        &[atlas::hub::StatusLine::required_runtime_decisions(
+            "No resource decisions have been recorded yet.",
+        )],
+        0,
+    );
+    assert!(page.contains("data-required=\"runtime-decisions\""));
+    assert!(page.contains("No resource decisions have been recorded yet."));
 }
 
 #[test]

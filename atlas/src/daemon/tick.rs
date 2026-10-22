@@ -140,6 +140,9 @@ impl<'a> Daemon<'a> {
 
     /// Work Atlas does without being asked. Returns anything worth saying.
     pub fn tick(&mut self, t: u64) -> Vec<String> {
+        // Include recovery and pending-result work in the same timing record:
+        // it used to start after that preamble, hiding first-tick cost.
+        self.tick_laps = crate::timing::Laps::start();
         self.apply_fast_hub_pause();
         let mut out = Vec::new();
         self.poll_signing_protection();
@@ -200,8 +203,7 @@ impl<'a> Daemon<'a> {
         // A command's change first, so nothing below works on (and then
         // saves back) an older copy (Q13).
         self.take_outside_changes();
-        // Where this pass spends its time, named in the log when it's slow.
-        self.tick_laps = crate::timing::Laps::start();
+        self.tick_laps.mark("startup recovery and state refresh");
         // Notes `reach_you` routed to speaking, said now (30 Sep 2026: that
         // route only wrote a log line, so a message for you while you sat at
         // the desk was never heard).
@@ -1876,6 +1878,7 @@ impl<'a> Daemon<'a> {
                 }
             }
         }
+        self.tick_laps.mark("hello and daypart brief");
 
         // A work session (idea 3): interruptions held until it ends, one
         // check-in halfway if you're there, and how it went at the end.
@@ -1925,6 +1928,7 @@ impl<'a> Daemon<'a> {
         // night. Taken rather than read: a brief said twice is worse than one
         // said late, and the night it describes is already over.
         self.offer_ready_brief(&mut out);
+        self.tick_laps.mark("work session and morning brief");
 
         // --- Has the index stopped matching the folder? ---
         //
@@ -1933,7 +1937,6 @@ impl<'a> Daemon<'a> {
         // to interrupt still belongs in the log, and a check that only ran on
         // the ticks Atlas may speak would go unrun for a whole focus session.
         // What it finds is held for the raise at the end of the tick.
-        self.tick_laps.mark("news, the brief and the wrap");
         if t.saturating_sub(self.last_index_check) >= 3600 {
             self.last_index_check = t;
             let d = self.index_drift();
@@ -1947,9 +1950,10 @@ impl<'a> Daemon<'a> {
         }
 
         // Should Atlas speak first?
-        self.tick_laps.mark("the index");
+        self.tick_laps.mark("index drift");
         if !self.modes.may_interrupt(false) {
             self.persist_after(t, !out.is_empty());
+            self.tick_laps.mark("persist");
             return out;
         }
         // Initiative before reaction. A stalled commitment matters more than
@@ -2004,6 +2008,7 @@ impl<'a> Daemon<'a> {
             self.log.info(l);
         }
         self.connections_logged = lines;
+        self.tick_laps.mark("connections and failure nudges");
         // At most one, and only when Atlas is allowed to speak at all. A
         // machine that has just gone offline has several things fail at once,
         // and hearing about each of them separately is noise. Behind the same
@@ -2124,6 +2129,7 @@ impl<'a> Daemon<'a> {
             out.push(offer.message.clone());
             self.pending_offer = Some(offer);
         }
+        self.tick_laps.mark("hello and proactive nudges");
 
         // --- The index, if nothing else took the floor ---
         //
@@ -2152,8 +2158,10 @@ impl<'a> Daemon<'a> {
                 }
             }
         }
+        self.tick_laps.mark("index nudge");
 
         self.persist_after(t, !out.is_empty());
+        self.tick_laps.mark("persist");
         out
     }
 
@@ -2268,9 +2276,8 @@ impl<'a> Daemon<'a> {
     /// the clash rule that only `Changed` and `Removed` can conflict, and
     /// `already_seen` so a folder read twice does not double anything.
     /// Our own log as bytes ready for the wire — sealed with the household key
-    /// when sealing is on, plain JSON otherwise, exactly as the folder path
-    /// writes it. `None` only if sealing is on and there is no key to seal with,
-    /// which is the same "don't ship it in the clear" refusal the folder makes.
+    /// Remote peers always require a household-key-sealed bundle, regardless
+    /// of the shared-folder encryption preference. `None` means no key exists.
     fn wire_bytes(
         &mut self,
         cfg: &crate::sync::SyncConfig,
@@ -2282,13 +2289,9 @@ impl<'a> Daemon<'a> {
             crate::sync::make_bundle(&self.synclog, &self.synclog.device.clone(), 0, now)
         };
         bundle.belongs_to = cfg.belongs_to.clone();
-        if cfg.encrypt_bundles {
-            crate::sync::seal(&bundle, key?)
-                .ok()
-                .map(String::into_bytes)
-        } else {
-            serde_json::to_vec(&bundle).ok()
-        }
+        crate::sync::seal(&bundle, key?)
+            .ok()
+            .map(String::into_bytes)
     }
 
     /// Take a bundle in off the wire: the same acceptance the folder path does
@@ -2403,6 +2406,9 @@ impl<'a> Daemon<'a> {
         } else {
             None
         };
+        if key.is_none() {
+            return "Direct sync needs the household key on both devices. Set or receive it on the Sync page; named addresses alone are not trusted. Nothing was sent.".into();
+        }
         let lines = self.dial_configured_peers(cfg, key.as_deref(), now, &[]);
         if lines.is_empty() {
             "No folder to sync through, and none of your other devices answered directly this time -- I'll try again.".into()
@@ -2476,6 +2482,13 @@ impl<'a> Daemon<'a> {
     ) -> Vec<String> {
         let mut lines: Vec<String> = Vec::new();
         let peers = self.tools_cfg().elsewhere.known.clone();
+        if key.is_none()
+            && peers
+                .iter()
+                .any(|p| !p.name.trim().is_empty() && !p.host.trim().is_empty())
+        {
+            return vec!["Direct sync needs the household key on both devices. Set or receive it on the Sync page; named addresses alone are not trusted. Shared-folder sync is unaffected.".into()];
+        }
         for p in peers {
             let name = p.name.trim().to_string();
             let host = p.host.trim().to_string();
@@ -2783,10 +2796,8 @@ impl<'a> Daemon<'a> {
     /// (1 Oct 2026 security pass: anyone on the same Wi-Fi who sent four
     /// magic bytes used to get every note back, and could push in fakes).
     ///
-    /// With a household key, only a bundle sealed with it is answered — a
-    /// plain one is refused even if it reads. With no key there is nothing to
-    /// prove, so only this machine and the devices you've named by address
-    /// are answered. Either way it must be another device of the same Atlas.
+    /// Every remote peer must provide a bundle sealed with the household key;
+    /// named addresses are routing only. Loopback can use plaintext locally.
     pub(super) fn may_answer_wire(
         &self,
         peer: std::net::IpAddr,
@@ -2794,38 +2805,7 @@ impl<'a> Daemon<'a> {
         cfg: &crate::sync::SyncConfig,
         key: Option<&[u8]>,
     ) -> bool {
-        let named = if key.is_none() && !peer.is_loopback() && self.is_a_named_peer(peer) {
-            vec![peer]
-        } else {
-            Vec::new()
-        };
-        crate::sync::may_answer_wire(
-            peer,
-            incoming,
-            key,
-            &named,
-            &self.synclog.device,
-            &cfg.belongs_to,
-        )
-    }
-
-    /// Is this address one of the devices named in `elsewhere.known`? A
-    /// name is looked up; an address is compared as written.
-    fn is_a_named_peer(&self, peer: std::net::IpAddr) -> bool {
-        use std::net::ToSocketAddrs;
-        self.tools_cfg().elsewhere.known.iter().any(|p| {
-            let host = p.host.trim();
-            if host.is_empty() {
-                return false;
-            }
-            match host.parse::<std::net::IpAddr>() {
-                Ok(ip) => ip == peer,
-                Err(_) => (host, 0u16)
-                    .to_socket_addrs()
-                    .map(|mut a| a.any(|a| a.ip() == peer))
-                    .unwrap_or(false),
-            }
-        })
+        crate::sync::may_answer_wire(peer, incoming, key, &self.synclog.device, &cfg.belongs_to)
     }
 
     fn sync_key(&self) -> Option<Vec<u8>> {
@@ -3676,6 +3656,55 @@ mod dials_have_a_deadline {
             "took {} ms",
             started.elapsed().as_millis()
         );
+    }
+}
+
+#[cfg(test)]
+mod tick_laps_are_named {
+    use super::*;
+
+    #[test]
+    fn startup_hello_nudges_and_persistence_are_visible_laps() {
+        let mut cfg = Config::load(std::path::Path::new("config")).unwrap();
+        cfg.tools.as_mut().unwrap().backup.enabled = false;
+        let platform = crate::platform::mock::MockPlatform::new(Vec::new());
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root =
+            std::env::temp_dir().join(format!("atlas-tick-laps-{}-{stamp}", std::process::id()));
+        let mut daemon = Daemon::new(
+            &cfg,
+            &platform,
+            None,
+            Store::new(root.clone()),
+            crate::proactive::Proactive::new(crate::proactive::ProactiveConfig::default()),
+        );
+
+        let _ = daemon.tick(crate::store::now());
+        let names: Vec<_> = daemon
+            .tick_laps
+            .parts()
+            .iter()
+            .map(|(name, _)| *name)
+            .collect();
+        for expected in [
+            "startup recovery and state refresh",
+            "hello and daypart brief",
+            "work session and morning brief",
+            "connections and failure nudges",
+            "hello and proactive nudges",
+            "index nudge",
+            "persist",
+        ] {
+            assert!(
+                names.contains(&expected),
+                "missing tick timing lap: {expected}"
+            );
+        }
+        drop(daemon);
+        std::fs::remove_dir_all(root).unwrap();
     }
 }
 

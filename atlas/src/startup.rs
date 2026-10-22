@@ -689,7 +689,7 @@ mod tests {
             "the program path is not quoted: {cmd}"
         );
         assert!(
-            cmd.contains(r#"Atlas\atlas.exe" --daemon"#),
+            cmd.contains(r#"Atlas\atlas.exe" --watchdog"#),
             "the quote closes in the wrong place: {cmd}"
         );
     }
@@ -710,7 +710,7 @@ mod tests {
         let exe = PathBuf::from("atlas.exe");
         let cmd = task_command(&exe, Mode::Background);
         assert_eq!(
-            cmd, "\"atlas.exe\" --daemon",
+            cmd, "\"atlas.exe\" --watchdog",
             "the shape is right, and the caller is responsible for it being absolute"
         );
     }
@@ -765,7 +765,7 @@ mod tests {
         let exe = PathBuf::from("/opt/atlas/atlas");
         let unit = unit_file(&exe, Mode::Background);
         assert!(
-            unit.contains("ExecStart=/opt/atlas/atlas --daemon"),
+            unit.contains("ExecStart=/opt/atlas/atlas --watchdog"),
             "{unit}"
         );
         assert!(unit.contains("WorkingDirectory=/opt/atlas"), "{unit}");

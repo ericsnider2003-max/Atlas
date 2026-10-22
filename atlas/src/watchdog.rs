@@ -1,4 +1,5 @@
-//! Supervises the background Atlas process after native termination.
+//! Supervises Atlas's background process after native termination, records
+//! restart outcomes, and stops after a bounded number of rapid failures.
 
 use crate::whystopped::Runs;
 use std::path::PathBuf;

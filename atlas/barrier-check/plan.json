@@ -1,0 +1,28 @@
+{
+  "root": "C:\\Users\\erics\\Atlas\\wt-integ2\\atlas",
+  "node": "24.21.0",
+  "tier": "static",
+  "platforms": [
+    "web",
+    "ios",
+    "android"
+  ],
+  "frameworks": [],
+  "libraries": [],
+  "linters": [
+    "Android Lint (via gradlew lint)"
+  ],
+  "playwright": "missing",
+  "axe_core": "missing",
+  "git": true,
+  "spa": false,
+  "needs_login": false,
+  "routes": [],
+  "coverage_lost": [
+    "rendered checks (keyboard walk, dialogs, rendered contrast, reflow, SPA routes)",
+    "axe-core second engine"
+  ],
+  "commands": [
+    "node \"C:\\Users\\erics\\.agents\\skills\\barrier-check\\scripts\\check.mjs\" . --json --fail-on none --project ."
+  ]
+}

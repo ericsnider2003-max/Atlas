@@ -279,6 +279,7 @@ fn a_question_asked_while_the_server_cannot_answer_is_refused_at_once() {
         inner: inner.clone(),
         cfg: ModelsConfig::default(),
         vars: atlas::tools::Vars::default(),
+        quick_enabled: false,
     };
     gpulost::clear();
     assert!(wrapped.complete("s", "u").is_err());
@@ -308,6 +309,42 @@ fn a_question_asked_while_the_server_cannot_answer_is_refused_at_once() {
 #[test]
 fn the_daemon_notes_the_reset_before_it_restarts_and_starts_safely() {
     let model = source("src/daemon/model.rs");
+    for event in [
+        "model_server_stopped_unresponsive",
+        "model_server_stopped_gpu_reset",
+        "model_server_stopped_for_model_switch",
+        "model_server_stopped_idle",
+    ] {
+        assert!(
+            model.contains(&format!("record_event(\"{event}\")")),
+            "missing memory lifecycle marker: {event}"
+        );
+    }
+    assert!(model.contains("fn begin_model_stop_decision("));
+    assert!(model.contains("fn finish_model_stop_decision("));
+    for action in [
+        "decision::Action::Restart",
+        "decision::Action::StepDown",
+        "decision::Action::Replan",
+        "decision::Action::LetGo",
+        "decision::Action::Preempt",
+    ] {
+        assert!(
+            model.contains(action),
+            "missing typed stop decision: {action}"
+        );
+    }
+    let heavy = model
+        .find("pub(super) fn room_for_heavy(")
+        .expect("heavy-helper pressure path");
+    let heavy = &model[heavy..];
+    let stopped = heavy
+        .find("let stopped = was_running && !self.helpers.is_running(\"model-server\")")
+        .expect("stop bookkeeping must run after an eviction");
+    let propagated = heavy
+        .find("let said = result?")
+        .expect("the helper result is propagated");
+    assert!(stopped < propagated);
     // Looked for before a suspect server is probed: /health says ok on a
     // server whose graphics are gone, so probing alone never finds it.
     let watch = model
@@ -338,6 +375,53 @@ fn the_daemon_notes_the_reset_before_it_restarts_and_starts_safely() {
     assert!(applied < layers);
     // The one retry is immediate; one already safe waits its doubling pause.
     assert!(contains_code(&model, "self.model_recovering = !was_safe;"));
+}
+
+#[test]
+fn decisions_are_recorded_for_deep_and_coding_model_lifecycles() {
+    let deep = source("src/deepbrain.rs");
+    let coder = source("src/coder.rs");
+    assert!(deep.contains("with_decision_log(crate::decision::log_path"));
+    assert!(coder.contains("with_decision_log(crate::decision::log_path"));
+    for transition in [
+        "Action::Warm",
+        "Action::LetGo",
+        "Action::Preempt",
+        "Action::Restart",
+        "server became healthy",
+        "server launch failed",
+        "load limit",
+    ] {
+        assert!(
+            deep.contains(transition),
+            "deep model lifecycle journal is missing {transition}"
+        );
+    }
+    assert!(coder.contains("stop_for_reason(\"an owner turn needs the talking model"));
+}
+
+#[test]
+fn non_model_resource_lifecycles_are_in_the_memory_journal() {
+    for (path, events) in [
+        (
+            "src/daemon/camera.rs",
+            &["camera_watch_opened", "camera_watch_closed"][..],
+        ),
+        (
+            "src/daemon/hands.rs",
+            &["camera_opened_for_look", "camera_closed_after_look"][..],
+        ),
+        ("src/index.rs", &["index_saved"][..]),
+        ("src/kokoro.rs", &["kokoro_loaded"][..]),
+    ] {
+        let source = source(path);
+        for event in events {
+            assert!(
+                source.contains(&format!("record_event(\"{event}\")")),
+                "{path} is missing the memory-journal lifecycle marker {event}"
+            );
+        }
+    }
 }
 
 #[test]

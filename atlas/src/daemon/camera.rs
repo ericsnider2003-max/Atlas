@@ -202,6 +202,7 @@ impl<'a> Daemon<'a> {
         match crate::camwatch::Watcher::start(setup, secs, until_stopped, t) {
             Ok(w) => {
                 self.cam_watch = Some(w);
+                crate::memwatch::record_event("camera_watch_opened");
                 self.log
                     .info(&format!("camera: watching for {secs}s (asked)"));
                 crate::camwatch::started(secs, until_stopped)
@@ -232,6 +233,7 @@ impl<'a> Daemon<'a> {
             if let Some(mut w) = self.cam_watch.take() {
                 w.stop();
             }
+            crate::memwatch::record_event("camera_watch_closed");
             self.log.info("camera: watching ended");
             out.push(crate::camwatch::ended(secs, said_n, &why));
         }

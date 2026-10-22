@@ -480,12 +480,14 @@ pub struct FallbackLlm {
     /// builder, self-work -- went online first whenever online was allowed
     /// (research report, Stage 1 item 3).
     hard_first: bool,
+    secondary_destination: crate::decision::Destination,
 }
 
 impl FallbackLlm {
     /// Hard tasks to the secondary first: it's your own stronger model.
     pub fn secondary_is_your_own(mut self) -> Self {
         self.hard_first = true;
+        self.secondary_destination = crate::decision::Destination::OwnerConfigured;
         self
     }
 
@@ -498,6 +500,7 @@ impl FallbackLlm {
             secondary,
             breaker: std::sync::Mutex::new(crate::ratelimit::Breaker::new(3, 30_000, 600_000)),
             hard_first: false,
+            secondary_destination: crate::decision::Destination::Online,
         }
     }
 
@@ -506,6 +509,7 @@ impl FallbackLlm {
         let s = self.secondary.as_ref()?;
         // Only your own second model while Google's data is held.
         if google_data_held() && !self.hard_first {
+            crate::decision::model_route_denied(self.secondary_destination, "private_data_policy");
             return None;
         }
         let now = now_ms();
@@ -516,6 +520,7 @@ impl FallbackLlm {
             .map(|mut b| b.allow(now))
             .unwrap_or(true);
         if !allowed {
+            crate::decision::model_route_denied(self.secondary_destination, "breaker_open");
             return None;
         }
         // The one place a prompt leaves the machine: secrets and personal
@@ -531,9 +536,15 @@ impl FallbackLlm {
                 "\n\n({note}; they appear as placeholders like ⟦EMAIL_1⟧. Use the placeholders exactly as written.)"
             ));
         }
+        let started = std::time::Instant::now();
         let r = s
             .complete(&system_out, &user_out)
             .map(|reply| scrub.put_back(&reply));
+        crate::decision::model_route_attempt(
+            self.secondary_destination,
+            r.is_ok(),
+            started.elapsed(),
+        );
         if let Ok(mut b) = self.breaker.lock().or_else(crate::crash::unpoison) {
             match &r {
                 Ok(_) => b.success(),
@@ -555,6 +566,7 @@ impl FallbackLlm {
     ) -> Option<Result<LongReply>> {
         let s = self.secondary.as_ref()?;
         if google_data_held() && !self.hard_first {
+            crate::decision::model_route_denied(self.secondary_destination, "private_data_policy");
             return None;
         }
         let now = now_ms();
@@ -565,9 +577,16 @@ impl FallbackLlm {
             .map(|mut b| b.allow(now))
             .unwrap_or(true)
         {
+            crate::decision::model_route_denied(self.secondary_destination, "breaker_open");
             return None;
         }
+        let started = std::time::Instant::now();
         let r = Scrubbed(s.clone()).complete_long(system, user, max_tokens);
+        crate::decision::model_route_attempt(
+            self.secondary_destination,
+            r.is_ok(),
+            started.elapsed(),
+        );
         if let Ok(mut b) = self.breaker.lock().or_else(crate::crash::unpoison) {
             match &r {
                 Ok(_) => b.success(),

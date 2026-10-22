@@ -166,6 +166,7 @@ impl<'a> Daemon<'a> {
         match camera {
             Some(c) => {
                 if opened {
+                    crate::memwatch::record_event("camera_opened_for_look");
                     self.log.info("camera: open, kept open between looks");
                 }
                 self.kept_camera = Some((c, std::time::Instant::now()));
@@ -555,6 +556,7 @@ impl<'a> Daemon<'a> {
         );
         match frame {
             Some(f) => {
+                crate::memwatch::record_event("camera_opened_for_look");
                 self.log.info("camera: open, kept open between looks");
                 self.kept_camera = Some((cam, std::time::Instant::now()));
                 Ok((f, w, h))
@@ -571,6 +573,7 @@ impl<'a> Daemon<'a> {
     pub(super) fn let_go_of_the_camera(&mut self, why: &str) {
         self.wait_for_the_look();
         if self.kept_camera.take().is_some() {
+            crate::memwatch::record_event("camera_closed_after_look");
             self.helpers.finished("camera");
             self.log.info(&format!("camera: closed ({why})"));
         }

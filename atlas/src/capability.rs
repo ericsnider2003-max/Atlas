@@ -308,7 +308,7 @@ pub fn all() -> Vec<Capability> {
         Capability { id: "timebox", what: "stop before you have to ask what's taking so long", area: Thinking, state: Working, needs: None, offline: true, added: 17, runs: &[Needs::JustThinking], modules: &["timebox"] },
         Capability { id: "chain", what: "do something that crosses several apps", area: Thinking, state: Untested, needs: Some("a live run on the unlocked laptop"), offline: true, added: 19, runs: &[Needs::ActInApps], modules: &["chain"] },
         Capability { id: "person", what: "learn how you work", area: Thinking, state: Working, needs: None, offline: true, added: 18, runs: &[Needs::JustThinking], modules: &["person"] },
-        Capability { id: "reason", what: "reason properly rather than following rules", area: Thinking, state: Blocked, needs: Some("a language model"), offline: true, added: 8, runs: &[Needs::JustThinking], modules: &["brain", "infer", "models", "deepbrain", "freeonline", "muse", "contemplate"] },
+        Capability { id: "reason", what: "reason properly rather than following rules", area: Thinking, state: Blocked, needs: Some("a language model"), offline: true, added: 8, runs: &[Needs::JustThinking], modules: &["brain", "infer", "models", "deepbrain", "quickbrain", "freeonline", "muse", "contemplate"] },
 
         Capability { id: "selfwork", what: "change its own code and test it", area: Itself, state: Off, needs: None, offline: true, added: 16, runs: &[Needs::Files], modules: &["selfwork", "pipeline", "sandbox", "mend", "selfgrant"] },
         Capability { id: "plainchange", what: "explain a change it staged as behaviour, not code — what will now happen and what it no longer promises, read from the tests it adds and drops", area: Itself, state: Untested, needs: None, offline: true, added: 17, runs: &[Needs::JustThinking], modules: &["plainchange"] },
@@ -328,7 +328,7 @@ pub fn all() -> Vec<Capability> {
         Capability { id: "feed", what: "refuse bars that would make every number wrong", area: Money, state: Untested, needs: Some("a file of bars"), offline: true, added: 28, runs: &[Needs::Files], modules: &["feed"] },
         Capability { id: "together", what: "notice when several trades are really one bet", area: Money, state: Untested, needs: Some("open positions"), offline: true, added: 27, runs: &[Needs::JustThinking], modules: &["together"] },
         Capability { id: "untrusted", what: "read what it's handed without being told what to do", area: Itself, state: Untested, needs: None, offline: true, added: 26, runs: &[Needs::JustThinking], modules: &["untrusted"] },
-        Capability { id: "doctor", what: "check itself and say what's wrong", area: Itself, state: Working, needs: None, offline: true, added: 3, runs: &[Needs::JustThinking], modules: &["doctor", "diagnose"] },
+        Capability { id: "doctor", what: "check itself and say what's wrong", area: Itself, state: Working, needs: None, offline: true, added: 3, runs: &[Needs::JustThinking], modules: &["doctor", "diagnose", "memwatch", "memtrend"] },
 
         Capability { id: "ocr", what: "read text off an image with an outside program", area: Seeing, state: Blocked, needs: Some("tesseract, which nothing fetches"), offline: true, added: 7, runs: &[Needs::ReadScreen], modules: &["ocr"] },
         Capability { id: "words", what: "read the words on your screen", area: Seeing, state: Untested, needs: Some("the two reading models"), offline: true, added: 27, runs: &[Needs::ReadScreen], modules: &["words"] },
@@ -461,7 +461,7 @@ pub fn all() -> Vec<Capability> {
         Capability { id: "overnight", what: "work through what it couldn't finish while you sleep, and in the morning say what actually happened, not what was meant to", area: Itself, state: Untested, needs: Some("a night with the laptop left on"), offline: true, added: 40, runs: &[Needs::Background], modules: &["overnight", "faithful"] },
         Capability { id: "flow", what: "carry out a job of several steps on its own -- each result handed to the next, surviving a failure, pausing for your yes midway", area: Thinking, state: Untested, needs: Some("a live run on the unlocked laptop"), offline: true, added: 40, runs: &[Needs::Files, Needs::Background], modules: &["flow"] },
         Capability { id: "council", what: "put a question to a room of seats that don't agree, and bring back the disagreement", area: Thinking, state: Blocked, needs: Some("a language model"), offline: true, added: 40, runs: &[Needs::JustThinking], modules: &["council"] },
-        Capability { id: "decide", what: "work a decision through with you -- the question underneath, the options, and the strongest case against what you've chosen", area: Thinking, state: Working, needs: None, offline: true, added: 40, runs: &[Needs::JustThinking], modules: &["decide", "otherside"] },
+        Capability { id: "decide", what: "work a decision through with you -- the question underneath, the options, and the strongest case against what you've chosen", area: Thinking, state: Working, needs: None, offline: true, added: 40, runs: &[Needs::JustThinking], modules: &["decide", "otherside", "decision"] },
         Capability { id: "opportunity", what: "weigh something that might be worth doing on five counts, and say which ones it can't judge yet", area: Thinking, state: Working, needs: None, offline: true, added: 40, runs: &[Needs::JustThinking], modules: &["opportunity"] },
         Capability { id: "reference", what: "know exact things offline -- a contract's tick size, the wash sale window -- from reference shelves you choose", area: Files, state: Off, needs: None, offline: true, added: 40, runs: &[Needs::Files], modules: &["reference"] },
         Capability { id: "filing", what: "suggest where your files should live, and move them only when you say", area: Files, state: Untested, needs: None, offline: true, added: 40, runs: &[Needs::Files], modules: &["filing"] },
@@ -1762,7 +1762,9 @@ pub fn claimed_modules() -> std::collections::BTreeSet<&'static str> {
 // model) = 491.
 // 12 Oct 2026: + `ownspeech` (echo guard, merged alongside) = 492.
 // 12 Oct 2026: + `gpulost` (graphics reset safe mode) = 493.
-pub const MODULES_IN_TREE: usize = 493;
+// 14 Oct 2026: + decision outcomes, memory trend history/calculation,
+// watchdog restart supervision, and the brief local-model warm-up bridge = 498.
+pub const MODULES_IN_TREE: usize = 498;
 
 /// Every module no capability claims, and why it is not one.
 ///
@@ -1782,6 +1784,7 @@ pub const MODULES_IN_TREE: usize = 493;
 pub const PLUMBING: &[(&str, &str)] = &[
     ("ownspeech", "remembers the last few things Atlas said aloud so an open-mic transcript that is its own voice coming back through the speakers is dropped; words stay in memory only"),
     ("gpulost", "remembers that the graphics reset under the language model, starts it in safe mode on the processor meanwhile, and says so in `atlas doctor`"),
+    ("watchdog", "restarts the background process after an unexpected exit, with a bounded retry window; lifecycle plumbing rather than a user-facing ability"),
     ("voicelat", "keeps what the voice path decided and how long each stage took, so `atlas doctor` can read real latency later; numbers and reasons, never the words"),
     ("childjob", "ties every program Atlas starts for its own work to Atlas, so it ends when Atlas ends instead of running on with the fans"),
     ("unheard", "failures nobody was waiting for (kept!/heard!): a write that failed is told like a failed save, the rest logged; nothing is discarded silently"),

@@ -1124,6 +1124,9 @@ pub struct Daemon<'a> {
     /// 3 GB server because the machine running the tests happens to have a
     /// model in `models/`.
     starts_model_server: bool,
+    /// Whether this live daemon may use the brief local-model bridge while
+    /// its primary server is starting. Test and phone daemons default off.
+    quick_model_bridge: bool,
     /// When to look again for a model, while there's none (`keep_model_server`).
     model_look_at: u64,
     /// When typing-only last looked again at whether the voice tools work.
@@ -2104,6 +2107,7 @@ impl<'a> Daemon<'a> {
             // `idle_timeout_secs` and `keep_warm_secs` never reached the
             // running Supervisor.
             starts_model_server: false,
+            quick_model_bridge: false,
             model_look_at: 0,
             audio_look_at: 0,
             mic_look_at: crate::store::now() + MIC_LOOK_EVERY_SECS,

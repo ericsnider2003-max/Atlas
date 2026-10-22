@@ -1421,7 +1421,7 @@ pub fn sketch(g: &Gesture) -> String {
         };
         parts.push_str(&format!(
             "<path d='{d}' fill='none' stroke='currentColor' stroke-width='3' \
-             stroke-linecap='round' opacity='0.75'/>"
+             stroke-linecap='round'/>"
         ));
     }
 
@@ -1430,7 +1430,7 @@ pub fn sketch(g: &Gesture) -> String {
         parts.push_str(
             "<path d='M84 84 l6 6 l-6 6 M92 84 l6 6 l-6 6' fill='none' \
              stroke='currentColor' stroke-width='3' stroke-linecap='round' \
-             opacity='0.75'/>",
+             />",
         );
     }
 

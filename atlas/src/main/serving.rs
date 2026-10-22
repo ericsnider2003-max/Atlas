@@ -46,6 +46,12 @@ pub(super) fn run_daemon(cfg: &Config, plat: &dyn Platform, unattended: bool) {
     // Held to the end of this function: dropping it is what lets another Atlas start.
     let _only = take_the_one_lock();
 
+    let store = atlas::roots::store();
+    atlas::decision::start(store.root());
+    // Keep a bounded memory history while the daemon is alive. Sampling is
+    // best-effort and deliberately starts only after this process owns state.
+    atlas::memwatch::start();
+
     // The words on the desktop while Atlas speaks (`overlaywin`). Always
     // started on Windows: it reads its own switch every few seconds, so
     // turning it on in Settings works without a restart, and it ends itself
@@ -67,8 +73,6 @@ pub(super) fn run_daemon(cfg: &Config, plat: &dyn Platform, unattended: bool) {
     let cfg = &cfg_owned;
     let tc = &tc_owned;
     let voice = Voice::new(tc);
-    let store = atlas::roots::store();
-
     // Read here, before `store` is moved into the daemon below. The hub is
     // bound further down and needs it then; taking it now is cheaper than
     // opening a second store, and keeps to the one-store rule
@@ -105,6 +109,7 @@ pub(super) fn run_daemon(cfg: &Config, plat: &dyn Platform, unattended: bool) {
     };
     let mut d = daemon
         .starting_the_model_server()
+        .with_quick_model_bridge()
         .with_typed_prompt(Box::new(atlas::typed::Console))
         .watch_settings(atlas::roots::config_dir());
     d.autonomy = if unattended {
@@ -620,6 +625,7 @@ pub(super) fn voice_loop(
     };
     let mut d = daemon
         .starting_the_model_server()
+        .with_quick_model_bridge()
         .with_typed_prompt(Box::new(atlas::typed::Console))
         .watch_settings(atlas::roots::config_dir());
     d.autonomy = Autonomy::Supervised;

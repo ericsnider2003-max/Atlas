@@ -89,17 +89,35 @@ impl<'a> Daemon<'a> {
             if crate::models::is_running(&cfg, &http, &vars) {
                 said.push_str(" It's up.");
             } else if cfg.server.is_some() {
+                let layers = crate::models::layers_here(model, &cfg, &machine);
+                // The same estimate `best_fit` sized against, so what Atlas
+                // says it will take and what it chose by cannot disagree.
+                let mb = crate::models::footprint_mb(model, &cfg);
+                if self.rehearsal {
+                    self.rehearsed.push(format!(
+                        "start model server: {} ({layers} layers on graphics, about {mb}MB)",
+                        model.id
+                    ));
+                    said.push_str(&format!(
+                        " It isn't running; in normal use I would start it with {layers} layers on \
+                         the graphics, taking about {mb}MB."
+                    ));
+                    return said;
+                }
                 // It used to stop at "I'd start it", which is the shape of
                 // hollowness this tree keeps finding: a sentence describing
                 // an action nothing performs. `models::launch` was written,
                 // tested, and had no caller anywhere in `src`. Now the
                 // sentence is a report of something that happened.
-                let layers = crate::models::layers_here(model, &cfg, &machine);
-                // The same estimate `best_fit` sized against, so what Atlas
-                // says it will take and what it chose by cannot disagree.
-                let mb = crate::models::footprint_mb(model, &cfg);
                 let model = model.clone();
-                match self.start_model_server(&model, &cfg, layers, mb) {
+                match self.start_model_server(
+                    &model,
+                    &cfg,
+                    layers,
+                    mb,
+                    "model-query",
+                    "The owner asked which configured model is available.",
+                ) {
                     Ok(evicted) => {
                         self.model_running_id = Some(model.id.clone());
                         said.push_str(&format!(
@@ -197,6 +215,7 @@ impl<'a> Daemon<'a> {
     ) -> R {
         let talking = self.deep.gate.talking();
         let mut room = DaemonRoom {
+            store: &self.store,
             helpers: &mut self.helpers,
             rested: &mut self.model_rested,
             running_id: &mut self.model_running_id,
@@ -347,7 +366,10 @@ impl<'a> Daemon<'a> {
             self.model_look_at = t + 60;
             if let Some(tc) = self.tools_ref().cloned() {
                 if tc.llm.is_none() {
-                    self.llm = crate::models::connection(&tc);
+                    self.llm = crate::models::connection_with_quick_model(
+                        &tc,
+                        self.quick_model_bridge && !self.rehearsal,
+                    );
                     // Why not, said once and kept for the replies.
                     if self.llm.is_none() {
                         let why = crate::models::why_no_model(&tc.models);
@@ -423,7 +445,19 @@ impl<'a> Daemon<'a> {
                         self.model_suspect = false;
                         self.log
                             .warn("my model server is running but not answering; restarting it");
+                        let decision = begin_model_stop_decision(
+                            &self.store,
+                            crate::decision::Action::Restart,
+                            "talking model",
+                            "the model health probe failed after startup",
+                            "the unresponsive process is stopped; the next turn can start a fresh server",
+                        );
+                        crate::memwatch::record_event("model_server_stopped_unresponsive");
                         self.helpers.finished("model-server");
+                        finish_model_stop_decision(
+                            decision,
+                            self.helpers.is_running("model-server"),
+                        );
                         self.model_started = None;
                         self.model_start_tried = None;
                         self.model_server_trouble = Some(
@@ -493,6 +527,21 @@ impl<'a> Daemon<'a> {
         if up {
             return;
         }
+        // A quiet daemon must not hold the multi-gigabyte talking model just
+        // because it owns a model connection. Cold starts happen on a user
+        // turn or when actual queued/active work needs the model. An already
+        // running server is still supervised above, and explicit turns still
+        // start it through `keep_model_server`.
+        if !model_start_is_demanded(
+            a_turn,
+            !self.talk_queue.is_empty(),
+            self.pending_turn.is_some(),
+            self.pending_job.is_some(),
+            self.crew.wants_attention(),
+            self.working_through_steps(),
+        ) {
+            return;
+        }
         // Tried a moment ago and it didn't start: not again on every turn,
         // and longer each time one dies young.
         if self
@@ -530,7 +579,14 @@ impl<'a> Daemon<'a> {
         let safe = cfg.gpu_safe;
         let layers = crate::models::layers_here(&model, &cfg, &machine);
         let mb = crate::models::footprint_mb(&model, &cfg);
-        let trouble = match self.start_model_server(&model, &cfg, layers, mb) {
+        let trouble = match self.start_model_server(
+            &model,
+            &cfg,
+            layers,
+            mb,
+            "lifecycle",
+            "Foreground work needs the configured talking model.",
+        ) {
             Ok(_) => {
                 self.model_in_safe_mode = safe;
                 crate::gpulost::set_safe_running(safe);
@@ -656,7 +712,18 @@ impl<'a> Daemon<'a> {
         self.log.warn(&format!(
             "the graphics reset under the model server ({detail}); stopping it and starting it again              on the processor in safe mode. Questions use the built-in answers until it is up."
         ));
+        let decision = begin_model_stop_decision(
+            &self.store,
+            crate::decision::Action::StepDown {
+                rung: "CPU safe mode".into(),
+            },
+            "talking model",
+            "Vulkan reported a lost graphics device",
+            "the graphics-backed server is stopped and its next start uses CPU safe mode",
+        );
+        crate::memwatch::record_event("model_server_stopped_gpu_reset");
         self.helpers.finished("model-server");
+        finish_model_stop_decision(decision, self.helpers.is_running("model-server"));
         let was_safe = self.model_in_safe_mode;
         self.model_in_safe_mode = false;
         crate::gpulost::set_safe_running(false);
@@ -754,24 +821,97 @@ impl<'a> Daemon<'a> {
         cfg: &crate::models::ModelsConfig,
         gpu_layers: u32,
         footprint_mb: u64,
+        actor: &str,
+        reason: &str,
     ) -> std::result::Result<Vec<String>, String> {
         let vars = self.tools_ref().map(|t| t.vars.clone()).unwrap_or_default();
         let t = crate::store::now();
         let model = model.clone();
         let cfg2 = cfg.clone();
+        let before = crate::memwatch::sample();
+        let mut decision = crate::decision::DecisionRecord::new(
+            actor,
+            crate::decision::Action::Warm,
+            model.id.clone(),
+            reason,
+            "health check answers within 120 seconds; descendant memory delta measured after 10 seconds",
+        );
+        let before_private = related_private_bytes(before.as_ref());
+        decision.readings.push(crate::decision::Reading {
+            name: "Atlas descendant private memory".into(),
+            value: before_private.map(|bytes| bytes as f64 / 1_048_576.0),
+            unit: "MB".into(),
+            at: before.as_ref().map(|sample| sample.at_unix).unwrap_or(t),
+        });
+        decision.readings.push(crate::decision::Reading {
+            name: "system available memory".into(),
+            value: before
+                .as_ref()
+                .and_then(|sample| sample.system_available_bytes)
+                .map(|bytes| bytes as f64 / 1_048_576.0),
+            unit: "MB".into(),
+            at: before.as_ref().map(|sample| sample.at_unix).unwrap_or(t),
+        });
+        decision.expected = format!(
+            "health check answers within 120 seconds; estimated footprint {footprint_mb} MB; descendant memory delta measured after 10 seconds"
+        );
+        let decision_path = crate::decision::log_path(self.store.root());
+        let decision_id = match crate::decision::append(&decision_path, decision) {
+            Ok(id) => Some(id),
+            Err(error) => {
+                self.log.warn(&format!(
+                    "couldn't record the model start decision: {error}"
+                ));
+                None
+            }
+        };
+        let starting_at = std::time::Instant::now();
+        let observe_cfg = cfg.clone();
+        let observe_vars = vars.clone();
         // Counted as nothing against the helpers' budget (600 MB, sized for a
         // browser and a camera), which refused every model outright. How big
         // a model may be is decided where it's chosen, against the memory
         // this machine has free (`models::budget_bytes`); `footprint_mb` is
         // for saying so.
         let _ = footprint_mb;
-        let evicted = self.helpers.want("model-server", 0, t, move || {
+        let result = self.helpers.want("model-server", 0, t, move || {
             crate::models::launch(&model, &cfg2, gpu_layers, &vars)
                 .map(Some)
                 .map_err(|e| e.to_string())
-        })?;
+        });
+        let evicted = match result {
+            Ok(evicted) => evicted,
+            Err(error) => {
+                if let Some(id) = decision_id {
+                    if let Some(()) = crate::heard!(crate::decision::complete(
+                        &decision_path,
+                        id,
+                        crate::decision::Effect {
+                            after_secs: starting_at.elapsed().as_secs() as u32,
+                            memory_delta_mb: None,
+                            ready_ms: None,
+                            next_turn_ms: None,
+                            detail: format!("model server launch failed: {error}"),
+                        },
+                        crate::decision::Verdict::NotAsExpected { why: error.clone() },
+                    )) {}
+                }
+                return Err(error);
+            }
+        };
         // Warm, not in use: `keep_warm_secs` decides how long it stays.
         self.helpers.done("model-server", t);
+        crate::memwatch::record_event("model_server_started");
+        if let Some(id) = decision_id {
+            observe_model_start(
+                decision_path,
+                id,
+                before_private,
+                observe_cfg,
+                observe_vars,
+                starting_at,
+            );
+        }
         Ok(evicted)
     }
 
@@ -786,6 +926,25 @@ impl<'a> Daemon<'a> {
         t: u64,
     ) -> std::result::Result<(), String> {
         let was_running = self.helpers.is_running("model-server");
+        let idle_server = self
+            .helpers
+            .sup
+            .running
+            .iter()
+            .any(|helper| helper.name == "model-server" && !helper.in_use);
+        let will_preempt =
+            was_running && idle_server && crate::fit::measure().free_ram_mb < memory_mb;
+        let decision = will_preempt
+            .then(|| {
+                begin_model_stop_decision(
+                    &self.store,
+                    crate::decision::Action::Preempt,
+                    "talking model",
+                    &format!("the {name} helper needs additional memory"),
+                    "the idle model server is stopped so the requested helper can start",
+                )
+            })
+            .flatten();
         let mut asked = 0;
         let mut room = || {
             // Asked again only after the server was stopped: a stopped
@@ -796,11 +955,11 @@ impl<'a> Daemon<'a> {
             }
             crate::fit::measure().free_ram_mb
         };
-        let said = self.helpers.want_heavy(name, memory_mb, t, &mut room)?;
-        for s in &said {
-            self.log.info(s);
-        }
-        if was_running && !self.helpers.is_running("model-server") {
+        let result = self.helpers.want_heavy(name, memory_mb, t, &mut room);
+        let stopped = was_running && !self.helpers.is_running("model-server");
+        if stopped {
+            crate::memwatch::record_event("model_server_stopped_for_heavy_helper");
+            finish_model_stop_decision(decision, false);
             self.model_running_id = None;
             self.model_started = None;
             self.model_start_tried = None;
@@ -811,6 +970,12 @@ impl<'a> Daemon<'a> {
             {
                 *seen = None;
             }
+        } else {
+            finish_model_stop_decision(decision, self.helpers.is_running("model-server"));
+        }
+        let said = result?;
+        for s in &said {
+            self.log.info(s);
         }
         Ok(())
     }
@@ -2180,7 +2345,16 @@ impl<'a> Daemon<'a> {
             return;
         }
         if self.helpers.is_running("model-server") {
+            let decision = begin_model_stop_decision(
+                &self.store,
+                crate::decision::Action::Replan,
+                wanted.as_deref().unwrap_or("configured talking model"),
+                "the configured talking model changed",
+                "the old server is stopped so the requested model can start on the next turn",
+            );
+            crate::memwatch::record_event("model_server_stopped_for_model_switch");
             self.helpers.finished("model-server");
+            finish_model_stop_decision(decision, self.helpers.is_running("model-server"));
             self.log.info(&format!(
                 "switching the talking model to {} -- stopped {}",
                 wanted.as_deref().unwrap_or("?"),
@@ -2200,7 +2374,10 @@ impl<'a> Daemon<'a> {
             *seen = None;
         }
         // Built for the new model (its own template), once its server is up.
-        self.llm = crate::models::connection(&tc);
+        self.llm = crate::models::connection_with_quick_model(
+            &tc,
+            self.quick_model_bridge && !self.rehearsal,
+        );
     }
 
     /// The Connections page's section on the two models: which one talks
@@ -2525,7 +2702,175 @@ fn capital(s: &str) -> String {
 
 /// The talking model's server as the coding model sees it (`coder::ChatRoom`):
 /// the daemon's helpers and the state that says whether it's running.
+fn related_private_bytes(sample: Option<&crate::memwatch::Sample>) -> Option<u64> {
+    let sample = sample?;
+    if sample
+        .related_processes
+        .iter()
+        .any(|process| process.private_bytes.is_none())
+    {
+        return None;
+    }
+    Some(
+        sample
+            .related_processes
+            .iter()
+            .filter_map(|process| process.private_bytes)
+            .sum(),
+    )
+}
+
+struct PendingModelStop {
+    path: std::path::PathBuf,
+    id: u64,
+    started: std::time::Instant,
+    before_private: Option<u64>,
+}
+
+fn begin_model_stop_decision(
+    store: &crate::store::Store,
+    action: crate::decision::Action,
+    target: &str,
+    reason: &str,
+    expected: &str,
+) -> Option<PendingModelStop> {
+    let before = crate::memwatch::sample();
+    let before_private = related_private_bytes(before.as_ref());
+    let now = crate::store::now();
+    let mut decision =
+        crate::decision::DecisionRecord::new("resource manager", action, target, reason, expected);
+    decision.readings.push(crate::decision::Reading {
+        name: "Atlas descendant private memory".into(),
+        value: before_private.map(|bytes| bytes as f64 / 1_048_576.0),
+        unit: "MB".into(),
+        at: before.as_ref().map(|sample| sample.at_unix).unwrap_or(now),
+    });
+    decision.readings.push(crate::decision::Reading {
+        name: "system available memory".into(),
+        value: before
+            .as_ref()
+            .and_then(|sample| sample.system_available_bytes)
+            .map(|bytes| bytes as f64 / 1_048_576.0),
+        unit: "MB".into(),
+        at: before.as_ref().map(|sample| sample.at_unix).unwrap_or(now),
+    });
+    let path = crate::decision::log_path(store.root());
+    let id = crate::decision::append(&path, decision).ok()?;
+    Some(PendingModelStop {
+        path,
+        id,
+        started: std::time::Instant::now(),
+        before_private,
+    })
+}
+
+fn finish_model_stop_decision(pending: Option<PendingModelStop>, still_running: bool) {
+    let Some(pending) = pending else {
+        return;
+    };
+    let after = crate::memwatch::sample();
+    let after_private = related_private_bytes(after.as_ref());
+    let memory_delta_mb = pending
+        .before_private
+        .zip(after_private)
+        .map(|(before, after)| (after as i64 - before as i64) / 1_048_576);
+    let verdict = if still_running {
+        crate::decision::Verdict::NotAsExpected {
+            why: "the model server was still running after the stop request".into(),
+        }
+    } else {
+        crate::decision::Verdict::AsExpected
+    };
+    let detail = if still_running {
+        "model server remained running after the stop request".to_string()
+    } else {
+        match memory_delta_mb {
+            Some(delta) => {
+                format!("model server stopped; descendant private memory changed by {delta} MB")
+            }
+            None => "model server stopped; descendant memory reading unavailable".to_string(),
+        }
+    };
+    if let Some(()) = crate::heard!(crate::decision::complete(
+        &pending.path,
+        pending.id,
+        crate::decision::Effect {
+            after_secs: pending.started.elapsed().as_secs() as u32,
+            memory_delta_mb,
+            ready_ms: None,
+            next_turn_ms: None,
+            detail,
+        },
+        verdict,
+    )) {}
+}
+
+fn observe_model_start(
+    path: std::path::PathBuf,
+    id: u64,
+    before_private: Option<u64>,
+    cfg: crate::models::ModelsConfig,
+    vars: crate::tools::Vars,
+    started_at: std::time::Instant,
+) {
+    if let Some(handle) = crate::heard!(std::thread::Builder::new()
+        .name("atlas-model-decision-measurement".into())
+        .spawn(move || {
+            std::thread::sleep(std::time::Duration::from_secs(10));
+            let after_ten_seconds = crate::memwatch::sample();
+            let after_private = related_private_bytes(after_ten_seconds.as_ref());
+            let memory_delta_mb = before_private.zip(after_private).map(|(before, after)| {
+                (after as i64 - before as i64) / 1_048_576
+            });
+
+            let deadline = started_at + std::time::Duration::from_secs(120);
+            let mut ready_ms = None;
+            loop {
+                if crate::models::is_running(&cfg, &crate::models::server_get(), &vars) {
+                    ready_ms = Some(started_at.elapsed().as_millis() as u64);
+                    break;
+                }
+                let remaining = deadline.saturating_duration_since(std::time::Instant::now());
+                if remaining.is_zero() {
+                    break;
+                }
+                std::thread::sleep(remaining.min(std::time::Duration::from_secs(5)));
+            }
+            let verdict = if ready_ms.is_some() {
+                crate::decision::Verdict::AsExpected
+            } else {
+                crate::decision::Verdict::NotAsExpected {
+                    why: "the model server did not answer its health check within 120 seconds"
+                        .into(),
+                }
+            };
+            let detail = match (memory_delta_mb, ready_ms) {
+                (Some(delta), Some(ready)) => format!(
+                    "descendant private memory changed by {delta} MB after 10 seconds; server answered after {ready} ms"
+                ),
+                (None, Some(ready)) => format!(
+                    "descendant memory reading unavailable after 10 seconds; server answered after {ready} ms"
+                ),
+                (Some(delta), None) => format!(
+                    "descendant private memory changed by {delta} MB after 10 seconds; server did not become ready"
+                ),
+                (None, None) => "memory reading unavailable after 10 seconds; server did not become ready".into(),
+            };
+            let effect = crate::decision::Effect {
+                after_secs: started_at.elapsed().as_secs() as u32,
+                memory_delta_mb,
+                ready_ms,
+                next_turn_ms: None,
+                detail,
+            };
+            if let Some(()) = crate::heard!(crate::decision::complete(&path, id, effect, verdict)) {}
+        })) {
+        drop(handle);
+    }
+}
+
 struct DaemonRoom<'a> {
+    store: &'a crate::store::Store,
     helpers: &'a mut crate::lifecycle::Helpers,
     rested: &'a mut bool,
     running_id: &'a mut Option<String>,
@@ -2547,7 +2892,21 @@ impl crate::coder::ChatRoom for DaemonRoom<'_> {
     /// Stopped and forgotten, as `room_for_heavy` does: the next start is a
     /// fresh one, not a question to a port nobody is behind.
     fn let_chat_go(&mut self) {
+        let decision = if self.helpers.is_running("model-server") {
+            let decision = begin_model_stop_decision(
+                self.store,
+                crate::decision::Action::LetGo,
+                "talking model",
+                "the coding model needs the talking model's room",
+                "the idle talking server is stopped and can be restarted on the next turn",
+            );
+            crate::memwatch::record_event("model_server_stopped_idle");
+            decision
+        } else {
+            None
+        };
         self.helpers.finished("model-server");
+        finish_model_stop_decision(decision, self.helpers.is_running("model-server"));
         *self.running_id = None;
         *self.started = None;
         *self.start_tried = None;
@@ -2562,6 +2921,47 @@ impl crate::coder::ChatRoom for DaemonRoom<'_> {
         *self.start_tried = None;
         if let Ok(mut s) = self.seen.lock().or_else(crate::crash::unpoison) {
             *s = None;
+        }
+    }
+}
+
+/// An idle daemon keeps the talking model on disk, not in RAM. Work already
+/// queued for Atlas is an explicit demand just like a user turn.
+fn model_start_is_demanded(
+    user_turn: bool,
+    queued_talk: bool,
+    pending_turn: bool,
+    pending_job: bool,
+    crew_attention: bool,
+    active_steps: bool,
+) -> bool {
+    user_turn || queued_talk || pending_turn || pending_job || crew_attention || active_steps
+}
+
+#[cfg(test)]
+mod model_start_policy_tests {
+    use super::model_start_is_demanded;
+
+    #[test]
+    fn quiet_idle_does_not_demand_the_primary_model() {
+        assert!(!model_start_is_demanded(
+            false, false, false, false, false, false
+        ));
+    }
+
+    #[test]
+    fn a_user_or_queued_work_demands_the_primary_model() {
+        for demand in [
+            [true, false, false, false, false, false],
+            [false, true, false, false, false, false],
+            [false, false, true, false, false, false],
+            [false, false, false, true, false, false],
+            [false, false, false, false, true, false],
+            [false, false, false, false, false, true],
+        ] {
+            assert!(model_start_is_demanded(
+                demand[0], demand[1], demand[2], demand[3], demand[4], demand[5]
+            ));
         }
     }
 }

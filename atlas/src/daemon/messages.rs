@@ -67,6 +67,17 @@ impl<'a> Daemon<'a> {
         self
     }
 
+    /// Enable the owner's approved short-lived local answerer while the
+    /// primary talking model is still loading. Kept opt-in so tests, mobile,
+    /// and other daemon consumers do not launch auxiliary model processes.
+    pub fn with_quick_model_bridge(mut self) -> Self {
+        self.quick_model_bridge = true;
+        if let Some(tc) = self.tools_ref().cloned() {
+            self.llm = crate::models::connection_with_quick_model(&tc, true);
+        }
+        self
+    }
+
     pub fn with_typed_prompt(mut self, asker: Box<dyn crate::typed::AsksQuietly>) -> Self {
         self.asks_quietly = Some(asker);
         self

@@ -360,7 +360,8 @@ impl Coder {
         if !self.holds_chat_room {
             return None;
         }
-        self.brain.stop();
+        self.brain
+            .stop_for_reason("an owner turn needs the talking model; preempt the coding model");
         self.holds_chat_room = false;
         room.bring_chat_back(true);
         Some(
@@ -409,6 +410,7 @@ pub fn for_settings(tc: &crate::voice::ToolsConfig) -> Coder {
         need,
         Duration::from_secs(tc.models.coder_idle_secs.max(30)),
         Box::new(|| crate::fit::measure().free_ram_mb),
-    );
+    )
+    .with_decision_log(crate::decision::log_path(crate::roots::store().root()));
     Coder::new(brain, ccfg.context.min(u64::from(u32::MAX)) as u32)
 }

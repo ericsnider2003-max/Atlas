@@ -379,7 +379,7 @@ pub fn settings_page(s: &Settings) -> String {
         body.push_str(&format!("<p class=note>{}</p>", esc(&banner)));
     }
 
-    // How it looks: the colourway (Warm Paper by default), accent, colour-blind
+    // How it looks: the colourway (system by default), accent, colour-blind
     // mode and density. These were kept by `appearance` with no page to
     // change them until 26 Sep 2026.
     body.push_str("<h2 id='how-it-looks'>How it looks</h2>");

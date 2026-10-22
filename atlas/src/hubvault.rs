@@ -308,6 +308,10 @@ mod signing_form_tests {
 }
 
 impl Daemon<'_> {
+    pub(crate) fn consume_space_notice(&mut self) {
+        self.shown_once.said_space.take();
+    }
+
     fn back_to_vault(&mut self, said: String) -> Reply {
         self.shown_once.said_vault = Some(said);
         Reply::redirect("/hub/accounts#vault")
@@ -913,6 +917,18 @@ impl Daemon<'_> {
             looked: (s.at > 0).then(|| crate::freshness::ago(now.saturating_sub(s.at))),
             found: s.found,
             said: self.shown_once.said_space.take(),
+        };
+        hub::space_section(&v)
+    }
+
+    pub(crate) fn space_section_snapshot(&self) -> String {
+        let s: Survey = self.store.load(SURVEY);
+        let now = crate::store::now();
+        let v = hub::SpaceView {
+            looking: self.shown_once.surveying.is_some(),
+            looked: (s.at > 0).then(|| crate::freshness::ago(now.saturating_sub(s.at))),
+            found: s.found,
+            said: self.shown_once.said_space.clone(),
         };
         hub::space_section(&v)
     }

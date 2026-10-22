@@ -571,6 +571,39 @@ fn a_real_daemon_scans_a_real_folder_and_says_what_it_found() {
 }
 
 #[test]
+fn rehearsal_reports_a_model_start_without_starting_it() {
+    let dir = a_folder("rehearsal");
+    let mut c = Config::load(Path::new("config")).unwrap();
+    let models = &mut c.tools.as_mut().unwrap().models;
+    *models = cfg_at(&dir);
+    models.server = Some(atlas::tools::ExternalTool {
+        command: "a-server-command-that-must-not-run".into(),
+        ..Default::default()
+    });
+    models.port = std::net::TcpListener::bind("127.0.0.1:0")
+        .unwrap()
+        .local_addr()
+        .unwrap()
+        .port();
+    let p = plat();
+    let mut d = daemon_with(&c, &p, "rehearsal-store");
+    d.rehearsal = true;
+
+    let said = d.which_model();
+    assert!(
+        said.contains("in normal use I would start it"),
+        "got: {said}"
+    );
+    assert!(
+        d.rehearsed
+            .iter()
+            .any(|action| action.starts_with("start model server:")),
+        "the would-start action was not recorded: {:?}",
+        d.rehearsed
+    );
+}
+
+#[test]
 fn a_daemon_with_no_models_folder_says_which_problem_it_is() {
     let mut c = Config::load(Path::new("config")).unwrap();
     c.tools.as_mut().unwrap().models.dir = "/definitely/not/here".into();
@@ -727,7 +760,15 @@ fn a_hand_written_connection_is_never_silently_overridden() {
     let at = lib
         .find("pub fn connection(")
         .expect("models::connection is gone");
-    let body = &lib[at..at + 1600];
+    let body = &lib[at..at + 400];
+    assert!(
+        body.contains("connection_with_quick_model(tc, false)"),
+        "ordinary model connections must not enable auxiliary model startup"
+    );
+    let impl_at = lib
+        .find("pub(crate) fn connection_with_quick_model(")
+        .expect("shared connection implementation is gone");
+    let body = &lib[impl_at..impl_at + 1900];
     let mobile = std::fs::read_to_string("src/mobile.rs").expect("mobile.rs");
     assert!(
         mobile.contains("crate::models::connection(tools)"),

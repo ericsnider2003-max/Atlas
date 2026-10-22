@@ -76,8 +76,16 @@ fn the_model_server_is_posted_to_not_opened_in_a_browser() {
     // `models::connection`, which the desktop program's doors and the phone
     // core both use (since 27 Sep 2026).
     let main = crate::common::source_of("models");
-    let body = &main[main.find("pub fn connection(").unwrap()..];
-    let body = &body[..body.find("\n}\n").unwrap()];
+    let at = main.find("pub fn connection(").unwrap();
+    let body = &main[at..at + 300];
+    assert!(
+        body.contains("connection_with_quick_model(tc, false)"),
+        "ordinary connections keep the warm-up bridge disabled"
+    );
+    let at = main
+        .find("pub(crate) fn connection_with_quick_model(")
+        .expect("shared connection implementation");
+    let body = &main[at..at + 2400];
     assert!(body.contains("server_post()"), "{body}");
     assert!(
         !body.contains("research.fetch.as_ref()"),

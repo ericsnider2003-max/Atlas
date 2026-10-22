@@ -641,6 +641,9 @@ pub fn engine(root: &Path) -> Loaded {
             Kokoro::load(&r.runtime, &r.model, thread_count()).map(|k| Arc::new(Mutex::new(k)))
         }
     };
+    if loaded.is_ok() {
+        crate::memwatch::record_event("kokoro_loaded");
+    }
     *slot = Some((root.to_path_buf(), loaded.clone()));
     loaded
 }

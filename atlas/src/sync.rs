@@ -649,6 +649,10 @@ pub struct SyncConfig {
     /// Reading is not gated by it. A sealed bundle opens whenever the key is
     /// there, on or off, so turning it off again does not strand what was
     /// already written.
+    ///
+    /// Direct network sync is stricter: remote peers always need a household
+    /// key, and direct-wire bundles are always sealed. This setting controls
+    /// only files written to the configured shared-folder carrier.
     pub encrypt_bundles: bool,
 }
 
@@ -892,16 +896,14 @@ pub fn peek(text: &str) -> Option<SealedBundle> {
 /// (1 Oct 2026 security pass: anyone on the same Wi-Fi who sent the four
 /// magic bytes used to get every note back, and could push fakes in).
 ///
-/// With a household key, only a bundle sealed with that key is answered; a
-/// plain one is refused even though it would read. With no key there's
-/// nothing to prove, so only this machine and the addresses in `named` (the
-/// devices you've named) are answered. Either way it has to be another
-/// device of the same Atlas.
+/// Remote peers must prove possession of the household key by sending a
+/// bundle sealed with it. Naming an address is routing, not authentication.
+/// Loopback remains available for local same-machine use. Either way the
+/// bundle must belong to another device in this Atlas.
 pub fn may_answer_wire(
     peer: std::net::IpAddr,
     incoming: &[u8],
     key: Option<&[u8]>,
-    named: &[std::net::IpAddr],
     own_device: &str,
     belongs_to: &str,
 ) -> bool {
@@ -910,7 +912,7 @@ pub fn may_answer_wire(
     };
     let vouched = match key {
         Some(_) => peek(text).is_some(),
-        None => peer.is_loopback() || named.contains(&peer),
+        None => peer.is_loopback() && peek(text).is_none(),
     };
     vouched
         && match read_bundle(text, key) {

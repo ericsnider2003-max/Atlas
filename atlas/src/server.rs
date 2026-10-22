@@ -630,6 +630,8 @@ pub struct HubDoor {
     /// Talk page messages given up on (`LateTalk`).
     late: LateTalk,
     snapshots: ReadOnlySnapshots,
+    /// A cached Status page was actually served; the loop consumes its one-shot notice.
+    status_viewed: std::sync::Arc<std::sync::atomic::AtomicBool>,
     pause_requested: std::sync::Arc<std::sync::atomic::AtomicU8>,
     cancel_requested: std::sync::Arc<std::sync::Mutex<Vec<FastCancel>>>,
 }
@@ -659,6 +661,7 @@ struct ReadOnlySnapshot {
     pause_requested: std::sync::Arc<std::sync::atomic::AtomicU8>,
     cancellations: Vec<(FastCancel, std::sync::Arc<dyn Fn() + Send + Sync>)>,
     cancel_requested: std::sync::Arc<std::sync::Mutex<Vec<FastCancel>>>,
+    status_viewed: std::sync::Arc<std::sync::atomic::AtomicBool>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

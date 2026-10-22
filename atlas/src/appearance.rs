@@ -12,9 +12,8 @@
 //! dropping the accent pick so safety always wins over taste.
 //!
 //! Since the three-chat merge (26 Sep): the hub is laid out as the command
-//! deck (Eric's design of 23 Sep, built on the third chat's line), and Warm
-//! Paper is its default colourway (Eric's ruling, 26 Sep) as `data-theme=paper`.
-//! The deck's own dark and light, and following the system, are a choice away.
+//! deck (Eric's design of 23 Sep, built on the third chat's line). The default
+//! follows the system appearance; Warm Paper and Ember Dark remain choices.
 //! The hub's "Aa" menu (`hub::Appearance`: paper, light, dark or auto, text
 //! size, contrast, motion) is written first and wins where the two say the
 //! same thing; this one adds the accent, colour-blind mode and density.
@@ -24,9 +23,8 @@ use serde::{Deserialize, Serialize};
 /// The stored file's name in the install state.
 pub const FILE: &str = "appearance";
 
-/// The colourway. `Warm` (Warm Paper) is the default; `System` follows the
-/// machine's light/dark setting (the command deck's light or dark); the others
-/// are chosen outright.
+/// The colourway. `System` follows the machine's light/dark setting (the
+/// command deck's light or dark); the others are chosen outright.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Theme {
@@ -39,9 +37,9 @@ pub enum Theme {
     Access,
 }
 impl Default for Theme {
-    /// Warm Paper: Eric's ruling of 26 Sep 2026.
+    /// Follow the system appearance unless a person chooses a colourway.
     fn default() -> Self {
-        Theme::Warm
+        Theme::System
     }
 }
 
@@ -109,7 +107,7 @@ pub struct Appearance {
 }
 
 impl Appearance {
-    /// Read the stored choice, or the default (Warm Paper / Ember / no mode)
+    /// Read the stored choice, or the default (system / Ember / no mode)
     /// when nothing has been set.
     pub fn load() -> Appearance {
         // Kept until the file changes: every hub page reads this (27 Sep 2026).
@@ -218,7 +216,7 @@ impl Appearance {
             Density::Compact => "compact",
         };
         let mut s = String::from(
-            "<div class=looks><p class=groupnote>Warm Paper is the default. Picking a colourway here \
+            "<div class=looks><p class=groupnote>Follow this computer is the default. Picking a colourway here \
              also clears the theme picked in the Aa menu at the top of every page, so this one shows. \
              The Aa menu keeps text size, contrast and motion.</p>",
         );
@@ -322,16 +320,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn nothing_chosen_is_warm_paper() {
-        // Eric's ruling, 26 Sep: Warm Paper is the default. No accent override.
-        assert_eq!(Appearance::default().html_attrs(), " data-theme=paper");
-        // Following the system is a choice, written out: the page's base is
-        // Warm Paper, so with no attribute the system would never be heard.
-        let a = Appearance {
-            theme: Theme::System,
-            ..Default::default()
-        };
-        assert_eq!(a.html_attrs(), " data-theme=auto");
+    fn nothing_chosen_follows_the_system() {
+        assert_eq!(Appearance::default().html_attrs(), " data-theme=auto");
     }
 
     #[test]

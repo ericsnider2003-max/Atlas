@@ -560,7 +560,13 @@ impl HubDoor {
             pause_requested: self.pause_requested.clone(),
             cancellations: Vec::new(),
             cancel_requested: self.cancel_requested.clone(),
+            status_viewed: self.status_viewed.clone(),
         });
+    }
+
+    pub(crate) fn take_status_viewed(&self) -> bool {
+        self.status_viewed
+            .swap(false, std::sync::atomic::Ordering::SeqCst)
     }
 
     pub(crate) fn publish_pause(&self, pause: std::sync::Arc<dyn Fn(bool) + Send + Sync>) {
@@ -627,6 +633,7 @@ impl HubDoor {
         let shut = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
         let late: LateTalk = Default::default();
         let snapshots: ReadOnlySnapshots = Default::default();
+        let status_viewed = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
         let serving = Serving {
             server: server.clone(),
             tx,
@@ -647,6 +654,7 @@ impl HubDoor {
                 shut,
                 late,
                 snapshots,
+                status_viewed,
                 pause_requested: Default::default(),
                 cancel_requested: Default::default(),
             },
@@ -783,7 +791,21 @@ fn permission_records(root: &std::path::Path) -> Option<Vec<Option<Vec<u8>>>> {
 }
 
 fn cached_readonly(cache: &ReadOnlySnapshots, page: crate::hub::Page) -> Option<Reply> {
-    if !matches!(page, crate::hub::Page::Now | crate::hub::Page::Outstanding) {
+    if !matches!(
+        page,
+        crate::hub::Page::Dashboard
+            | crate::hub::Page::Status
+            | crate::hub::Page::Now
+            | crate::hub::Page::Outstanding
+            | crate::hub::Page::Calendar
+            | crate::hub::Page::Activity
+            | crate::hub::Page::Workspace
+            | crate::hub::Page::Settings
+            | crate::hub::Page::Permissions
+            | crate::hub::Page::Gestures
+            | crate::hub::Page::Workshop
+            | crate::hub::Page::Help
+    ) {
         return None;
     }
     let mut cache = cache.lock().unwrap_or_else(|p| p.into_inner());
@@ -800,6 +822,11 @@ fn cached_readonly(cache: &ReadOnlySnapshots, page: crate::hub::Page) -> Option<
         return None;
     }
     let mut reply = snapshot.pages.iter().find(|(p, _)| *p == page)?.1.clone();
+    if page == crate::hub::Page::Status {
+        snapshot
+            .status_viewed
+            .store(true, std::sync::atomic::Ordering::SeqCst);
+    }
     let age = snapshot.made.elapsed().as_secs();
     let note = if age > 2 {
         format!("Status has not refreshed for {age} seconds. Atlas may be busy or unresponsive; this view may have changed. {}", if snapshot.pause.is_some() { "Pause requests reach the active workers now; other buttons still wait for Atlas." } else { "Buttons still wait for Atlas to respond." })
@@ -1042,10 +1069,56 @@ mod readonly_tests {
         crate::handover::Handover::default().save(&store).unwrap();
         crate::profiles::Profiles::default().save(&root).unwrap();
         door.publish_readonly(
-            vec![(
-                crate::hub::Page::Now,
-                Reply::html("<html><body><h1>First status</h1></body></html>"),
-            )],
+            vec![
+                (
+                    crate::hub::Page::Dashboard,
+                    Reply::html("<html><body><h1>Dashboard snapshot</h1></body></html>"),
+                ),
+                (
+                    crate::hub::Page::Status,
+                    Reply::html("<html><body><h1>Status snapshot</h1></body></html>"),
+                ),
+                (
+                    crate::hub::Page::Now,
+                    Reply::html("<html><body><h1>First status</h1></body></html>"),
+                ),
+                (
+                    crate::hub::Page::Outstanding,
+                    Reply::html("<html><body><h1>Outstanding snapshot</h1></body></html>"),
+                ),
+                (
+                    crate::hub::Page::Calendar,
+                    Reply::html("<html><body><h1>Calendar snapshot</h1></body></html>"),
+                ),
+                (
+                    crate::hub::Page::Activity,
+                    Reply::html("<html><body><h1>Activity snapshot</h1></body></html>"),
+                ),
+                (
+                    crate::hub::Page::Workspace,
+                    Reply::html("<html><body><h1>Workspace snapshot</h1></body></html>"),
+                ),
+                (
+                    crate::hub::Page::Settings,
+                    Reply::html("<html><body><h1>Settings snapshot</h1></body></html>"),
+                ),
+                (
+                    crate::hub::Page::Permissions,
+                    Reply::html("<html><body><h1>Permissions snapshot</h1></body></html>"),
+                ),
+                (
+                    crate::hub::Page::Gestures,
+                    Reply::html("<html><body><h1>Gestures snapshot</h1></body></html>"),
+                ),
+                (
+                    crate::hub::Page::Workshop,
+                    Reply::html("<html><body><h1>Workshop snapshot</h1></body></html>"),
+                ),
+                (
+                    crate::hub::Page::Help,
+                    Reply::html("<html><body><h1>Help snapshot</h1></body></html>"),
+                ),
+            ],
             root.clone(),
             root.clone(),
         );
@@ -1054,8 +1127,35 @@ mod readonly_tests {
         assert!(status.starts_with("HTTP/1.1 200"), "{status}");
         assert!(status.contains("First status"));
         assert!(status.contains("latest completed status"));
+        let status_page = request(port, "/hub/status", true, "GET");
+        assert!(status_page.contains("Status snapshot"));
+        let dashboard = request(port, "/hub", true, "GET");
+        assert!(dashboard.starts_with("HTTP/1.1 200"), "{dashboard}");
+        assert!(dashboard.contains("Dashboard snapshot"));
+        assert!(
+            door.take_status_viewed(),
+            "cached Status must notify the daemon loop"
+        );
+        assert!(request(port, "/hub/status?said=test", true, "GET").starts_with("HTTP/1.1 503"));
+        assert!(
+            !door.take_status_viewed(),
+            "query Status must remain loop-bound"
+        );
+        assert!(request(port, "/hub/outstanding", true, "GET").contains("Outstanding snapshot"));
+        assert!(request(port, "/hub/calendar", true, "GET").contains("Calendar snapshot"));
+        assert!(request(port, "/hub/activity", true, "GET").contains("Activity snapshot"));
+        assert!(request(port, "/hub/workspace", true, "GET").contains("Workspace snapshot"));
+        assert!(request(port, "/hub/settings", true, "GET").contains("Settings snapshot"));
+        assert!(request(port, "/hub/permissions", true, "GET").contains("Permissions snapshot"));
+        assert!(request(port, "/hub/gestures", true, "GET").contains("Gestures snapshot"));
+        assert!(request(port, "/hub/workshop", true, "GET").contains("Workshop snapshot"));
+        assert!(request(port, "/hub/help", true, "GET").contains("Help snapshot"));
         assert!(request(port, "/hub/now", false, "GET").starts_with("HTTP/1.1 401"));
+        assert!(request(port, "/hub?said=test", true, "GET").starts_with("HTTP/1.1 503"));
         assert!(request(port, "/hub/now?said=test", true, "GET").starts_with("HTTP/1.1 503"));
+        assert!(request(port, "/hub/calendar?said=test", true, "GET").starts_with("HTTP/1.1 503"));
+        assert!(request(port, "/hub/workspace?view=now", true, "GET").starts_with("HTTP/1.1 503"));
+        assert!(request(port, "/hub/help?said=hello", true, "GET").starts_with("HTTP/1.1 503"));
         assert!(request(port, "/hub/messages", true, "GET").starts_with("HTTP/1.1 503"));
         assert!(!request(port, "/hub/outstanding", true, "POST").starts_with("HTTP/1.1 200"));
         // A changed permission record prevents serving the owner's old view.
@@ -1065,6 +1165,52 @@ mod readonly_tests {
         let changed = request(port, "/hub/now", true, "GET");
         assert!(changed.starts_with("HTTP/1.1 503"));
         assert!(!changed.contains("First status"));
+        drop(door);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn daemon_rendered_snapshot_is_served_without_the_loop_for_its_owner() {
+        let cfg = ServerConfig {
+            enabled: true,
+            port: 0,
+            ..Default::default()
+        };
+        let server = Server::bind(&cfg, TOKEN).unwrap();
+        let port = server.port();
+        let door = server.threaded().unwrap();
+        let root = std::env::temp_dir().join(format!(
+            "atlas-daemon-snapshot-{}-{port}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+        let store = crate::store::Store::new(root.clone());
+        crate::handover::Handover::default().save(&store).unwrap();
+        crate::profiles::Profiles::default().save(&root).unwrap();
+        let mut cfg = crate::config::Config::load(std::path::Path::new("config")).unwrap();
+        cfg.tools.as_mut().unwrap().backup.enabled = false;
+        let platform = crate::platform::mock::MockPlatform::new(vec![]);
+        let mut daemon = crate::daemon::Daemon::new(
+            &cfg,
+            &platform,
+            None,
+            store,
+            crate::proactive::Proactive::new(crate::proactive::ProactiveConfig::default()),
+        );
+        let pages = crate::hublive::readonly_pages(&mut daemon);
+        assert!(pages
+            .iter()
+            .any(|(page, _)| *page == crate::hub::Page::Dashboard));
+        door.publish_readonly(pages, root.clone(), root.clone());
+
+        // No daemon callback runs: the authenticated HTTP path must serve
+        // the real page builder's immutable, owner-matched snapshot.
+        let dashboard = request(port, "/hub", true, "GET");
+        assert!(dashboard.starts_with("HTTP/1.1 200"), "{dashboard}");
+        assert!(dashboard.contains("<h1>Home</h1>"), "{dashboard}");
+        assert!(request(port, "/hub", false, "GET").starts_with("HTTP/1.1 401"));
+
+        drop(daemon);
         drop(door);
         std::fs::remove_dir_all(root).unwrap();
     }

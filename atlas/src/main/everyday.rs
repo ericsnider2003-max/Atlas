@@ -2131,7 +2131,13 @@ pub(super) fn run_selftest(args: &[String]) {
             cmd.arg("--no-model");
         }
         let status = cmd.status();
-        atlas::heard!(std::fs::remove_dir_all(&tmp));
+        if let Err(e) = std::fs::remove_dir_all(&tmp) {
+            eprintln!(
+                "I couldn't remove the self-test copy ({e}); it is preserved at {} for inspection.",
+                tmp.display()
+            );
+            leave(1);
+        }
         // The test's failures become this install's cases (`regressions`):
         // read by self-repair as signals, and fixed ones taken off.
         if matches!(status, Ok(s) if s.success()) {
@@ -2167,7 +2173,9 @@ pub(super) fn run_selftest(args: &[String]) {
         }
         return;
     }
-    // Inside: this process's home is the copy.
+    // Inside: this process's home is the newly-created copy. `--no-model`
+    // skips only the conversational LLM; camera, microphone, and personal
+    // profile commands are separately rehearsed in `selftest::tier`.
     let Some(out) = out else {
         eprintln!("selftest --inside needs --out <folder>");
         leave(2);

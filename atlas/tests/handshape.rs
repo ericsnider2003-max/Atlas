@@ -880,6 +880,15 @@ fn the_reference_covers_whatever_is_in_the_vocabulary_including_new_ones() {
     assert!(!how_to(&v.gestures[0]).is_empty());
 }
 
+#[test]
+fn movement_and_repeat_marks_keep_full_contrast() {
+    let g = gesture("sweep", vec![Test::MovingRight, Test::Repeating], 0);
+    let svg = sketch(&g);
+    assert!(svg.contains("M40 54 L84 54"));
+    assert!(svg.contains("l6 6"));
+    assert!(!svg.contains("opacity="));
+}
+
 // ---------------------------------------------------------------------------
 // Calibration: the twenty samples are kept, not thrown away
 // ---------------------------------------------------------------------------

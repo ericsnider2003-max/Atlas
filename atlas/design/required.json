@@ -1,0 +1,12 @@
+{
+  "items": [
+    {
+      "id": "memory-trend",
+      "brief": "Atlas private-memory trend verdict, freshness, and a six-hour sparkline when usable samples exist."
+    },
+    {
+      "id": "runtime-decisions",
+      "brief": "Recent resource decisions and measured outcomes when the daemon has decision history."
+    }
+  ]
+}

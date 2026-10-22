@@ -527,12 +527,9 @@ impl<'a> Daemon<'a> {
         // The folder walk on its own thread from here on: a big folder held
         // the whole loop, the hub included, for as long as the disk took.
         self.awareness.scan_in_background = true;
-        // The model, loading while nothing waits for it (28 Sep 2026). It
-        // was started by the first thing you said, so the first answer of
-        // every session waited for the whole model to come off the disk and
-        // then for the model to read the whole prompt from nothing.
-        // Starting it is quick (`keep_model_server` waits for nothing); the
-        // reading happens on a thread of its own (`warm_the_model`).
+        // Do not load the multi-gigabyte talking model at daemon startup.
+        // The first user turn or queued work starts it on demand; the idle
+        // loop below continues supervising a server that is already running.
         // The hourly chores wait out the first minutes after a start (6 Oct
         // 2026): run on the very first tick, they were most of the 1.4-3 s
         // "the rest" took while the hub and your first words waited.
@@ -543,9 +540,6 @@ impl<'a> Daemon<'a> {
         if self.last_index_check == 0 {
             self.last_index_check = now.saturating_sub(3600 - FIRST_CHORES_AFTER_SECS);
         }
-        self.keep_model_server(clock());
-        // unheard-ok: returns `Option<JoinHandle<()>>`, not a Result
-        let _ = self.warm_the_model(clock());
         // The hearing model too, when it's here and chosen (`parakeet`):
         // loading it takes seconds, and the first thing you say shouldn't.
         let engine = self
@@ -1369,9 +1363,16 @@ impl<'a> Daemon<'a> {
         } else {
             server.answer_waiting(&mut handle)
         };
+        if server.take_status_viewed() {
+            self.consume_space_notice();
+            server.invalidate_readonly();
+        }
         let active =
             crate::profiles::active_dir(&install_state).unwrap_or_else(|| install_state.clone());
-        if !done.is_empty() && !self.handed_over_now() && active == self.store.root() {
+        if (!done.is_empty() || server.readonly_due())
+            && !self.handed_over_now()
+            && active == self.store.root()
+        {
             server.publish_readonly(
                 crate::hublive::readonly_pages(self),
                 install_state,
@@ -1950,6 +1951,12 @@ impl<'a> Daemon<'a> {
         mouth: &dyn Mouth,
         clock: &dyn Fn() -> u64,
     ) {
+        // The first real input is the just-in-time warm-up trigger. Start the
+        // primary server and read the conversation prefix on a worker while
+        // the turn is classified; never load it simply because Atlas booted.
+        self.keep_model_server(clock());
+        // unheard-ok: returns `Option<JoinHandle<()>>`, not a Result
+        let _ = self.warm_the_model(clock());
         // The wake word's recorder off the microphone for the whole exchange:
         // the follow-up listens are this turn's, and two recorders on one
         // microphone is one too many.
@@ -2624,6 +2631,87 @@ pub(super) const LEFT_WAITING: &str = "left_waiting";
 #[cfg(test)]
 mod closing_checkpoint {
     use super::*;
+    #[test]
+    fn readonly_snapshot_builds_each_declared_page_from_daemon_state() {
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "atlas-readonly-pages-{}-{stamp}",
+            std::process::id()
+        ));
+        let mut cfg = Config::load(std::path::Path::new("config")).unwrap();
+        cfg.tools.as_mut().unwrap().backup.enabled = false;
+        let platform = crate::platform::mock::MockPlatform::new(vec![]);
+        let daemon = Daemon::new(
+            &cfg,
+            &platform,
+            None,
+            Store::new(root.clone()),
+            crate::proactive::Proactive::new(crate::proactive::ProactiveConfig::default()),
+        );
+        let mut daemon = daemon;
+        let _ = crate::hublive::reply(
+            &mut daemon,
+            crate::server::Action::HubPost {
+                path: "/hub/reclaim".into(),
+                fields: vec![("what".into(), "unknown".into())],
+            },
+        );
+        let render_started = std::time::Instant::now();
+        let pages = crate::hublive::readonly_pages(&mut daemon);
+        let render_elapsed = render_started.elapsed();
+        eprintln!("readonly_snapshot_build_ms={}", render_elapsed.as_millis());
+        assert!(
+            render_elapsed < std::time::Duration::from_secs(2),
+            "read-only snapshot rendering took {} ms",
+            render_elapsed.as_millis()
+        );
+        let expected = [
+            crate::hub::Page::Dashboard,
+            crate::hub::Page::Status,
+            crate::hub::Page::Now,
+            crate::hub::Page::Outstanding,
+            crate::hub::Page::Calendar,
+            crate::hub::Page::Activity,
+            crate::hub::Page::Workspace,
+            crate::hub::Page::Workshop,
+            crate::hub::Page::Help,
+            crate::hub::Page::Settings,
+            crate::hub::Page::Permissions,
+            crate::hub::Page::Gestures,
+        ];
+        assert_eq!(pages.len(), expected.len());
+        for page in expected {
+            assert!(
+                pages.iter().any(|(actual, _)| *actual == page),
+                "missing {}",
+                page.label()
+            );
+        }
+        let status = &pages
+            .iter()
+            .find(|(page, _)| *page == crate::hub::Page::Status)
+            .unwrap()
+            .1
+            .body;
+        assert!(status.contains("Recent resource decisions"));
+        assert!(status.contains("data-required=\"runtime-decisions\""));
+        assert!(status.contains("something this section does"));
+        daemon.consume_space_notice();
+        let refreshed = crate::hublive::readonly_pages(&mut daemon);
+        let status = &refreshed
+            .iter()
+            .find(|(page, _)| *page == crate::hub::Page::Status)
+            .unwrap()
+            .1
+            .body;
+        assert!(!status.contains("something this section does"));
+        drop(daemon);
+        let _ = std::fs::remove_dir_all(root);
+    }
+
     #[test]
     fn live_hub_refuses_old_profile_state_and_actions_after_switch() {
         let root =

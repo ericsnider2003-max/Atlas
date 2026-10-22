@@ -1119,6 +1119,9 @@ pub struct WaitsForServer {
     pub inner: std::sync::Arc<dyn crate::brain::Llm>,
     pub cfg: ModelsConfig,
     pub vars: Vars,
+    /// Enabled only by the live daemon. Model-construction tests and mobile
+    /// callers must never launch an auxiliary local model as a side effect.
+    pub quick_enabled: bool,
 }
 
 impl WaitsForServer {
@@ -1185,6 +1188,16 @@ impl crate::brain::Llm for WaitsForServer {
         req: &crate::brain::ChatRequest,
         on_text: &mut dyn FnMut(&str) -> bool,
     ) -> Result<crate::brain::ChatReply> {
+        if self.quick_enabled
+            && !crate::gpulost::flagged()
+            && launched_secs_ago().is_some_and(|age| age < LOADING_SECS)
+        {
+            if let Some(reply) = crate::quickbrain::answer_during_warmup(&self.cfg, &self.vars, req)
+            {
+                on_text(&reply.text);
+                return Ok(reply);
+            }
+        }
         self.ready()?;
         self.noting(self.inner.chat(req, on_text))
     }
@@ -1760,6 +1773,16 @@ pub fn why_no_model(cfg: &ModelsConfig) -> String {
 }
 
 pub fn connection(tc: &crate::voice::ToolsConfig) -> Option<std::sync::Arc<dyn crate::brain::Llm>> {
+    connection_with_quick_model(tc, false)
+}
+
+/// The desktop daemon may use the owner's approved small-model bridge while
+/// its own primary model loads. Other connection consumers stay side-effect
+/// free and never start an auxiliary server.
+pub(crate) fn connection_with_quick_model(
+    tc: &crate::voice::ToolsConfig,
+    quick_enabled: bool,
+) -> Option<std::sync::Arc<dyn crate::brain::Llm>> {
     // Every chat request from here on carries the settings' sampling.
     set_sampling(&tc.models.sampling);
     let derived: Option<crate::brain::LlmConfig> = if tc.llm.is_some() {
@@ -1808,6 +1831,7 @@ pub fn connection(tc: &crate::voice::ToolsConfig) -> Option<std::sync::Arc<dyn c
             inner: primary,
             cfg: tc.models.clone(),
             vars: tc.vars.clone(),
+            quick_enabled,
         }) as std::sync::Arc<dyn crate::brain::Llm>
     } else {
         primary

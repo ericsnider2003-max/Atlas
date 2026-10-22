@@ -29,6 +29,27 @@ pub const MAX_FEEDS: usize = 200;
 pub const MAX_SEEN: usize = 500;
 pub const MAX_UNREAD: usize = 300;
 const MAX_DEPTH: usize = 64;
+const MAX_XML_TEXT_BYTES: usize = 64 * 1024;
+
+fn append_bounded_text(text: &mut String, value: &str) -> bool {
+    let remaining = MAX_XML_TEXT_BYTES.saturating_sub(text.len());
+    let mut end = value.len().min(remaining);
+    while !value.is_char_boundary(end) {
+        end -= 1;
+    }
+    text.push_str(&value[..end]);
+    end < value.len()
+}
+
+fn append_xml_text(text: &mut String, value: &str) -> bool {
+    let remaining = MAX_XML_TEXT_BYTES.saturating_sub(text.len());
+    let mut end = value.len().min(remaining);
+    while !value.is_char_boundary(end) {
+        end -= 1;
+    }
+    let decoded = unescape_xml(&value[..end]);
+    append_bounded_text(text, &decoded) || end < value.len()
+}
 
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct Item {
@@ -158,20 +179,21 @@ pub fn parse(xml: &str) -> Result<Parsed, String> {
     let mut stack: Vec<String> = Vec::new();
     let mut cur: Option<Item> = None;
     let mut text = String::new();
+    let mut item_text_overflowed = false;
     let mut i = 0;
     let b = xml.as_bytes();
     let mut saw_root = false;
     while i < b.len() {
         if b[i] != b'<' {
             let end = xml[i..].find('<').map(|n| i + n).unwrap_or(b.len());
-            text.push_str(&unescape_xml(&xml[i..end]));
+            item_text_overflowed |= append_xml_text(&mut text, &xml[i..end]);
             i = end;
             continue;
         }
         let rest = &xml[i..];
         if rest.starts_with("<![CDATA[") {
             let end = rest.find("]]>").ok_or("a CDATA section never closes")?;
-            text.push_str(&rest[9..end]);
+            item_text_overflowed |= append_bounded_text(&mut text, &rest[9..end]);
             i += end + 3;
             continue;
         }
@@ -233,9 +255,10 @@ pub fn parse(xml: &str) -> Result<Parsed, String> {
                                 it.link.clone()
                             };
                         }
-                        if !it.id.is_empty() {
+                        if !item_text_overflowed && !it.id.is_empty() && p.items.len() < MAX_SEEN {
                             p.items.push(it);
                         }
+                        item_text_overflowed = false;
                     }
                 }
                 stack.truncate(pos);
@@ -258,6 +281,7 @@ pub fn parse(xml: &str) -> Result<Parsed, String> {
         }
         if name == "item" || name == "entry" {
             cur = Some(Item::default());
+            item_text_overflowed = false;
         }
         // Atom's link is an attribute: the alternate (or unmarked) one.
         if name == "link" {

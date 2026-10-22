@@ -192,7 +192,7 @@ fn the_fallback_sign_in_entry_runs_atlas_itself_quoted() {
     assert_eq!(add.program, "reg");
     assert!(
         add.args
-            .contains(&r#""C:\Program Files\Atlas\atlas.exe" --daemon"#.to_string()),
+            .contains(&r#""C:\Program Files\Atlas\atlas.exe" --watchdog"#.to_string()),
         "{:?}",
         add.args
     );
@@ -492,7 +492,7 @@ fn opening_atlas_starts_the_background_atlas_with_no_window() {
         .to_string();
     assert!(crate::common::contains_code(&body, "what_opening_does("));
     // 29 Sep 2026: both starts go through `start_background_watched`, which
-    // is the same no-window `spawn_quietly(.., ["--daemon"])` watched for a
+    // is the same no-window `spawn_quietly(.., ["--watchdog"])` watched for a
     // few seconds, so a start that fails at once says why.
     assert!(
         crate::common::contains_code(&body, "start_background_watched("),
@@ -508,7 +508,7 @@ fn opening_atlas_starts_the_background_atlas_with_no_window() {
         .unwrap()
         .to_string();
     assert!(
-        crate::common::contains_code(&watched, r#"spawn_quietly(exe, &["--daemon"])"#),
+        crate::common::contains_code(&watched, r#"spawn_quietly(exe, &["--watchdog"])"#),
         "{watched}"
     );
     let setup = std::fs::read_to_string("src/setupwin.rs").unwrap();

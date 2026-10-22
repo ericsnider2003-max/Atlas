@@ -1069,6 +1069,49 @@ pub fn run(cfg: &Config, tools: Option<&ToolsConfig>, plat: &dyn Platform) -> Ve
         });
     }
 
+    let history = crate::memwatch::read_history(&crate::roots::logs_dir().join("memory.jsonl"));
+    let trend = crate::memtrend::private_memory(&history, crate::store::now());
+    let (ok, detail) = match trend.verdict {
+        crate::memtrend::Verdict::InsufficientData => (
+            true,
+            format!(
+                "collecting memory history ({}/{} required hours, {} samples)",
+                trend.span_seconds / 3600,
+                3,
+                trend.samples
+            ),
+        ),
+        crate::memtrend::Verdict::Steady => (
+            true,
+            format!(
+                "private memory trend is steady ({:.1} MB/hour over {} samples)",
+                trend.private_mb_per_hour.unwrap_or_default(),
+                trend.samples
+            ),
+        ),
+        crate::memtrend::Verdict::Watch => (
+            true,
+            format!(
+                "memory trend needs more observation ({:.1} MB/hour, R² {:.2})",
+                trend.private_mb_per_hour.unwrap_or_default(),
+                trend.r_squared.unwrap_or_default()
+            ),
+        ),
+        crate::memtrend::Verdict::Growing => (
+            false,
+            format!(
+                "private memory is growing ({:.1} MB/hour, R² {:.2}); inspect memory.jsonl and recent lifecycle events",
+                trend.private_mb_per_hour.unwrap_or_default(),
+                trend.r_squared.unwrap_or_default()
+            ),
+        ),
+    };
+    f.push(Finding {
+        label: "memory trend".into(),
+        ok,
+        detail,
+    });
+
     f
 }
 

@@ -1,0 +1,21 @@
+{
+  "runs": [
+    {
+      "tool": "check",
+      "at": "2026-10-15T00:41:39.498Z",
+      "ran": true,
+      "files": 1,
+      "not_scanned": 0,
+      "findings": 16,
+      "exit": 0
+    },
+    {
+      "tool": "lint",
+      "at": "2026-10-15T00:41:39.566Z",
+      "ran": false,
+      "tools": [],
+      "note": "No accessibility linters installed in this project (eslint-plugin-jsx-a11y, eslint-plugin-vuejs-accessibility, svelte-check). COVERAGE LOST: AST-level JSX/Vue/Svelte rules — only the regex scanner ran. Recommend adding one (references/ci.md); nothing was installed.",
+      "leads": 0
+    }
+  ]
+}

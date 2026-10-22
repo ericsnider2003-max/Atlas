@@ -405,6 +405,10 @@ const STALE_DOC_BASELINE: &[&str] = &[
     // reasoning is still worth reading. The vault was built instead,
     // deliberately.
     "AUDIT.md: ## 4.",
+    // Superseded historical handoff, retained for the chronology rather than
+    // current project status; active state lives in the dated source-of-truth
+    // ledger and current handoff.
+    "HANDOFF_2026-09-19.md: decision or piece of hardware it is waiting on*",
 ];
 
 #[test]

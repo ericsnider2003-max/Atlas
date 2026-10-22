@@ -107,13 +107,64 @@ pub fn gestures_page(
     shell_at(Some(Page::Gestures), "Hand gestures", &body)
 }
 
-pub fn status_page(lines: &[(String, String)], changed: usize) -> String {
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StatusLine {
+    pub name: String,
+    pub value: String,
+    pub sparkline: Option<String>,
+    pub required_id: Option<&'static str>,
+}
+
+impl StatusLine {
+    pub fn new(name: impl Into<String>, value: impl Into<String>) -> Self {
+        Self {
+            name: name.into(),
+            value: value.into(),
+            sparkline: None,
+            required_id: None,
+        }
+    }
+
+    pub fn required_memory_trend(value: impl Into<String>, sparkline: Option<String>) -> Self {
+        Self {
+            name: "Atlas memory trend".into(),
+            value: value.into(),
+            sparkline,
+            required_id: Some("memory-trend"),
+        }
+    }
+
+    pub fn required_runtime_decisions(value: impl Into<String>) -> Self {
+        Self {
+            name: "Recent resource decisions".into(),
+            value: value.into(),
+            sparkline: None,
+            required_id: Some("runtime-decisions"),
+        }
+    }
+}
+
+pub fn status_page(lines: &[StatusLine], changed: usize) -> String {
     let mut body = String::new();
-    for (k, v) in lines {
+    for line in lines {
+        let required = line
+            .required_id
+            .map(|id| format!(" data-required=\"{}\"", esc(id)))
+            .unwrap_or_default();
+        let chart = line
+            .sparkline
+            .as_deref()
+            .map(|bars| {
+                format!(
+                    " <span class=memory-sparkline aria-hidden=true>{}</span>",
+                    esc(bars)
+                )
+            })
+            .unwrap_or_default();
         body.push_str(&format!(
-            "<div class=row><div class=name>{}</div><div class=what>{}</div></div>",
-            esc(k),
-            esc(v)
+            "<div class=row{required}><div class=name>{}</div><div class=what>{}{chart}</div></div>",
+            esc(&line.name),
+            esc(&line.value),
         ));
     }
     body.push_str(&format!(

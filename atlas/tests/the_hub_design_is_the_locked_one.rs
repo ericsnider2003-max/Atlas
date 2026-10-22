@@ -246,6 +246,39 @@ fn every_page_has_the_designs_labelled_sidebar_and_breadcrumb() {
     );
 }
 
+#[test]
+fn the_skip_link_keeps_a_visible_focus_ring_on_the_main_content() {
+    let html = hub::shell("Atlas", "<p>x</p>");
+    assert!(html.contains("<a class=skip href='#main'>Skip to the page</a>"));
+    assert!(html.contains("<main id=main tabindex=-1>"));
+    assert!(html.contains(":focus-visible{outline:3px solid var(--accent)"));
+    assert!(
+        !html.contains("main:focus{outline:none}"),
+        "main must not suppress the focus-visible indicator after skip-link activation"
+    );
+}
+
+#[test]
+fn text_fields_keep_a_visible_keyboard_focus_indicator() {
+    let css = include_str!("../assets/hub/hub.css");
+    assert!(css.contains("input:focus-visible{outline:3px solid var(--accent);outline-offset:2px}"));
+    assert!(!css.contains("input:focus{outline:none;"));
+    assert!(css.contains("input:focus-visible{outline-color:Highlight}"));
+}
+
+#[test]
+fn primary_button_hover_keeps_the_label_contrast_high() {
+    let css = include_str!("../assets/hub/hub.css");
+    assert!(css.contains("button.primary:hover{filter:brightness(.92)"));
+    assert!(!css.contains("button.primary:hover{filter:brightness(1.08)"));
+}
+
+#[test]
+fn gesture_reference_graphics_use_the_full_contrast_token() {
+    let css = include_str!("../assets/hub/hub.css");
+    assert!(css.contains(".gesture .draw{color:var(--accent);flex:0 0 auto}"));
+}
+
 fn bad_close(s: &str) -> bool {
     s.match_indices("/>").any(|(i, _)| {
         let before = s[..i].chars().last().unwrap_or(' ');
@@ -647,6 +680,8 @@ fn the_appearance_menu_the_second_chat_built_is_back_and_needs_no_script() {
     // the choice is kept by Atlas and the phone and laptop agree.
     let page = hub::shell("Atlas", "<p>x</p>");
     assert!(page.contains("aria-label='Appearance and access'>Aa</summary>"));
+    assert!(page.contains("<nav class=appmenu aria-label='Appearance and access'>"));
+    assert!(!page.contains("class=appmenu role=menu"));
     for (what, to) in [
         ("theme", "paper"),
         ("theme", "light"),
@@ -766,7 +801,7 @@ fn the_appearance_becomes_exactly_the_attributes_the_css_reads() {
         " data-theme=dark data-text=larger data-contrast=high data-motion=off"
     );
     // A value that slipped past `choose` still can't write itself onto the page.
-    // Following the system has to be written, to beat the Warm Paper default.
+    // Following the system is the default; the hub's Aa choice remains explicit.
     let mut auto = hub::Appearance::default();
     auto.choose("theme", "auto");
     assert_eq!(auto.attrs(), " data-theme=auto");
@@ -775,13 +810,12 @@ fn the_appearance_becomes_exactly_the_attributes_the_css_reads() {
 }
 
 #[test]
-fn warm_paper_is_the_default_and_the_settings_change_it() {
-    // Warm Paper is the lead colourway of the locked design (and Eric's
-    // ruling of 26 Sep): the default, with the settings to change it.
+fn the_system_colourway_is_default_and_the_settings_change_it() {
+    // The project-local appearance preference follows the computer by default.
     let page = hub::shell("Atlas", "<p>x</p>");
     assert!(
-        page.contains("<html lang=en data-theme=paper"),
-        "Warm Paper when nothing is chosen"
+        page.contains("<html lang=en data-theme=auto"),
+        "system appearance when nothing is chosen"
     );
     assert!(
         page.contains("class=wrap") && page.contains("Find anything"),
@@ -816,8 +850,10 @@ fn warm_paper_is_the_default_and_the_settings_change_it() {
         );
     }
     assert!(
-        s.contains("class=on aria-current=true href='/hub/appearance?set=look.theme&amp;to=warm'"),
-        "Warm Paper is marked as the one in use"
+        s.contains(
+            "class=on aria-current=true href='/hub/appearance?set=look.theme&amp;to=system'"
+        ),
+        "Follow this computer is marked as the one in use"
     );
     assert!(!s.to_lowercase().contains("<script"));
 

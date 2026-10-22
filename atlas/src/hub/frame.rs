@@ -42,8 +42,8 @@ impl Appearance {
     /// send, so a mistyped address changes nothing.
     pub fn choose(&mut self, what: &str, to: &str) -> bool {
         match (what, to) {
-            // Warm Paper is the default (Eric, 26 Sep), so choosing it clears
-            // the choice; "auto" is kept, because it has to beat that default.
+            // System-following is the default, so choosing "auto" clears the
+            // choice; an explicit colourway is kept.
             ("theme", "light" | "dark" | "auto") => self.theme = to.into(),
             ("theme", "paper") => self.theme.clear(),
             ("text", "large" | "larger") => self.text = to.into(),
@@ -110,8 +110,8 @@ pub(super) fn appearance_menu() -> String {
     };
     format!(
         "<details class=appwrap><summary class='tool icon' aria-label='Appearance and access'>Aa</summary>\
-         <div class=appmenu role=menu aria-label='Appearance and access'>\
-         <p class=mh>Theme</p>{theme}<p class=mh>Text size</p>{text}<p class=mh>Access</p>{contrast}{motion}</div></details>",
+         <nav class=appmenu aria-label='Appearance and access'>\
+         <p class=mh>Theme</p>{theme}<p class=mh>Text size</p>{text}<p class=mh>Access</p>{contrast}{motion}</nav></details>",
         theme = seg("theme", &[("paper", "Paper"), ("light", "Light"), ("dark", "Dark"), ("auto", "Auto")]),
         text = seg("text", &[("normal", "Normal"), ("large", "Large"), ("larger", "Larger")]),
         contrast = toggle("contrast", "High contrast", "high", "normal"),
@@ -320,8 +320,8 @@ pub(super) fn shell_with(here: Option<Page>, title: &str, body: &str, waiting: u
         // (theme paper/light/dark/auto, text size, contrast, motion) is written in by
         // `with_appearance`, right after `<html lang=en`, so it comes first and
         // wins where both say the same thing. The Settings page's choices
-        // (`appearance`: Warm Paper by default, or Ember Dark, the
-        // colour-blind theme or the system's; an accent, a colour-blind mode,
+        // (`appearance`: system by default, or Warm Paper, Ember Dark, the
+        // colour-blind theme; an accent, a colour-blind mode,
         // density) are written here.
         theme = crate::appearance::Appearance::load().html_attrs(),
         sidebar = sidebar_html(here, waiting),

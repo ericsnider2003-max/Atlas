@@ -195,7 +195,7 @@ There is one build of Atlas, and it is the Windows one. Every other column is wh
 | stop before you have to ask what's taking so long | working | `timebox` | ready | ready | ready | ready | ready | ready |
 | do something that crosses several apps | built, never run for real | `chain` | ready | catch | would | **no** | catch | **no** |
 | learn how you work | working | `person` | ready | ready | ready | ready | ready | ready |
-| reason properly rather than following rules | waiting on a language model | `brain` `infer` `models` `deepbrain` `freeonline` `muse` `contemplate` | ready | ready | ready | ready | ready | ready |
+| reason properly rather than following rules | waiting on a language model | `brain` `infer` `models` `deepbrain` `quickbrain` `freeonline` `muse` `contemplate` | ready | ready | ready | ready | ready | ready |
 | learn the words you use for things from being corrected -- "no, I meant open Spotify" -- and do what you meant next time without guessing; "what have you learned about how I talk" lists them and "forget that phrase" drops one | built, never run for real | `phrasebook` | ready | ready | ready | ready | ready | ready |
 | catch a thought in one step -- said, or a key chord on whatever's selected -- dated when it said a time so it comes up that day, and gone back over once a week | built, never run for real | `capture` | ready | ready | ready | catch | would | catch |
 | remember what you'd want to about the people you deal with, who you meant to keep in touch with, and their birthdays | built, never run for real | `people` | ready | ready | ready | catch | would | catch |
@@ -209,7 +209,7 @@ There is one build of Atlas, and it is the Windows one. Every other column is wh
 | notice something you do the same way every time and offer to do it for you | built, never run for real | `routine` | ready | would | would | catch | would | **no** |
 | carry out a job of several steps on its own -- each result handed to the next, surviving a failure, pausing for your yes midway | built, never run for real | `flow` | ready | would | would | catch | would | **no** |
 | put a question to a room of seats that don't agree, and bring back the disagreement | waiting on a language model | `council` | ready | ready | ready | ready | ready | ready |
-| work a decision through with you -- the question underneath, the options, and the strongest case against what you've chosen | working | `decide` `otherside` | ready | ready | ready | ready | ready | ready |
+| work a decision through with you -- the question underneath, the options, and the strongest case against what you've chosen | working | `decide` `otherside` `decision` | ready | ready | ready | ready | ready | ready |
 | weigh something that might be worth doing on five counts, and say which ones it can't judge yet | working | `opportunity` | ready | ready | ready | ready | ready | ready |
 | walk you through a colour grade in the fixed order a colourist uses | working | `grading` | ready | ready | ready | ready | ready | ready |
 | offer the language model only the few tools a sentence needs, so a small model answers fast and picks the right one | built, never run for real | `router` `meaningroute` `meaningnative` | ready | ready | ready | ready | ready | ready |
@@ -234,7 +234,7 @@ There is one build of Atlas, and it is the Windows one. Every other column is wh
 | get better at things it does often | built, never run for real | `improve` | ready | ready | ready | ready | ready | ready |
 | fingerprint a file or a download so a changed byte is noticed | built, never run for real | `digest` | ready | ready | ready | ready | ready | ready |
 | read what it's handed without being told what to do | built, never run for real | `untrusted` | ready | ready | ready | ready | ready | ready |
-| check itself and say what's wrong | working | `doctor` `diagnose` | ready | ready | ready | ready | ready | ready |
+| check itself and say what's wrong | working | `doctor` `diagnose` `memwatch` `memtrend` | ready | ready | ready | ready | ready | ready |
 | keep a list of what it got wrong -- not understood, asked back, corrected, undone or misheard -- and read the week's back with how well it's been hearing you ("what did you misunderstand this week"); a mishearing you correct twice is put right from then on | built, never run for real | `misses` | ready | ready | ready | ready | ready | ready |
 | take down a new ability you ask me for -- "I want you to be able to ..." -- say what I already do that looks like it, keep it for your yes, and list it on the Improvements page | working | `growth` | ready | ready | ready | catch | would | catch |
 | pick back up what a restart cut off — windows it was working, research and council redone once, project work carried on from its last finished phase — and say what it didn't redo | working | `resume` `phases` | ready | would | would | catch | would | **no** |
@@ -366,4 +366,4 @@ There is one build of Atlas, and it is the Windows one. Every other column is wh
 
 ---
 
-247 things, across 440 of 493 source files. The other 53 are plumbing — config, storage, the platform layer — each named in `capability::PLUMBING` with the reason it is not a capability. `tests/catalogue.rs` fails for a module that is neither, so nothing built can go unlisted here.
+247 things, across 444 of 498 source files. The other 54 are plumbing — config, storage, the platform layer — each named in `capability::PLUMBING` with the reason it is not a capability. `tests/catalogue.rs` fails for a module that is neither, so nothing built can go unlisted here.

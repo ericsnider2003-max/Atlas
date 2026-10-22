@@ -100,6 +100,77 @@ fn a_hard_task_falls_back_to_local_if_the_secondary_is_down() {
 }
 
 #[test]
+fn fallback_attempt_and_breaker_denial_are_journaled_without_request_data() {
+    use atlas::decision::{self, Action};
+    use std::time::{Duration, Instant};
+
+    let state = std::env::temp_dir().join(format!("atlas-route-events-{}", std::process::id()));
+    decision::start(&state);
+
+    let f =
+        FallbackLlm::new(Arc::new(Named("local")), Some(Arc::new(Down))).secondary_is_your_own();
+    for _ in 0..4 {
+        assert_eq!(
+            f.complete_hard("private prompt marker", "private user marker")
+                .unwrap(),
+            "local"
+        );
+    }
+    let long = FallbackLlm::new(Arc::new(Down), Some(Arc::new(Named("long cloud"))));
+    assert_eq!(
+        long.complete_long("private long prompt", "private long user", 128)
+            .unwrap()
+            .text,
+        "long cloud"
+    );
+
+    let path = decision::log_path(&state);
+    let until = Instant::now() + Duration::from_secs(2);
+    let rows = loop {
+        let rows = decision::load(&path);
+        let attempted = rows.iter().any(|row| {
+            matches!(
+                row.action,
+            Action::RouteAttempt { ref to } if to == "owner-configured"
+            )
+        });
+        let denied = rows.iter().any(|row| {
+            matches!(
+                row.action,
+                Action::RouteDenied { ref to, ref because }
+                    if to == "owner-configured" && because == "breaker_open"
+            )
+        });
+        let long_attempted = rows
+            .iter()
+            .any(|row| matches!(row.action, Action::RouteAttempt { ref to } if to == "online"));
+        if attempted && denied && long_attempted {
+            break rows;
+        }
+        assert!(
+            Instant::now() < until,
+            "routing records did not reach the journal"
+        );
+        std::thread::sleep(Duration::from_millis(10));
+    };
+    assert!(rows.iter().any(|row| matches!(
+        row.action,
+        Action::RouteAttempt { ref to } if to == "owner-configured"
+    )));
+    let summary = decision::recent_summary(&decision::recent(10)).unwrap();
+    assert!(
+        summary.contains("tried route") || summary.contains("held route"),
+        "the bounded Status summary should surface a route outcome"
+    );
+    let saved = std::fs::read_to_string(path).unwrap();
+    assert!(!saved.contains("private prompt marker"));
+    assert!(!saved.contains("private user marker"));
+    assert!(!saved.contains("private long prompt"));
+    assert!(!saved.contains("private long user"));
+    assert!(!saved.contains("connection refused"));
+}
+
+#[test]
 fn with_no_secondary_a_down_local_still_errors() {
     // Nothing to fall through to: the error is real and surfaces.
     let f = FallbackLlm::new(Arc::new(Down), None);

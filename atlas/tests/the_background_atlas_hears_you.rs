@@ -205,6 +205,28 @@ fn the_loop_looks_after_the_model_server_without_waiting() {
 }
 
 #[test]
+fn the_primary_model_is_demand_started_not_boot_started() {
+    let running = source("src/daemon/running.rs");
+    let run = method_body(&running, "    pub fn run(");
+    assert!(
+        !run.contains("self.keep_model_server(clock())")
+            && !run.contains("self.warm_the_model(clock())"),
+        "daemon startup eagerly loads the multi-gigabyte talking model"
+    );
+    let converse = method_body(&running, "    pub fn converse(");
+    assert!(
+        converse.contains("self.keep_model_server(clock())")
+            && converse.contains("self.warm_the_model(clock())"),
+        "a real user turn no longer starts and warms the model on demand"
+    );
+    let model = source("src/daemon/model.rs");
+    assert!(
+        model.contains("if !model_start_is_demanded("),
+        "idle polling can start a cold model without queued or user demand"
+    );
+}
+
+#[test]
 fn only_llama_servers_own_answer_means_the_model_is_up() {
     assert!(atlas::models::health_says_ok(r#"{"status":"ok"}"#));
     assert!(!atlas::models::health_says_ok(

@@ -663,6 +663,8 @@ pub struct DeepBrain {
     free_mb: Box<dyn Fn() -> u64 + Send>,
     last_busy: Instant,
     started: Option<Instant>,
+    start_decision: Option<u64>,
+    start_free_mb: Option<u64>,
     look_again: Option<Instant>,
     /// How long a load may take before it's given up on.
     pub load_limit: Duration,
@@ -671,6 +673,56 @@ pub struct DeepBrain {
     pub label: &'static str,
     /// What it is started for: "background work".
     pub for_what: &'static str,
+    decision_path: Option<std::path::PathBuf>,
+}
+
+fn lifecycle_decision(
+    path: Option<&std::path::Path>,
+    model_id: &str,
+    free_mb: &dyn Fn() -> u64,
+    action: crate::decision::Action,
+    reason: &str,
+    expected: &str,
+) -> std::result::Result<Option<u64>, String> {
+    let Some(path) = path else { return Ok(None) };
+    let mut record =
+        crate::decision::DecisionRecord::new("model lifecycle", action, model_id, reason, expected);
+    record.readings.push(crate::decision::Reading {
+        name: "system free memory".into(),
+        value: Some(free_mb() as f64),
+        unit: "MB".into(),
+        at: crate::store::now(),
+    });
+    crate::decision::append(path, record)
+        .map(Some)
+        .map_err(|error| error.to_string())
+}
+
+fn lifecycle_effect(
+    path: Option<&std::path::Path>,
+    id: Option<u64>,
+    after: Instant,
+    ready_ms: Option<u64>,
+    memory_delta_mb: Option<i64>,
+    detail: &str,
+    verdict: crate::decision::Verdict,
+) -> std::result::Result<(), String> {
+    let (Some(path), Some(id)) = (path, id) else {
+        return Ok(());
+    };
+    crate::decision::complete(
+        path,
+        id,
+        crate::decision::Effect {
+            after_secs: after.elapsed().as_secs().min(u64::from(u32::MAX)) as u32,
+            memory_delta_mb,
+            ready_ms,
+            next_turn_ms: None,
+            detail: detail.into(),
+        },
+        verdict,
+    )
+    .map_err(|error| error.to_string())
 }
 
 impl DeepBrain {
@@ -688,10 +740,13 @@ impl DeepBrain {
             free_mb: Box::new(|| 0),
             last_busy: Instant::now(),
             started: None,
+            start_decision: None,
+            start_free_mb: None,
             look_again: None,
             load_limit: LOAD_WAIT,
             label: "deep model",
             for_what: "background work",
+            decision_path: None,
         }
     }
 
@@ -716,11 +771,20 @@ impl DeepBrain {
             free_mb,
             last_busy: Instant::now(),
             started: None,
+            start_decision: None,
+            start_free_mb: None,
             look_again: None,
             load_limit: LOAD_WAIT,
             label: "deep model",
             for_what: "background work",
+            decision_path: None,
         }
+    }
+
+    /// Enable lifecycle journaling for Atlas-owned deep and coding servers.
+    pub fn with_decision_log(mut self, path: std::path::PathBuf) -> Self {
+        self.decision_path = Some(path);
+        self
     }
 
     /// Is a deep model set up (whether or not it's running)?
@@ -759,6 +823,9 @@ impl DeepBrain {
     /// idle. What happened, for the log. Waits at most a health check.
     pub fn keep(&mut self) -> Vec<String> {
         let mut said = Vec::new();
+        let decision_path = self.decision_path.clone();
+        let model_id = self.model_id.clone();
+        let free_mb = &self.free_mb;
         let Some(engine) = self.engine.as_mut() else {
             return said;
         };
@@ -801,9 +868,27 @@ impl DeepBrain {
                     self.look_again = Some(Instant::now() + Duration::from_secs(RECHECK_SECS));
                     return said;
                 }
+                let start_free = (self.free_mb)();
+                let started_at = Instant::now();
+                let start_decision = match lifecycle_decision(
+                    decision_path.as_deref(),
+                    &model_id,
+                    free_mb,
+                    crate::decision::Action::Warm,
+                    "background or coding work is waiting and memory headroom is available",
+                    "server launch succeeds and the health endpoint becomes ready",
+                ) {
+                    Ok(id) => id,
+                    Err(error) => {
+                        said.push(format!("couldn't record the model-start decision: {error}"));
+                        None
+                    }
+                };
                 match engine.start() {
                     Ok(()) => {
-                        self.started = Some(Instant::now());
+                        self.started = Some(started_at);
+                        self.start_decision = start_decision;
+                        self.start_free_mb = Some(start_free);
                         self.gate.set(State::Starting, "");
                         said.push(format!(
                             "starting the {} ({}) for {}",
@@ -811,6 +896,19 @@ impl DeepBrain {
                         ));
                     }
                     Err(e) => {
+                        if let Err(error) = lifecycle_effect(
+                            decision_path.as_deref(),
+                            start_decision,
+                            started_at,
+                            None,
+                            None,
+                            "server launch failed",
+                            crate::decision::Verdict::NotAsExpected {
+                                why: "server launch failed".into(),
+                            },
+                        ) {
+                            said.push(format!("couldn't record the model-start outcome: {error}"));
+                        }
                         let why = format!("the {} couldn't start: {e}", self.label);
                         said.push(why.clone());
                         self.gate.set(State::Unavailable, &why);
@@ -820,6 +918,20 @@ impl DeepBrain {
             }
             State::Starting => {
                 if !engine.running() {
+                    if let Err(error) = lifecycle_effect(
+                        decision_path.as_deref(),
+                        self.start_decision.take(),
+                        self.started.unwrap_or_else(Instant::now),
+                        None,
+                        None,
+                        "server exited before becoming healthy",
+                        crate::decision::Verdict::NotAsExpected {
+                            why: "server exited before becoming healthy".into(),
+                        },
+                    ) {
+                        said.push(format!("couldn't record the model-start outcome: {error}"));
+                    }
+                    self.start_free_mb = None;
                     let why = format!("the {} stopped while loading", self.label);
                     said.push(why.clone());
                     self.gate.set(State::Unavailable, &why);
@@ -828,9 +940,42 @@ impl DeepBrain {
                 } else if engine.healthy() {
                     self.gate.set(State::Up, "");
                     let took = self.started.map(|s| s.elapsed().as_millis()).unwrap_or(0);
+                    let current_free = (self.free_mb)();
+                    let memory_delta = self.start_free_mb.map(|before| {
+                        i64::try_from(current_free).unwrap_or(i64::MAX)
+                            - i64::try_from(before).unwrap_or(i64::MAX)
+                    });
+                    if let Err(error) = lifecycle_effect(
+                        decision_path.as_deref(),
+                        self.start_decision.take(),
+                        self.started.unwrap_or_else(Instant::now),
+                        Some(took.min(u64::MAX as u128) as u64),
+                        memory_delta,
+                        "server became healthy",
+                        crate::decision::Verdict::AsExpected,
+                    ) {
+                        said.push(format!("couldn't record the model-ready outcome: {error}"));
+                    }
+                    self.start_free_mb = None;
                     said.push(format!("the {} is up ({}ms to load)", self.label, took));
                 } else if self.started.is_some_and(|s| s.elapsed() > self.load_limit) {
                     engine.stop();
+                    if let Err(error) = lifecycle_effect(
+                        decision_path.as_deref(),
+                        self.start_decision.take(),
+                        self.started.unwrap_or_else(Instant::now),
+                        None,
+                        None,
+                        "server did not become healthy before the load limit",
+                        crate::decision::Verdict::NotAsExpected {
+                            why: "health endpoint timed out".into(),
+                        },
+                    ) {
+                        said.push(format!(
+                            "couldn't record the model-timeout outcome: {error}"
+                        ));
+                    }
+                    self.start_free_mb = None;
                     let why = format!("the {} took too long to load, so I stopped it", self.label);
                     said.push(why.clone());
                     self.gate.set(State::Unavailable, &why);
@@ -840,6 +985,38 @@ impl DeepBrain {
             }
             State::Up => {
                 if !engine.running() {
+                    let failed_at = Instant::now();
+                    let restart_decision = match lifecycle_decision(
+                        decision_path.as_deref(),
+                        &model_id,
+                        free_mb,
+                        crate::decision::Action::Restart,
+                        "model process exited unexpectedly after becoming ready",
+                        "model remains available until idle or explicitly stopped",
+                    ) {
+                        Ok(id) => id,
+                        Err(error) => {
+                            said.push(format!(
+                                "couldn't record the unexpected model exit: {error}"
+                            ));
+                            None
+                        }
+                    };
+                    if let Err(error) = lifecycle_effect(
+                        decision_path.as_deref(),
+                        restart_decision,
+                        failed_at,
+                        None,
+                        None,
+                        "server exited unexpectedly after becoming ready",
+                        crate::decision::Verdict::NotAsExpected {
+                            why: "model server exited unexpectedly".into(),
+                        },
+                    ) {
+                        said.push(format!(
+                            "couldn't record the unexpected-exit outcome: {error}"
+                        ));
+                    }
                     said.push(format!(
                         "the {} stopped; it starts again when there's work",
                         self.label
@@ -847,7 +1024,39 @@ impl DeepBrain {
                     self.gate.set(State::Off, "");
                     self.started = None;
                 } else if !busy && self.last_busy.elapsed() >= self.idle {
+                    let stopped_at = Instant::now();
+                    let before_free = (self.free_mb)();
+                    let stop_decision = match lifecycle_decision(
+                        decision_path.as_deref(),
+                        &model_id,
+                        free_mb,
+                        crate::decision::Action::LetGo,
+                        "model server exceeded its configured idle period",
+                        "release model memory after idle shutdown",
+                    ) {
+                        Ok(id) => id,
+                        Err(error) => {
+                            said.push(format!("couldn't record the model-stop decision: {error}"));
+                            None
+                        }
+                    };
                     engine.stop();
+                    let after_free = (self.free_mb)();
+                    let memory_delta = Some(
+                        i64::try_from(after_free).unwrap_or(i64::MAX)
+                            - i64::try_from(before_free).unwrap_or(i64::MAX),
+                    );
+                    if let Err(error) = lifecycle_effect(
+                        decision_path.as_deref(),
+                        stop_decision,
+                        stopped_at,
+                        None,
+                        memory_delta,
+                        "idle server stopped; memory reading captured immediately after stop",
+                        crate::decision::Verdict::Unmeasured,
+                    ) {
+                        said.push(format!("couldn't record the model-stop outcome: {error}"));
+                    }
                     self.gate.set(State::Off, "");
                     self.started = None;
                     said.push(format!(
@@ -894,8 +1103,55 @@ impl DeepBrain {
 
     /// Stop it now (Atlas closing, the setting switched off).
     pub fn stop(&mut self) {
-        if let Some(e) = self.engine.as_mut() {
-            e.stop();
+        self.stop_for_reason("Atlas shutdown or model setting changed");
+    }
+
+    /// Stop the model for a known reason such as returning the talking-model
+    /// slot to an owner turn.
+    pub fn stop_for_reason(&mut self, reason: &str) {
+        let active = matches!(self.gate.state(), State::Up | State::Starting);
+        let path = self.decision_path.clone();
+        let model_id = self.model_id.clone();
+        let before_free = (self.free_mb)();
+        let stopped_at = Instant::now();
+        let decision = if active {
+            lifecycle_decision(
+                path.as_deref(),
+                &model_id,
+                &self.free_mb,
+                crate::decision::Action::Preempt,
+                reason,
+                "model server stops and releases resources promptly",
+            )
+        } else {
+            Ok(None)
+        };
+        if let Some(engine) = self.engine.as_mut() {
+            engine.stop();
+        }
+        match decision {
+            Err(error) => {
+                crate::heard!(Err::<(), _>(error));
+            }
+            Ok(Some(id)) => {
+                let after_free = (self.free_mb)();
+                let memory_delta = Some(
+                    i64::try_from(after_free).unwrap_or(i64::MAX)
+                        - i64::try_from(before_free).unwrap_or(i64::MAX),
+                );
+                if let Err(error) = lifecycle_effect(
+                    path.as_deref(),
+                    Some(id),
+                    stopped_at,
+                    None,
+                    memory_delta,
+                    "model server stopped; memory reading captured immediately after stop",
+                    crate::decision::Verdict::Unmeasured,
+                ) {
+                    crate::heard!(Err::<(), _>(error));
+                }
+            }
+            Ok(None) => {}
         }
         if self.engine.is_some() {
             self.gate.set(State::Off, "");
@@ -1005,6 +1261,7 @@ pub fn for_settings(tc: &crate::voice::ToolsConfig) -> DeepBrain {
         Duration::from_secs(tc.models.deep_idle_secs.max(30)),
         Box::new(|| crate::fit::measure().free_ram_mb),
     )
+    .with_decision_log(crate::decision::log_path(crate::roots::store().root()))
 }
 
 /// "Use the better model" / "use the faster model", and the like: which one
@@ -1366,5 +1623,130 @@ mod bounded_background_requests {
             .is_err());
         assert_eq!(calls.load(Ordering::SeqCst), 0);
         assert_eq!(gate.in_flight(), 0);
+    }
+}
+
+#[cfg(test)]
+mod lifecycle_journal_tests {
+    use super::*;
+
+    struct ImmediateLlm;
+    impl Llm for ImmediateLlm {
+        fn complete(&self, _: &str, _: &str) -> Result<String> {
+            Ok(String::new())
+        }
+    }
+
+    struct ScriptedEngine {
+        running: bool,
+        fail_start: bool,
+    }
+    impl Engine for ScriptedEngine {
+        fn start(&mut self) -> std::result::Result<(), String> {
+            if self.fail_start {
+                return Err("scripted launch failure".into());
+            }
+            self.running = true;
+            Ok(())
+        }
+        fn stop(&mut self) {
+            self.running = false;
+        }
+        fn running(&mut self) -> bool {
+            self.running
+        }
+        fn healthy(&mut self) -> bool {
+            self.running
+        }
+    }
+
+    #[test]
+    fn model_lifecycle_decisions_cover_start_ready_idle_and_preemption() {
+        let dir = std::env::temp_dir().join(format!(
+            "atlas-deepbrain-lifecycle-{}-{}",
+            std::process::id(),
+            crate::store::now()
+        ));
+        std::fs::create_dir(&dir).unwrap();
+        let path = crate::decision::log_path(&dir);
+        let mut brain = DeepBrain::new(
+            Box::new(ScriptedEngine {
+                running: false,
+                fail_start: false,
+            }),
+            Arc::new(ImmediateLlm),
+            "scripted-model",
+            1,
+            Duration::from_secs(1),
+            Box::new(|| 4096),
+        )
+        .with_decision_log(path.clone());
+
+        brain.gate.in_flight.store(1, Ordering::SeqCst);
+        assert!(brain.keep().iter().any(|line| line.contains("starting")));
+        assert!(brain.keep().iter().any(|line| line.contains("is up")));
+        brain.gate.in_flight.store(0, Ordering::SeqCst);
+        brain.last_busy = Instant::now() - Duration::from_secs(2);
+        assert!(brain.keep().iter().any(|line| line.contains("stopped")));
+
+        let first = crate::decision::load(&path);
+        assert_eq!(first.len(), 2);
+        assert!(matches!(first[0].action, crate::decision::Action::Warm));
+        assert!(first[0].measured.as_ref().unwrap().ready_ms.is_some());
+        assert!(matches!(first[1].action, crate::decision::Action::LetGo));
+        assert!(first[1].measured.is_some());
+
+        brain.gate.set(State::Up, "");
+        brain.stop_for_reason("owner turn needs the talking model");
+        let records = crate::decision::load(&path);
+        assert_eq!(records.len(), 3);
+        assert!(matches!(
+            records[2].action,
+            crate::decision::Action::Preempt
+        ));
+        assert_eq!(records[2].reason, "owner turn needs the talking model");
+        assert!(records[2].measured.is_some());
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn failed_model_launch_is_recorded_as_not_as_expected() {
+        let dir = std::env::temp_dir().join(format!(
+            "atlas-deepbrain-launch-failure-{}-{}",
+            std::process::id(),
+            crate::store::now()
+        ));
+        std::fs::create_dir(&dir).unwrap();
+        let path = crate::decision::log_path(&dir);
+        let mut brain = DeepBrain::new(
+            Box::new(ScriptedEngine {
+                running: false,
+                fail_start: true,
+            }),
+            Arc::new(ImmediateLlm),
+            "scripted-failing-model",
+            1,
+            Duration::from_secs(1),
+            Box::new(|| 4096),
+        )
+        .with_decision_log(path.clone());
+        brain.gate.in_flight.store(1, Ordering::SeqCst);
+        assert!(brain
+            .keep()
+            .iter()
+            .any(|line| line.contains("couldn't start")));
+        let records = crate::decision::load(&path);
+        assert_eq!(records.len(), 1);
+        assert!(records[0]
+            .measured
+            .as_ref()
+            .unwrap()
+            .detail
+            .contains("launch failed"));
+        assert!(matches!(
+            records[0].verdict,
+            crate::decision::Verdict::NotAsExpected { .. }
+        ));
+        std::fs::remove_dir_all(dir).unwrap();
     }
 }
