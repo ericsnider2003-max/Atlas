@@ -261,10 +261,9 @@ fn updates_said_out_loud_and_going_back_is_asked_first() {
         said.contains(&format!("This is Atlas {}", atlas::upgrade::version())),
         "{said}"
     );
-    assert_eq!(
-        d.turn("install the update", 1_001),
-        "There's no update waiting."
-    );
+    // Installing is asked about first (22 Oct 2026), even to find nothing waiting.
+    assert!(d.turn("install the update", 1_000).contains("Go ahead?"));
+    assert_eq!(d.turn("yes", 1_001), "There's no update waiting.");
     assert!(d
         .turn("go back to the last version", 1_002)
         .contains("no previous version"));

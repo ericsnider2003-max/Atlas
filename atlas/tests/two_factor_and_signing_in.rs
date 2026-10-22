@@ -176,7 +176,16 @@ fn a_code_you_read_out_is_typed_into_the_window_in_front() {
     *p.front.borrow_mut() = Some(atlas::platform::WindowId(9));
     p.set_window_text(9, "Enter the code");
     let mut d = daemon_with(cfg, &p, "typed");
-    let said = d.turn("type my code four eight two nine one seven", 1_000);
+    // Typing a one-time code is asked about first (22 Oct 2026).
+    let asked = d.turn("type my code four eight two nine one seven", 1_000);
+    assert!(asked.contains("Go ahead?"), "{asked}");
+    assert!(
+        !p.actions()
+            .iter()
+            .any(|a| matches!(a, atlas::platform::mock::Action::Type(_))),
+        "typed before the yes"
+    );
+    let said = d.turn("yes", 1_001);
     assert!(said.contains("Typed 4 8 2, 9 1 7"), "{said}");
     use atlas::platform::mock::Action;
     assert!(
@@ -199,7 +208,8 @@ fn with_no_code_it_asks_for_one_and_says_where_it_can_look() {
     p.focus_on("chrome.exe", "GitHub");
     *p.front.borrow_mut() = Some(atlas::platform::WindowId(3));
     let mut d = daemon_with(cfg, &p, "ask");
-    let said = d.turn("type the code", 1_000);
+    assert!(d.turn("type the code", 999).contains("Go ahead?"));
+    let said = d.turn("yes", 1_000);
     assert!(
         said.contains("in my email") && said.contains("in my texts"),
         "{said}"
@@ -213,6 +223,11 @@ fn with_no_code_it_asks_for_one_and_says_where_it_can_look() {
     );
     // Texts, with Phone Link not open: says so rather than guessing.
     let said = d.turn("it's in my texts", 1_001);
+    let said = if said.contains("Go ahead?") {
+        d.turn("yes", 1_002)
+    } else {
+        said
+    };
     assert!(said.contains("Phone Link"), "{said}");
 }
 

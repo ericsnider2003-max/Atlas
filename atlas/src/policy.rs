@@ -78,9 +78,64 @@ impl Decision {
     }
 }
 
+/// "Get the picture maker": the words `make_picture` reads as a download
+/// rather than a drawing. One place, so the rule and the handler agree.
+pub fn fetches_the_picture_maker(said: &str) -> bool {
+    let l = said.to_lowercase();
+    l.contains("picture maker") && (l.contains("get") || l.contains("download") || l.contains("fetch"))
+}
+
+/// The acts that can't be taken back and so are always asked about first,
+/// and that history may never relax: sending, moving files, closing what may
+/// hold unsaved work, installs, sign-ins and sign-ups, pairing, one-time
+/// codes, changing Atlas's own code. `classify` grades each of these
+/// `RequireApproval`; `classify_with_policy` will not learn them away.
+pub fn is_hard_to_undo(intent: &Intent) -> bool {
+    match intent {
+        Intent::Message(_)
+        | Intent::MoveFile(_)
+        | Intent::CloseApp(_)
+        | Intent::WorkspaceOff
+        | Intent::SignIn(_)
+        | Intent::CreateAccount(_)
+        | Intent::Pair(_)
+        | Intent::AcceptPairing(_)
+        | Intent::TypeCode(_)
+        | Intent::WorkOnYourself(_) => true,
+        Intent::Updates(what) => what == "install",
+        Intent::PhoneModel(what) => what == "get" && cfg!(feature = "phone-llm"),
+        Intent::MakePicture(said) => fetches_the_picture_maker(said),
+        _ => false,
+    }
+}
+
 /// Baseline classification, before history is taken into account.
 pub fn classify(intent: &Intent) -> Decision {
     match intent {
+        // Hard to undo: always a quick confirm (owner, 22 Oct 2026: sending,
+        // deleting, moving, installing, signing in, posting, two-factor
+        // codes). These sit first so no later, wider arm can relax them.
+        //
+        // Typing a one-time code into the window in front of you submits it
+        // as you; a wrong window or a stale code can't be taken back.
+        Intent::TypeCode(_) => Decision::RequireApproval,
+        // Moving a file changes where your things are; the move says how to
+        // put it back, but it is asked about first.
+        Intent::MoveFile(_) => Decision::RequireApproval,
+        // Said to a person, as you: it can't be unsent.
+        Intent::Message(_) => Decision::RequireApproval,
+        // Installing the waiting update replaces the running build and
+        // restarts into it. ("undo" and the checks ask their own question.)
+        Intent::Updates(what) if what == "install" => Decision::RequireApproval,
+        // Fetching a model onto this machine is an install: gigabytes, and a
+        // thing that then runs.
+        // (Only where it can fetch: on a computer it just says what it is.)
+        Intent::PhoneModel(what) if what == "get" && cfg!(feature = "phone-llm") => {
+            Decision::RequireApproval
+        }
+        Intent::MakePicture(said) if fetches_the_picture_maker(said) => {
+            Decision::RequireApproval
+        }
         // Another program's tool (`mcp`). The daemon asks before every call
         // (`Daemon::mcp_gate`, the last gate, which no history can relax)
         // unless that server's entry lets this one tool run unasked -- and a
@@ -130,7 +185,7 @@ pub fn classify(intent: &Intent) -> Decision {
         // it did and checks its own result: a new file never replaces one, a
         // move never replaces one and says how to put it back, a folder backup
         // is a copy into a new folder. Reading is silent and changes nothing.
-        Intent::CreateFile(_) | Intent::MoveFile(_) | Intent::BackUpFolder(_) => {
+        Intent::CreateFile(_) | Intent::BackUpFolder(_) => {
             Decision::ProceedAndReport
         }
         Intent::ReadFile(_) | Intent::WhatsUsingMemory => Decision::AutoProceed,
@@ -179,8 +234,7 @@ pub fn classify(intent: &Intent) -> Decision {
         // Signing in acts as you on someone else's system. The first time on
         // a site is a decision; after that the grant carries it.
         Intent::SignIn(_) => Decision::RequireApproval,
-        // You asked for this code to be typed, into what's in front of you.
-        Intent::TypeCode(_) => Decision::AutoProceed,
+        // (`TypeCode` is asked about first, above: 22 Oct 2026.)
         // Its own read-back and yes (`confirmed`) is the approval; asking a
         // second time first would be two questions for one decision.
         Intent::TwoFactor(_) => Decision::AutoProceed,
@@ -368,13 +422,11 @@ pub fn classify(intent: &Intent) -> Decision {
         // makes a note easier to find later, never sends or acts on anything.
         | Intent::Refile(_) => Decision::AutoProceed,
 
-        // Said to a person, as you -- so it is announced rather than silent.
-        // Deliberately not `RequireApproval`: you said the sentence, out
-        // loud, naming who it was for. Asking "go ahead?" after that is the
-        // confirmation-on-everything that gets turned off wholesale, and
-        // then nothing is confirmed. What protects you here is that it is
-        // announced and that the message sits visibly in the outbox.
-        Intent::Message(_) => Decision::ProceedAndReport,
+        // (`Intent::Message` is the first arm above: until 22 Oct 2026 it
+        // was `ProceedAndReport` here, with the category floor asking for it
+        // on the daemon path only; a schedule, a plan or an add-on reading
+        // bare `classify` saw it as unasked. The owner confirmed a message
+        // is always asked about, so the rule is now in one place.)
 
         // All three change something and all three are worth hearing about:
         // setup writes config, muting changes what Atlas will tell you
@@ -418,6 +470,11 @@ pub fn classify_with_policy(
         return base;
     }
     if floor == Decision::RequireApproval {
+        return base;
+    }
+    // Hard to undo: always a quick confirm, however often it was approved
+    // before (owner, 22 Oct 2026).
+    if is_hard_to_undo(intent) {
         return base;
     }
     let kind = crate::session::kind_of(intent);
