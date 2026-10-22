@@ -22,7 +22,6 @@ Dates are UTC. The card at the top of `AGENTS.md` holds the facts; this file hol
 - `offline-assistant` Full offline assistant that keeps the PC usable: design (memory tiers, voice loop, governor) and benchmark plan — home: [docs/OFFLINE_ASSISTANT_DESIGN_2026-10-20.md](OFFLINE_ASSISTANT_DESIGN_2026-10-20.md) — open since 2026-10-21 (claude)
 - `efficiency` Atlas-wide efficiency and device adaptation: tiers T0-T3, processing, memory, storage, learning budgets, acting ahead with guardrails, any-device platform record — home: [docs/ATLAS_EFFICIENCY_AND_ADAPTATION_DESIGN_2026-10-20.md](ATLAS_EFFICIENCY_AND_ADAPTATION_DESIGN_2026-10-20.md) — open since 2026-10-21 (claude)
 - `model-training` Train Atlas's own model: data from Eric's own messages, clean open datasets, REA/Replica/Atlas repo; stages, cost, first 3 steps — home: [docs/ATLAS_MODEL_TRAINING_PLAN_2026-10-21.md](ATLAS_MODEL_TRAINING_PLAN_2026-10-21.md) — open since 2026-10-21 (claude)
-- `owner-after-e2e1020` Owner decisions after e2e fixes: approve 16.2 GB pieces, program-copy cleanup (2.27 GB), self-audit act-without-asking runs cargo, panel outlives Atlas, owner desktop re-run — home: [verification/runs/20261021T110000Z-claude-e2e1020-fixes/RESULTS.md](../verification/runs/20261021T110000Z-claude-e2e1020-fixes/RESULTS.md) — open since 2026-10-21 (claude)
 - `completion-path` One completion path + context-before-asking: built in owned files; wiring in run_command/spoken_steps/tasks/floor/brain and the approval contract handed off — home: [docs/HANDOFF_ONE_COMPLETION_PATH_2026-10-21.md](HANDOFF_ONE_COMPLETION_PATH_2026-10-21.md) — doing since 2026-10-22 (claude-items)
 
 ## Last session
@@ -48,10 +47,6 @@ Dates are UTC. The card at the top of `AGENTS.md` holds the facts; this file hol
 - `gpu1-health` GPU1: a model server whose log shows Vulkan device loss is not trusted even when /health says OK; checked before each request (2026-10-21)
 - `tune-trash` PC tidy-up moves old temp files to Atlas's trash (restorable, 30 days) instead of deleting them (2026-10-21)
 - `selftest-scratch` SELFTEST1: self-test scratch cleanup removes junction links only, guarded to temp atlas-selftest-* folders, failures reported (2026-10-21)
-- `click-gate` Charter §8 click gate: refuse buy/order buttons anywhere and money/confirm buttons on bank or broker windows, at press_button and the screen-operating step (2026-10-21)
-- `i217d` Complete singular-candidate workspace handoff and inventory (2026-10-18)
-- `verify-harness` Independent real-runtime verification harness (2026-10-18)
-- `i65c1` Canonical open-work audit (2026-10-16)
 
 ## Docs
 

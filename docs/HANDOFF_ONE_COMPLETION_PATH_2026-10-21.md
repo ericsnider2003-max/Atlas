@@ -1,7 +1,7 @@
 # Hand-off: finishing "one completion path" (item 6)
 
 Last updated: 2026-10-21
-Status: open — for the session that owns the files below
+Status: done 2026-10-22 (applied on fix/item6-wiring-2026-10-21, merged into the candidate; see verification/runs/20261022T090000Z-claude-item6-wiring)
 
 Eric's rule: "anything can be a request. If I ask Atlas to do something, it is a valid request." Every request ends visibly as **done**, **failed**, or **needs you**, and survives a restart. No request kind gets a lesser path.
 
