@@ -26,14 +26,10 @@ Dates are UTC. The card at the top of `AGENTS.md` holds the facts; this file hol
 
 ## Last session
 
-- 2026-10-21 by claude: Fixed every 2026-10-20 desktop-test issue at the root plus the no-model floor and efficiency defects on fix/desktop-e2e-1020; installed 3B38DE03 with rollback; results page published
-- Next command: `Owner: try Atlas for a real day, then decide the items in owner-after-e2e1020 (verification/runs/20261021T110000Z-claude-e2e1020-fixes/RESULTS.md)`
-- git at close: fix/desktop-e2e-1020 @ 70ec6296e6, 5 uncommitted file(s); fetch: skipped
-- Verified: Full suite 9138 pass, 3 env failures (system ffmpeg missing) — cargo test --all-targets twice
-- Verified: Installed verifier 14/14 on 3B38DE03 — verification/Invoke-AtlasVerification.ps1
-- Verified: Real profile: hub 7.6 s, index kept (17.0→13.9 MB, nothing set aside), 0 downloads, 0 camera frames, download ask filed, clean stop 2.4 s — realcheck.ps1 on 575B64E7
-- **UNVERIFIED:** Visual checks (Hub lanes, tray icon, Talk, tabs, overlay); live low-memory floor path; live camera look; owner acceptance
-- log: [docs/sessions/2026-10-21-fixed-every-2026-10-20-desktop-test-issu.md](sessions/2026-10-21-fixed-every-2026-10-20-desktop-test-issu.md)
+- 2026-10-22 by claude: Item 6 hand-off applied (context-first asks, one completion path, Hub lanes, saved approvals); backup status answered from jobs; items branch merged; installed A5656D40, verifier 14/14; Kokoro timed 0.72x real time idle
+- Next command: `Owner: approve or reject the cleanup lists; optional Kokoro first-clause/warm-up change`
+- git at close: candidate/2026-10-17-foundation @ 526603da0e, 40 uncommitted file(s); fetch: ok
+- log: [docs/sessions/2026-10-22-item-6-hand-off-applied-context-first-as.md](sessions/2026-10-22-item-6-hand-off-applied-context-first-as.md)
 
 ## Recently done
 
