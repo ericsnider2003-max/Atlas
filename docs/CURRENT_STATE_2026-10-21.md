@@ -46,7 +46,7 @@ The gate is `docs/OWNER_READINESS_RESET_2026-10-16.md`, tracked as ledger item `
 
 Source: `00_SOURCE_OF_TRUTH/STATE/open_items.tsv`.
 - Q7 "One vault for secrets": status doing, owner ERIC. Secrets were moved to `C:\Users\erics\Atlas-Vault\secrets`; the folder is not EFS-encrypted and BitLocker status was never checked (8 Oct note).
-- CARRY1: status open, owner ERIC. `new/atlas-escapemint/testpack/dev2.key` sits outside any repo, untracked, never opened; move it to the vault or ignore it.
+- CARRY1: status open, owner ERIC. a stray `dev2.key` test key (path in the control ledger, item CARRY1) sits outside any repo, untracked, never opened; move it to the vault or ignore it.
 - Android keystore: `C:/Users/erics/Atlas-Vault/signing/` holds `atlas-android.p12` and `atlas-android.pass` (metadata check in `00_SOURCE_OF_TRUTH/STATE/changelog.tsv`, 2026-10-08 13:32, item S1; no contents read). Losing it means no in-place Android updates (`00_SOURCE_OF_TRUTH/RELEASE_SIGNING.md`).
 - The off-laptop protected copy still does not exist and needs Eric. No backup or recovery is claimed.
 - ID collisions: the control-ledger item Q7 (this vault) is a different thing from SEC6's note "Audit Q7" (Microsoft refresh tokens, done) and from the "Q7" owner question in `docs/ATLAS_EFFICIENCY_AND_ADAPTATION_DESIGN_2026-10-20.md` (device tier T0, "provisional until Q7 is answered"). Say which one you mean.

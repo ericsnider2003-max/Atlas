@@ -806,6 +806,8 @@ impl<'a> Daemon<'a> {
                 // one?", 26 Sep 2026). Taken as said.
                 Resolution::Ambiguous(_) if matches!(parsed, Intent::Unknown(_)) => said,
                 Resolution::Ambiguous(q) => {
+                    // Offer what context suggests (21 Oct 2026).
+                    let q = self.context_question(said, &q);
                     self.session.ask(&q);
                     return q;
                 }

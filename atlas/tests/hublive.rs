@@ -295,7 +295,7 @@ fn receipt_unavailable_action_is_a_recorded_reply_never_completion() {
         .as_ref()
         .unwrap();
     assert!(
-        output.contains("didn't catch"),
+        output.contains("isn't a command I know"),
         "must reach the actual unavailable handler: {output}"
     );
     let html = receipt_page(&mut d);

@@ -334,6 +334,8 @@ mod installing_a_release;
 mod kokoro_voice;
 #[path = "mail_through_himalaya.rs"]
 mod mail_through_himalaya;
+#[path = "asks_are_specific.rs"]
+mod asks_are_specific;
 #[path = "new_capabilities_are_wired.rs"]
 mod new_capabilities_are_wired;
 #[path = "no_silent_discards.rs"]

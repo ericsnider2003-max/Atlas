@@ -391,18 +391,24 @@ impl<'a> Daemon<'a> {
         // Long errands the owner would miss if a restart made them vanish are
         // also written to the durable job journal, so a restart leaves a
         // `Running` record that `cut_off_by_restart` turns into a visible
-        // "cut off by a restart" (20 Oct 2026).
-        let job_id = errand_stage(name).map(|(stage, at_start)| {
+        // "cut off by a restart" (20 Oct 2026). Since 21 Oct 2026 every errand
+        // has one: whatever the owner asked for must end as done, failed or
+        // needing them, and survive a restart. Those without a name of their
+        // own are "Background work: <name>".
+        let job_id = {
+            let (stage, at_start) = errand_stage(name);
             let id = format!("{}{name}:{t}:{crew_id}", crate::job::ERRAND_PREFIX);
             if at_start {
                 let said = format!("{stage} started");
-                if let Err(e) = crate::job::begin(&self.store, &id, stage, &said) {
+                if let Err(e) =
+                    crate::job::begin_as(&self.store, &id, &stage, &said, is_self_work(name))
+                {
                     self.log
                         .warn(&format!("couldn't write down that {name} started: {e}"));
                 }
             }
-            id
-        });
+            Some(id)
+        };
         self.crew_links.insert(
             crew_id,
             CrewLink {
@@ -594,6 +600,19 @@ impl<'a> Daemon<'a> {
         self.finish_queued_worker(id, &outcome, now);
         self.finish_background_step(id, outcome);
         if let Some(link) = self.crew_links.remove(&id) {
+            // Its durable record, if it has one, ends too (21 Oct 2026):
+            // otherwise it stays Running until the next restart.
+            let (stage, at_start) = errand_stage(link.label);
+            if let Some(job_id) = link.job_id.as_ref().filter(|_| at_start) {
+                crate::heard!(crate::job::finish(
+                    &self.store,
+                    job_id,
+                    &stage,
+                    crate::job::State::Cancelled,
+                    "Stopped before it started.",
+                    "crew errand",
+                ));
+            }
             self.long_work.update(
                 link.watch_id,
                 crate::watching::Outcome::Failed,
@@ -906,20 +925,37 @@ impl<'a> Daemon<'a> {
         let mut out = Vec::new();
         for news in self.crew.settle(t) {
             let Some(link) = self.crew_links.remove(&news.id) else {
+                // Every hand-off keeps a link, so this is an ending nobody
+                // here asked for; say so rather than dropping it unseen.
+                self.log
+                    .info(&format!("crew errand {} ended with no link", news.id));
                 continue;
             };
             if link.label == "backup" && matches!(&news.ending, crew::Ending::Done(Ok(_))) {
                 self.last_backup = t;
             }
             // How it ended, written beside how it began (`errand_stage`).
-            if let (Some(id), Some((stage, _))) = (&link.job_id, errand_stage(link.label)) {
+            if let Some(id) = &link.job_id {
+                let (stage, at_start) = errand_stage(link.label);
                 let (state, detail) = errand_outcome(&news.ending);
                 // A chore only written down when it goes wrong has no record
                 // to close when it went right.
-                let wanted = state != crate::job::State::Succeeded
-                    || errand_stage(link.label).is_some_and(|(_, at_start)| at_start);
+                let wanted = state != crate::job::State::Succeeded || at_start;
                 if wanted {
-                    if let Err(e) = crate::job::end(&self.store, id, stage, state, &detail) {
+                    // A self-work errand has no start record; one that went
+                    // wrong gets one now, marked internal.
+                    if !at_start && is_self_work(link.label) {
+                        crate::heard!(crate::job::begin_as(
+                            &self.store,
+                            id,
+                            &stage,
+                            "started",
+                            true
+                        ));
+                    }
+                    if let Err(e) =
+                        crate::job::finish(&self.store, id, &stage, state, &detail, "crew errand")
+                    {
                         self.log.warn(&format!(
                             "couldn't write down how {} ended: {e}",
                             link.label
@@ -1788,18 +1824,26 @@ impl Daemon<'_> {
     }
 }
 
-/// The long errands that get a durable job record (`job`), as (what the page
-/// calls it, whether a record is written when it starts). Everything else the
-/// crew does is a chore a restart can quietly lose. `research` and builds
-/// already keep their own records, so they are not here, and housekeeping is
-/// only written down if it fails, since a run that went fine is not news.
-fn errand_stage(name: &str) -> Option<(&'static str, bool)> {
+/// What a durable job record (`job`) calls a crew errand, and whether a
+/// record is written when it starts. Every errand has one (21 Oct 2026: it
+/// used to be four names, and anything else was a line in memory that a
+/// restart quietly lost). The few with a name of their own keep it; the rest
+/// are "Background work: <name>". `research` and builds keep their own
+/// records as well, and housekeeping is only written down if it fails, since
+/// a run that went fine is not news.
+fn errand_stage(name: &str) -> (String, bool) {
     match name {
-        "getting-everything" => Some(("Download of what Atlas still needs", true)),
-        "model-piece" => Some(("Model download", true)),
-        "backup" => Some(("Backup", true)),
-        "housekeeping" => Some(("Housekeeping", false)),
-        _ => None,
+        "getting-everything" => ("Download of what Atlas still needs".into(), true),
+        "model-piece" => ("Model download".into(), true),
+        "backup" => ("Backup".into(), true),
+        "housekeeping" => ("Housekeeping".into(), false),
+        other => (
+            format!("Background work: {}", other.replace(['-', '_'], " ")),
+            // Atlas's own working is only written down when it goes wrong,
+            // like housekeeping: its successes are developer noise, not
+            // something the owner asked for (21 Oct 2026).
+            !is_self_work(other),
+        ),
     }
 }
 
@@ -1824,9 +1868,12 @@ fn errand_outcome(ending: &crew::Ending) -> (crate::job::State, String) {
         }
         crew::Ending::Done(Err(why)) => (State::Failed, short(why)),
         crew::Ending::Stopped => (State::Cancelled, "Stopped before it finished.".into()),
+        // Gone without a word is not the same as failed: it may well have
+        // finished its work, so it is left uncertain, not replayed.
         crew::Ending::Vanished => (
-            State::Failed,
-            "It stopped partway through without reporting back.".into(),
+            State::Uncertain,
+            "It stopped partway through without reporting back; check whether it finished before running it again."
+                .into(),
         ),
     }
 }
@@ -1839,6 +1886,8 @@ pub(super) fn cut_off_by_restart(store: &Store) -> Vec<String> {
     match crate::job::reconcile_after_restart(store) {
         Ok(jobs) => jobs
             .into_iter()
+            // Atlas's own working is journalled, not spoken (`is_self_work`).
+            .filter(|job| !job.internal)
             .map(|job| {
                 format!(
                     "The {} job was interrupted by my restart; its result is uncertain, so I won't repeat it automatically.",
@@ -1867,4 +1916,136 @@ fn is_self_work(label: &str) -> bool {
             | "improve"
             | "search-check"
     )
+}
+
+#[cfg(test)]
+mod every_errand_has_a_record_tests {
+    use super::*;
+
+    fn settle_until<F: Fn(&Daemon<'_>) -> bool>(d: &mut Daemon<'_>, done: F) {
+        let started = std::time::Instant::now();
+        while !done(d) && started.elapsed().as_secs() < 20 {
+            d.take_crew_news(clock());
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+    }
+
+    fn records(store: &Store) -> Vec<crate::job::Record> {
+        crate::job::load_checked(store).unwrap_or_default()
+    }
+
+    #[test]
+    fn an_errand_with_any_name_gets_a_record_and_its_ending_is_written() {
+        let root = std::env::temp_dir().join(format!(
+            "atlas-errand-records-{}-{}",
+            std::process::id(),
+            crate::store::now()
+        ));
+        let store = Store::new(&root);
+        let config = crate::config::Config::load(std::path::Path::new("config")).unwrap();
+        let platform = crate::platform::mock::MockPlatform::new(Vec::new());
+        let mut d = Daemon::new(
+            &config,
+            &platform,
+            None,
+            store.clone(),
+            crate::proactive::Proactive::new(crate::proactive::ProactiveConfig::default()),
+        );
+        let ok = d.hand_off_as(
+            "a-made-up-chore",
+            clock(),
+            Box::new(|_| Ok("It is done.".into())),
+            None,
+            SpeakPolicy::ViaWatcher,
+        );
+        assert!(ok.is_some());
+        let at_start = records(&store);
+        assert_eq!(at_start.len(), 1, "no record when the errand began");
+        assert_eq!(at_start[0].stage, "Background work: a made up chore");
+        assert_eq!(at_start[0].state, crate::job::State::Running);
+        assert!(!at_start[0].internal);
+        settle_until(&mut d, |_| {
+            records(&store).iter().all(|r| r.state.terminal())
+        });
+        let ended = records(&store);
+        assert_eq!(ended[0].state, crate::job::State::Succeeded);
+        assert_eq!(ended[0].receipt.as_ref().unwrap().detail, "It is done.");
+
+        // One that fails says so; one that dies without a word is uncertain,
+        // not failed; Atlas's own work is kept but not shown.
+        d.hand_off_as(
+            "another-chore",
+            clock(),
+            Box::new(|_| Err("No luck.".into())),
+            None,
+            SpeakPolicy::ViaWatcher,
+        );
+        d.hand_off_as(
+            "silent-chore",
+            clock(),
+            Box::new(|_| -> std::result::Result<String, String> { panic!("worker died") }),
+            None,
+            SpeakPolicy::ViaWatcher,
+        );
+        d.hand_off_as(
+            "self-test",
+            clock(),
+            Box::new(|_| Ok("Fine.".into())),
+            None,
+            SpeakPolicy::ViaWatcher,
+        );
+        d.hand_off_as(
+            "mutation-sweep",
+            clock(),
+            Box::new(|_| Err("It did not hold.".into())),
+            None,
+            SpeakPolicy::ViaWatcher,
+        );
+        settle_until(&mut d, |d| {
+            let all = records(&store);
+            all.len() == 4
+                && all.iter().all(|r| r.state.terminal())
+                && d.crew.active() == 0
+                && d.crew.queued() == 0
+        });
+        let all = records(&store);
+        let by = |stage: &str| all.iter().find(|r| r.stage == stage).unwrap().clone();
+        assert_eq!(
+            by("Background work: another chore").state,
+            crate::job::State::Failed
+        );
+        let silent = by("Background work: silent chore");
+        assert_eq!(silent.state, crate::job::State::Uncertain);
+        assert!(silent
+            .receipt
+            .unwrap()
+            .detail
+            .contains("check whether it finished"));
+        // Atlas's own work that went fine leaves no record at all; one that
+        // failed leaves a Failed record marked internal.
+        assert!(
+            !all.iter().any(|r| r.stage == "Background work: self test"),
+            "an internal success was written down"
+        );
+        let own = by("Background work: mutation sweep");
+        assert!(own.internal && own.dismissed);
+        assert_eq!(own.state, crate::job::State::Failed);
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn a_named_errand_keeps_its_own_name_and_housekeeping_stays_quiet() {
+        assert_eq!(errand_stage("backup"), ("Backup".to_string(), true));
+        assert_eq!(
+            errand_stage("housekeeping"),
+            ("Housekeeping".to_string(), false)
+        );
+        assert!(errand_stage("zzz-other").1);
+        assert!(
+            !errand_stage("mutation-sweep").1,
+            "internal work is written only on a bad ending"
+        );
+        let (state, _) = errand_outcome(&crew::Ending::Vanished);
+        assert_eq!(state, crate::job::State::Uncertain);
+    }
 }

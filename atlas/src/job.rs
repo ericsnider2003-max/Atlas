@@ -69,6 +69,11 @@ pub struct Record {
     /// it just stops being shown as something still to look at.
     #[serde(default)]
     pub dismissed: bool,
+    /// Atlas working on itself (21 Oct 2026): still written down so it ends
+    /// as done, failed or uncertain like any other work, but it is closed
+    /// already-reviewed so it does not turn up in the owner's lanes.
+    #[serde(default)]
+    pub internal: bool,
 }
 
 impl Record {
@@ -82,6 +87,7 @@ impl Record {
             updated_at: crate::store::now(),
             artifacts: None,
             dismissed: false,
+            internal: false,
         }
     }
 
@@ -130,6 +136,9 @@ impl Record {
             artifacts: self.artifacts.clone(),
         };
         self.receipt = Some(receipt.clone());
+        if self.internal {
+            self.dismissed = true;
+        }
         Ok(receipt)
     }
 
@@ -249,7 +258,19 @@ pub fn begin(
     stage: &str,
     detail: &str,
 ) -> crate::error::Result<()> {
+    begin_as(store, job_id, stage, detail, false)
+}
+
+/// As `begin`, saying whether this is Atlas working on itself (`Record::internal`).
+pub(crate) fn begin_as(
+    store: &crate::store::Store,
+    job_id: &str,
+    stage: &str,
+    detail: &str,
+    internal: bool,
+) -> crate::error::Result<()> {
     let mut record = Record::planned(job_id, stage);
+    record.internal = internal;
     record.transition(State::Running, detail).map_err(|error| {
         crate::error::AtlasError::Io(std::io::Error::new(std::io::ErrorKind::InvalidData, error))
     })?;
@@ -266,6 +287,29 @@ pub fn end(
     state: State,
     detail: &str,
 ) -> crate::error::Result<()> {
+    finish(store, job_id, stage, state, detail, "crew errand")
+}
+
+/// The one way any writer (crew errands, Hub jobs, the remote queue) gives a
+/// job its ending (21 Oct 2026). The terminal set is `Succeeded`, `Failed`,
+/// `Cancelled`, `RolledBack` and `Uncertain` (the "interrupted, check before
+/// repeating" state); a job waiting on the owner is `AwaitingApproval`, which
+/// is not terminal and is set with `Record::transition`. Not a terminal state
+/// is refused; an already-terminal record is left alone; a record that was
+/// never begun is created and closed in one step.
+pub fn finish(
+    store: &crate::store::Store,
+    job_id: &str,
+    stage: &str,
+    state: State,
+    detail: &str,
+    provenance: &str,
+) -> crate::error::Result<()> {
+    if !state.terminal() {
+        return Err(crate::error::AtlasError::Config(
+            "a job ending must be a terminal state".into(),
+        ));
+    }
     let mut records = load_checked(store)?;
     let at = match records.iter().position(|r| r.job_id == job_id) {
         Some(at) => at,
@@ -286,9 +330,9 @@ pub fn end(
     // only through Cancelling, so `finish` alone left a stopped errand's
     // record Running forever.
     let closed = if state == State::Cancelled {
-        records[at].cancel(detail, "crew errand")
+        records[at].cancel(detail, provenance)
     } else {
-        records[at].finish(state, detail, "crew errand")
+        records[at].finish(state, detail, provenance)
     };
     closed.map_err(|error| {
         crate::error::AtlasError::Io(std::io::Error::new(std::io::ErrorKind::InvalidData, error))
@@ -998,5 +1042,28 @@ mod tests {
         assert!(super::load_cached(&store).is_err());
         assert!(super::load_cached(&store).is_err());
         let _ = std::fs::remove_dir_all(root);
+    }
+    #[test]
+    fn one_finish_helper_closes_any_writers_job_and_refuses_a_non_ending() {
+        let root = std::env::temp_dir().join(format!("atlas-job-finish-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root); // unheard-ok: scratch test directory
+        std::fs::create_dir_all(&root).unwrap();
+        let store = crate::store::Store::new(&root);
+        super::begin(&store, "a", "Work", "started").unwrap();
+        assert!(super::finish(&store, "a", "Work", State::Running, "x", "t").is_err());
+        super::finish(&store, "a", "Work", State::Uncertain, "gone quiet", "hub").unwrap();
+        super::begin_as(&store, "b", "Own", "started", true).unwrap();
+        super::finish(&store, "b", "Own", State::Failed, "no", "crew errand").unwrap();
+        let all = load_checked(&store).unwrap();
+        assert_eq!(all[0].state, State::Uncertain);
+        assert_eq!(all[0].receipt.as_ref().unwrap().provenance, "hub");
+        assert!(!all[0].dismissed);
+        assert!(all[1].internal && all[1].dismissed);
+        // An old file with no `internal` field still reads.
+        let old =
+            r#"[{"job_id":"o","state":"running","stage":"s","checkpoint":null,"receipt":null}]"#;
+        let parsed: Vec<Record> = serde_json::from_str(old).unwrap();
+        assert!(!parsed[0].internal);
+        let _ = std::fs::remove_dir_all(&root); // unheard-ok: scratch test directory
     }
 }
