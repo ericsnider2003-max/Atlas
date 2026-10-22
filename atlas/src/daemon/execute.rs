@@ -3327,7 +3327,8 @@ mod tests {
             !records
                 .iter()
                 .any(|r| r.job_id.starts_with("chat:") && r.state == crate::job::State::Succeeded),
-            "{records:?}"
+            "{}",
+            records.iter().map(|r| r.job_id.clone()).collect::<Vec<_>>().join(", ")
         );
     }
 

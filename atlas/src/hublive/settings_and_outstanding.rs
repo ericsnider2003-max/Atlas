@@ -1387,8 +1387,8 @@ mod one_count_tests {
         let o = d.open_work(now);
         assert!(
             !o.drops.waiting.iter().flatten().any(|k| k.starts_with("j:approval:")),
-            "it came back: {:?}",
-            o.drops.waiting
+            "it came back: {}",
+            o.drops.waiting.iter().flatten().cloned().collect::<Vec<_>>().join(", ")
         );
     }
 
@@ -1432,10 +1432,10 @@ mod one_count_tests {
         )
         .unwrap();
         let o = d.open_work(now);
-        assert_eq!(o.failed.len(), 1, "{:?}", o.failed.iter().map(|f| &f.what).collect::<Vec<_>>());
+        assert_eq!(o.failed.len(), 1, "{}", o.failed.iter().map(|f| f.what.to_string()).collect::<Vec<_>>().join(", "));
         assert_eq!(o.failed[0].what, "open a thing");
         assert!(!o.failed[0].when.is_empty(), "a failure says when");
-        assert!(o.waiting.iter().any(|w| w.0.contains("Close Chrome")), "{:?}", o.waiting);
+        assert!(o.waiting.iter().any(|w| w.0.contains("Close Chrome")), "{}", o.waiting.iter().map(|w| w.0.to_string()).collect::<Vec<_>>().join(", "));
         assert!(o.blocked.is_empty(), "a question waiting on you is not Blocked");
         assert!(o.drops.waiting.iter().any(|k| k.as_deref().is_some_and(|k| k.starts_with("j:approval:"))));
     }

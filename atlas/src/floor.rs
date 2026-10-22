@@ -1484,12 +1484,9 @@ pub(crate) fn status_question(raw: &str) -> Option<StatusAsk> {
                 .then_some("backup")
         });
     if subject.is_none() {
-        // Only a short "is it done" / "did that finish" is about the last
-        // job; a longer question about something else is not ours.
-        let pronoun = has(&["it", "that", "this"]);
-        if !(pronoun && w.len() <= 5) {
-            return None;
-        }
+        // "how's it going", "is it done yet" name no job: the existing
+        // what's-running handler answers those, from what is running.
+        return None;
     }
     let detail = w
         .iter()
@@ -1932,7 +1929,6 @@ mod tests {
             ("how's the backup going", Some("backup"), None),
             ("did the backup of Documents finish", Some("backup"), Some("documents")),
             ("has the download finished", Some("download"), None),
-            ("is it done", None, None),
             ("please, is the back up finished?", Some("backup"), None),
         ] {
             let ask = status_question(said).unwrap_or_else(|| panic!("{said:?} not read"));
@@ -1944,6 +1940,9 @@ mod tests {
             "what's the weather",
             "is the report finished being written by the intern in london today",
             "how's the weather going",
+            "how's it going",
+            "is it done",
+            "how's that going",
             "finish the backup",
         ] {
             assert!(status_question(not).is_none(), "{not:?} is not a status question");
