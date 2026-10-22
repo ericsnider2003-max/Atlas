@@ -259,6 +259,16 @@ impl Daemon<'_> {
                 format!("Atlas {} is on trial after replacing {}: {} of {} starts so far haven't got through.", t.new, t.previous, t.starts, crate::upgrade::TRIAL_STARTS)
             }),
             previous: crate::update_apply::previous_build(&root).map(|(v, _)| v),
+            copies: {
+                let found = crate::update_apply::manual_copies(&root);
+                found.first().map(|(name, at)| {
+                    let secs = at
+                        .elapsed()
+                        .map(|d| d.as_secs())
+                        .unwrap_or_default();
+                    (found.len(), name.clone(), crate::freshness::ago(secs))
+                })
+            },
             mode: match crate::update_apply::chosen_mode(&self.store) {
                 Some(AutoUpdate::Automatic) => "on",
                 Some(AutoUpdate::Ask) => "ask",

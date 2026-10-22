@@ -187,7 +187,17 @@ pub fn with_palette(
     match page.rfind("</body>") {
         Some(at) => {
             let overlay = palette_overlay(entries, recent);
-            format!("{}{overlay}{}", &page[..at], &page[at..])
+            let page = format!("{}{overlay}{}", &page[..at], &page[at..]);
+            // The sidebar remembers its place, set right after the sidebar so
+            // it is restored before the page paints. Added here, with the
+            // palette, because the plain shell is script-free by design.
+            match page
+                .find("<nav class=sidebar")
+                .and_then(|n| page[n..].find("</nav>").map(|e| n + e + "</nav>".len()))
+            {
+                Some(end) => format!("{}{SIDEBAR_MEMORY}{}", &page[..end], &page[end..]),
+                None => page,
+            }
         }
         // Not a whole page — an error fragment, or something rendered for a
         // test. Left alone rather than having an overlay bolted to the end of
@@ -547,6 +557,14 @@ pub(super) fn sidebar_html(here: Option<Page>, waiting: usize) -> String {
     out
 }
 
+/// Keeps the sidebar where you left it from one page to the next: how far it
+/// is scrolled, and which of More / Atlas setup you had open. Each page is a
+/// fresh load, so without this the scroll went back to the top and More shut
+/// on every click (Eric, 20 Oct 2026). Saved in the tab's own session storage;
+/// every storage touch is in try/catch, so a browser that refuses it just
+/// behaves as before.
+pub(super) const SIDEBAR_MEMORY: &str = "<script>(function(){    var n=document.querySelector('nav.sidebar');if(!n)return;    var d=n.querySelectorAll('details.more');    try{var o=JSON.parse(sessionStorage.getItem('atlasNavOpen')||'[]');    for(var i=0;i<d.length;i++){if(o[i])d[i].open=true;}    var y=parseInt(sessionStorage.getItem('atlasNavScroll')||'0',10);if(y>0)n.scrollTop=y;}catch(e){}    function save(){try{sessionStorage.setItem('atlasNavScroll',String(n.scrollTop));    var o=[];for(var i=0;i<d.length;i++)o.push(d[i].open);    sessionStorage.setItem('atlasNavOpen',JSON.stringify(o));}catch(e){}}    n.addEventListener('scroll',save);    for(var i=0;i<d.length;i++)d[i].addEventListener('toggle',save);    window.addEventListener('pagehide',save);    })();</script>";
+
 /// Every page, one press away: the phone's Menu, at the end of its one-row
 /// top bar. (On a laptop, a tablet or an unfolded phone the sidebar is this.)
 pub(super) fn menu_html(here: Option<Page>) -> String {
@@ -723,4 +741,36 @@ pub(super) fn tag(w: Weight) -> String {
         _ => "tag",
     };
     format!("<span class=\"{class}\">{}</span>", w.label())
+}
+
+#[cfg(test)]
+mod sidebar_memory_tests {
+    use super::*;
+
+    #[test]
+    fn the_sidebar_remembers_its_scroll_and_which_menus_were_open() {
+        let plain = shell_at(Some(Page::Settings), "Settings", "<p>x</p>");
+        assert!(
+            !plain.to_lowercase().contains("<script"),
+            "the shell stays script-free"
+        );
+        let html = with_palette(
+            plain,
+            &crate::palette::catalogue(),
+            &crate::palette::Recent::default(),
+        );
+        let at = html
+            .find("atlasNavScroll")
+            .expect("the memory is on the page");
+        assert!(
+            at < html.find("<header").unwrap(),
+            "restored before the page paints"
+        );
+        // Every storage touch is guarded.
+        assert_eq!(SIDEBAR_MEMORY.matches("sessionStorage").count(), 4);
+        assert!(SIDEBAR_MEMORY.matches("catch(e)").count() >= 2);
+        // Single braces: it was not put through `format!`.
+        assert!(!SIDEBAR_MEMORY.contains("{{"));
+        assert!(!SIDEBAR_MEMORY.contains("src="), "no external script");
+    }
 }

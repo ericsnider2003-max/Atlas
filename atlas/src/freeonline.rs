@@ -118,12 +118,16 @@ pub struct FreeOnline {
     send: Box<dyn Fn(&str, &str) -> Result<String> + Send + Sync>,
     /// Which service answered last, for "where did that answer come from".
     pub last_answered_by: std::sync::Mutex<Option<&'static str>>,
+    /// True when `send` is the real network (`new`), not a test stand-in.
+    real: bool,
 }
 
 impl FreeOnline {
     /// Through `curl`, which every supported Windows has.
     pub fn new() -> FreeOnline {
-        FreeOnline::with_sender(PROVIDERS.to_vec(), Box::new(send_with_curl))
+        let mut f = FreeOnline::with_sender(PROVIDERS.to_vec(), Box::new(send_with_curl));
+        f.real = true;
+        f
     }
 
     pub fn with_sender(
@@ -135,6 +139,7 @@ impl FreeOnline {
             resting: std::sync::Mutex::new(Vec::new()),
             send,
             last_answered_by: std::sync::Mutex::new(None),
+            real: false,
         }
     }
 
@@ -197,6 +202,11 @@ impl FreeOnline {
                     if let Ok(mut l) = self.last_answered_by.lock().or_else(crate::crash::unpoison)
                     {
                         *l = Some(p.name);
+                    }
+                    // Only the real network counts as the internet working;
+                    // a stand-in sender in a test proves nothing about it.
+                    if self.real {
+                        crate::integrations::note_internet_worked(crate::store::now());
                     }
                     return Ok((scrub.put_back(&text), cut));
                 }
@@ -285,4 +295,16 @@ fn send_with_curl(url: &str, body: &str) -> Result<String> {
         timeout_secs: 190,
     };
     tool.run(&Default::default(), Some(body))
+}
+
+#[cfg(test)]
+mod internet_note_tests {
+    use super::*;
+
+    #[test]
+    fn a_stand_in_sender_does_not_claim_the_internet_worked() {
+        let f = FreeOnline::with_sender(PROVIDERS.to_vec(), Box::new(|_, _| Ok(String::new())));
+        assert!(!f.real);
+        assert!(FreeOnline::new().real);
+    }
 }

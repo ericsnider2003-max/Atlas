@@ -1453,6 +1453,9 @@ pub struct UpdatesView {
     pub trial: Option<String>,
     /// The version kept to go back to.
     pub previous: Option<String>,
+    /// Copies set aside by hand beside Atlas: (how many, newest file name,
+    /// when it was saved in words). Listed only; no automatic way back.
+    pub copies: Option<(usize, String, String)>,
     /// "default", "on", "ask" or "off".
     pub mode: String,
     /// (when, what), latest first.
@@ -1546,7 +1549,9 @@ pub fn updates_page(v: &UpdatesView, notice: Option<&str>) -> String {
     }
     body.push_str("<h2>Going back</h2>");
     match (&v.previous, v.confirming_undo) {
-        (None, _) => body.push_str(&empty("No earlier version is kept here to go back to.")),
+        (None, _) => body.push_str(&empty(
+            "No earlier version is kept here for Atlas to go back to by itself.",
+        )),
         (Some(prev), false) => body.push_str(&format!(
             "<p>Atlas {prev} is kept. <a class=btn href='/hub/updates?confirm=undo'>Go back to Atlas {prev}…</a></p>",
             prev = esc(prev)
@@ -1560,6 +1565,14 @@ pub fn updates_page(v: &UpdatesView, notice: Option<&str>) -> String {
             now = esc(&v.version),
             prev = esc(prev),
         )),
+    }
+    if let Some((n, newest, when)) = &v.copies {
+        body.push_str(&format!(
+            "<p class=note>Earlier copies kept beside Atlas: {n} (newest: {}, saved {}). \
+             Going back to one is a manual step for now.</p>",
+            esc(newest),
+            esc(when)
+        ));
     }
     body.push_str("<h2>How updates go in here</h2><form class=choices method=post action='/hub/updates'>\
                    <input type=hidden name=what value=mode><fieldset><legend>Installing updates</legend>");
@@ -1812,6 +1825,25 @@ pub fn feedback_page(v: &FeedbackView, notice: Option<&str>) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn updates_lists_hand_made_copies_without_offering_a_way_back() {
+        let v = UpdatesView {
+            version: "0.1.0".into(),
+            mode: "default".into(),
+            copies: Some((
+                3,
+                "atlas.exe.before-merge-20261021".into(),
+                "2 hours ago".into(),
+            )),
+            ..UpdatesView::default()
+        };
+        let html = updates_page(&v, None);
+        assert!(html.contains(
+            "Earlier copies kept beside Atlas: 3 (newest: atlas.exe.before-merge-20261021, saved 2 hours ago). Going back to one is a manual step for now."
+        ));
+        assert!(!html.contains("confirm=undo"));
+    }
 
     #[test]
     fn talk_enter_sends_and_shift_enter_adds_a_line() {
