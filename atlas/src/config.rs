@@ -275,6 +275,40 @@ pub struct Config {
     pub edits_that_went_nowhere: Vec<String>,
 }
 
+/// Your hand edits that could not be used, kept from the latest load so the
+/// running Atlas can say so (21 Oct 2026). Before this only `atlas doctor`
+/// read them, so a broken edit meant "I changed it and nothing happened" with
+/// no word from Atlas. One entry per (config folder, file); a load that finds
+/// the edit fine clears it.
+static BROKEN_EDITS: std::sync::Mutex<Vec<(std::path::PathBuf, crate::diagnose::BrokenEdit)>> =
+    std::sync::Mutex::new(Vec::new());
+
+fn note_edit_state(dir: &Path, file: &str, broken: Option<(std::path::PathBuf, String)>) {
+    let mut v = BROKEN_EDITS.lock().unwrap_or_else(|p| p.into_inner());
+    v.retain(|(d, b)| !(d == dir && b.file == file));
+    if let Some((path, reason)) = broken {
+        v.push((
+            dir.to_path_buf(),
+            crate::diagnose::BrokenEdit {
+                file: file.to_string(),
+                path: path.display().to_string(),
+                reason,
+            },
+        ));
+    }
+}
+
+/// The hand edits that Atlas is running without because they can't be read,
+/// from the most recent load. `diagnose` turns these into a health symptom.
+pub fn broken_edits() -> Vec<crate::diagnose::BrokenEdit> {
+    BROKEN_EDITS
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .iter()
+        .map(|(_, b)| b.clone())
+        .collect()
+}
+
 const MAX_YAML_BYTES: u64 = 4 * 1024 * 1024;
 
 fn load_yaml<T: for<'de> Deserialize<'de>>(path: &Path) -> Result<T> {
@@ -325,9 +359,15 @@ fn load_layered<T: for<'de> Deserialize<'de>>(
 ) -> Result<T> {
     let path = dir.join(file);
     let shipped: serde_yaml::Value = load_yaml(&path)?;
+    note_edit_state(dir, file, None);
     let edits = match crate::yourchanges::load_overlay(dir, file) {
         Ok(c) => c,
         Err(e) => {
+            note_edit_state(
+                dir,
+                file,
+                Some((crate::yourchanges::overlay_path(dir, file), e.clone())),
+            );
             edits_unplaced.push(format!("{e} -- none of those edits are in effect"));
             Vec::new()
         }
@@ -367,6 +407,11 @@ fn load_layered<T: for<'de> Deserialize<'de>>(
             Ok(t)
         }
         Err(e) => {
+            note_edit_state(
+                dir,
+                file,
+                Some((crate::yourchanges::overlay_path(dir, file), e.to_string())),
+            );
             edits_unplaced.push(format!(
                 "{}: with your edits the file cannot be read ({e}), so I am running on \
                  the shipped {file} until they are fixed",

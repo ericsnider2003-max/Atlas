@@ -162,7 +162,17 @@ impl Awareness {
                     );
                 }
                 Err(std::sync::mpsc::TryRecvError::Empty) => {}
-                Err(std::sync::mpsc::TryRecvError::Disconnected) => self.walking = None,
+                // The walk's thread ended without an answer (21 Oct 2026):
+                // say so in the index, where a search reads it, and in the
+                // log. The next walk starts on schedule and clears it.
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                    self.walking = None;
+                    index.missed.not_loaded =
+                        Some("my last look through your folders stopped before it finished".into());
+                    crate::heard!(Err::<(), _>(
+                        "the background file scan ended without an answer"
+                    ));
+                }
             }
         }
         let recent_changes = match idx_cfg {

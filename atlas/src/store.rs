@@ -871,7 +871,12 @@ impl Store {
         let r = self.save_unrecorded(name, value, max_bytes, layout);
         if let Err(e) = &r {
             let transient = matches!(e, crate::error::AtlasError::Io(io) if io.kind() == std::io::ErrorKind::WouldBlock);
-            record_failed_save(&self.root, name, &e.to_string(), transient);
+            record_failed_save(
+                &self.root,
+                name,
+                &failed_save_text(&self.root, name, e),
+                transient,
+            );
         } else if let Ok(mut failures) = FAILED_SAVES.lock().or_else(crate::crash::unpoison) {
             failures.retain(|(root, record, _, _)| !(root == &self.root && record == name));
         }
@@ -1086,10 +1091,69 @@ impl Store {
 }
 
 pub fn now() -> u64 {
-    std::time::SystemTime::now()
+    let wall = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())
-        .unwrap_or(0)
+        .unwrap_or(0);
+    crate::hlc::watch_the_clock(wall);
+    wall
+}
+
+/// Is this the operating system saying the disk has no room left?
+/// (21 Oct 2026.) Windows says 112 (disk full) or 39 (handle disk full);
+/// Linux and macOS say 28 (no space left). Matched on the number because the
+/// error kind for a full disk is not the same on every platform.
+pub(crate) fn is_disk_full(e: &std::io::Error) -> bool {
+    matches!(e.raw_os_error(), Some(112) | Some(39) | Some(28))
+}
+
+/// The drive or top folder a path lives on, for saying which disk is full:
+/// "C:" on Windows, "/" elsewhere. `None` for a path with no clear root.
+pub(crate) fn drive_of(path: &Path) -> Option<String> {
+    use std::path::Component;
+    // 21 Oct 2026: a long-path form (backslash backslash ? backslash C:)
+    // is read as the drive it names.
+    let text = path.to_string_lossy();
+    if let Some(rest) = text.strip_prefix(r"\\?\") {
+        if rest.len() >= 2 && rest.as_bytes()[1] == b':' {
+            return Some(rest[..2].to_string());
+        }
+    }
+    match path.components().next()? {
+        Component::Prefix(p) => {
+            let s = p.as_os_str().to_string_lossy().to_string();
+            // A long-path prefix (backslash backslash question backslash) is
+            // not part of the drive's name.
+            Some(s.trim_start_matches(r"\\?\").to_string())
+        }
+        Component::RootDir => Some("/".to_string()),
+        _ => None,
+    }
+}
+
+/// What to say when a file write fails: a full disk gets a plain sentence and
+/// the next step, anything else keeps its own words. `what` is the thing that
+/// could not be written ("the index"), `at` where it was going.
+pub(crate) fn plain_write_failure(what: &str, at: &Path, e: &std::io::Error) -> String {
+    if is_disk_full(e) {
+        let disk = match drive_of(at) {
+            Some(d) => format!("the disk ({d})"),
+            None => "the disk".to_string(),
+        };
+        return format!(
+            "couldn't save {what}: {disk} is full -- free some space and I'll save again"
+        );
+    }
+    format!("couldn't save {what}: {e}")
+}
+
+fn failed_save_text(root: &Path, name: &str, e: &crate::error::AtlasError) -> String {
+    match e {
+        crate::error::AtlasError::Io(io) if is_disk_full(io) => {
+            plain_write_failure(&name.replace('_', " "), root, io)
+        }
+        other => other.to_string(),
+    }
 }
 
 /// How many times, and how far apart, a file that exists but can't be read
@@ -1633,5 +1697,61 @@ mod read_json_tests {
             .unwrap()
             .contains("keep me"));
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    use crate::store::{failed_save_text, is_disk_full};
+    use std::path::Path;
+
+    #[test]
+    fn the_operating_systems_disk_full_numbers_are_recognised() {
+        assert!(is_disk_full(&std::io::Error::from_raw_os_error(112)));
+        assert!(is_disk_full(&std::io::Error::from_raw_os_error(39)));
+        assert!(is_disk_full(&std::io::Error::from_raw_os_error(28)));
+        assert!(!is_disk_full(&std::io::Error::from_raw_os_error(5)));
+    }
+
+    #[test]
+    fn a_failed_save_on_a_full_disk_says_the_disk_is_full_and_what_to_do() {
+        let e = crate::error::AtlasError::Io(std::io::Error::from_raw_os_error(112));
+        let root = if cfg!(windows) {
+            Path::new(r"C:\Atlas\state")
+        } else {
+            Path::new("/var/atlas")
+        };
+        let said = failed_save_text(root, "reading_list", &e);
+        assert!(said.contains("couldn't save reading list"), "{said}");
+        assert!(said.contains("is full"), "{said}");
+        assert!(said.contains("free some space"), "{said}");
+        if cfg!(windows) {
+            assert!(said.contains("(C:)"), "{said}");
+        }
+    }
+
+    #[test]
+    fn other_failures_keep_their_own_words() {
+        let e = crate::error::AtlasError::Io(std::io::Error::from_raw_os_error(5));
+        assert!(!failed_save_text(Path::new("x"), "a", &e).contains("is full"));
+    }
+}
+
+#[cfg(test)]
+mod drive_of_tests {
+    use super::drive_of;
+    use std::path::Path;
+
+    #[test]
+    fn the_drive_of_a_path_is_named_plainly() {
+        #[cfg(windows)]
+        {
+            assert_eq!(
+                drive_of(Path::new(r"C:\Users\eric\x.json")).as_deref(),
+                Some("C:")
+            );
+            assert_eq!(
+                drive_of(Path::new(r"\\?\D:\data\x.json")).as_deref(),
+                Some("D:")
+            );
+        }
+        assert_eq!(drive_of(Path::new("relative/x.json")), None);
     }
 }

@@ -434,6 +434,16 @@ impl<'a> Daemon<'a> {
                 // into a sentence you read — "Hearing is taking 5.2
                 // seconds" was a variant name pretending to be English.
                 .map(|(s, ms)| (s.plain().to_string(), ms as u64)),
+            // The computer's clock jumping in the last day (21 Oct 2026), and
+            // hand edits Atlas is running without because they can't be read.
+            clock_jump: crate::hlc::latest_jump()
+                .filter(|j| crate::store::now().saturating_sub(j.at) < 24 * 3600)
+                .map(|j| crate::diagnose::ClockJump {
+                    backwards: j.backwards,
+                    secs: j.secs,
+                    at_local: crate::localclock::hhmm_here(j.at),
+                }),
+            broken_edits: crate::config::broken_edits(),
             ..crate::diagnose::Vitals::default()
         }
     }
