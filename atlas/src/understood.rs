@@ -202,7 +202,7 @@ fn mentions(said: &str, value: &str) -> bool {
     tail.len() >= 3 && s.contains(tail)
 }
 
-fn example_for(kind: &str) -> &'static str {
+fn example_phrase_for(kind: &str) -> &'static str {
     match kind {
         "folder" => "D:\\Backups",
         "app" => "Notepad",
@@ -301,7 +301,7 @@ pub(crate) fn resolve(kind: &str, what_for: &str, ctx: &Context) -> Resolution {
         return Resolution::Missing {
             question: format!(
                 "I need {what_for}, and nothing I know of fits. Say it, for example {}.",
-                example_for(kind)
+                example_phrase_for(kind)
             ),
         };
     }

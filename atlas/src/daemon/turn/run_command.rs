@@ -674,8 +674,20 @@ impl<'a> Daemon<'a> {
             None if matches!(intent, Intent::Unknown(_)) => self.execute(&intent),
             None => match call {
                 Decision::AutoProceed => self.execute(&intent),
-                Decision::ProceedAndReport => self.execute(&intent),
+                Decision::ProceedAndReport => match self.fill_from_context(&intent) {
+                    Some(reply) => reply,
+                    None => self.execute(&intent),
+                },
                 Decision::AskClarification => {
+                    // The request names no target at all ("open it", "close
+                    // that"): read it against the conversation, the open
+                    // window and what you did lately before asking (21 Oct
+                    // 2026: "ask and think with context"). One clear reading
+                    // is acted on and said; several are offered in one
+                    // question; none says exactly what is missing.
+                    if let Some(reply) = self.fill_from_context(&intent) {
+                        reply
+                    } else {
                     // When the reason we are asking is that the *reading* was
                     // inferred rather than matched, say the reading. The model's
                     // own `say` is what it planned to announce while doing the
@@ -692,6 +704,7 @@ impl<'a> Daemon<'a> {
                     };
                     self.session.ask(&ask);
                     ask
+                    }
                 }
                 // Never ask about something that would be refused anyway: a
                 // question whose "yes" leads to "you can't" is a question wasted,
@@ -1052,8 +1065,119 @@ impl<'a> Daemon<'a> {
             _ => reply,
         };
         self.fold_if_due(_t);
-        self.journal.record_at(Act::Asked, said, true, _t);
+        // How the request ended, not "it was asked" (21 Oct 2026: the tail
+        // wrote ok = true for everything). A request that changes something
+        // gets a durable record that ends done, failed or uncertain through
+        // `job::finish`; one that left a question for you is the saved
+        // approval's record (`job::sync_approvals`); a plain read leaves a
+        // record only when it went wrong.
+        let waiting_on_you = matches!(
+            call,
+            Decision::AskClarification | Decision::RequireApproval
+        ) && self.session.is_waiting();
+        let ended = if waiting_on_you || matches!(intent, Intent::Say(_) | Intent::Ask(_) | Intent::Unknown(_)) {
+            None
+        } else if failed_silent || self.last_turn_failed {
+            Some(crate::job::State::Failed)
+        } else if reply.trim().is_empty() {
+            Some(crate::job::State::Uncertain)
+        } else if crate::policy::classify(&intent) == Decision::AutoProceed {
+            None
+        } else {
+            Some(crate::job::State::Succeeded)
+        };
+        if let Some(state) = ended {
+            use std::sync::atomic::{AtomicU64, Ordering};
+            static SEQ: AtomicU64 = AtomicU64::new(1);
+            let id = format!("chat:{_t}:{}", SEQ.fetch_add(1, Ordering::Relaxed));
+            let stage: String = intent.plain().chars().take(80).collect();
+            let detail: String = if reply.trim().is_empty() {
+                "It said nothing, so whether it happened is not known.".into()
+            } else {
+                reply.chars().take(300).collect()
+            };
+            crate::heard!(crate::job::finish(
+                &self.store,
+                &id,
+                &stage,
+                state,
+                &detail,
+                "chat request"
+            ));
+        }
+        self.journal.record_at(
+            Act::Asked,
+            said,
+            !matches!(
+                ended,
+                Some(crate::job::State::Failed | crate::job::State::Uncertain)
+            ),
+            _t,
+        );
         self.persist();
         reply
+    }
+}
+
+/// What a request is missing, as `understood::resolve` names it: the kind of
+/// thing and what it is for. `None` when it names its target.
+fn missing_target(intent: &Intent) -> Option<(&'static str, &'static str)> {
+    let blank = |s: &String| s.trim().is_empty();
+    match intent {
+        Intent::OpenApp(s) if blank(s) => Some(("app", "which app to open")),
+        Intent::CloseApp(s) if blank(s) => Some(("app", "which app to close")),
+        Intent::FocusApp(s) if blank(s) => Some(("app", "which app to switch to")),
+        Intent::FindFile(s) if blank(s) => Some(("file", "which file to find")),
+        Intent::Message(s) if blank(s) => Some(("person", "who to message")),
+        _ => None,
+    }
+}
+
+/// The same request with its missing target filled in.
+fn with_target(intent: &Intent, value: &str) -> Intent {
+    let v = value.to_string();
+    match intent {
+        Intent::OpenApp(_) => Intent::OpenApp(v),
+        Intent::CloseApp(_) => Intent::CloseApp(v),
+        Intent::FocusApp(_) => Intent::FocusApp(v),
+        Intent::FindFile(_) => Intent::FindFile(v),
+        Intent::Message(_) => Intent::Message(v),
+        other => other.clone(),
+    }
+}
+
+impl<'a> Daemon<'a> {
+    /// Read a request that names no target against the context
+    /// (`understood::resolve`). `None` when it is not missing one. A clear
+    /// reading is carried out with the reading said first, unless the filled
+    /// request is one that must be confirmed (it is then asked, with the
+    /// reading in the question); several readings are one question that
+    /// offers them; none says what is missing.
+    fn fill_from_context(&mut self, intent: &Intent) -> Option<String> {
+        use crate::understood::{resolve, stated, Resolution};
+        let (kind, what_for) = missing_target(intent)?;
+        let ctx = self.resolution_context();
+        let r = resolve(kind, what_for, &ctx);
+        match &r {
+            Resolution::Clear { value, .. } => {
+                let filled = with_target(intent, value);
+                let said = stated(&filled.plain(), &r).unwrap_or_default();
+                match crate::policy::classify(&filled) {
+                    Decision::AutoProceed | Decision::ProceedAndReport => {
+                        let done = self.execute(&filled);
+                        Some(format!("{said} {done}"))
+                    }
+                    _ => {
+                        let q = format!("{said} Shall I go ahead?");
+                        self.session.await_approval(filled, &q);
+                        Some(q)
+                    }
+                }
+            }
+            Resolution::Choose { question, .. } | Resolution::Missing { question } => {
+                self.session.ask(question);
+                Some(question.clone())
+            }
+        }
     }
 }

@@ -33,7 +33,7 @@ const WHY: &str =
     "owned by the reliability session; see docs/HANDOFF_ONE_COMPLETION_PATH_2026-10-21.md";
 
 /// (file under src/, how many generic literals it still holds, why).
-const KNOWN: &[(&str, usize, &str)] = &[("brain.rs", 1, WHY)];
+const KNOWN: &[(&str, usize, &str)] = &[];
 
 fn rs_files(dir: &Path, out: &mut Vec<PathBuf>) {
     let Ok(rd) = std::fs::read_dir(dir) else {

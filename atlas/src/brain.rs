@@ -3339,7 +3339,19 @@ pub fn default_say(i: &Intent) -> String {
         Intent::NameThis(name) => format!("Got it — I'll remember that's {name}."),
         Intent::Recommend => String::new(),
         Intent::AddressAs(_) => String::new(),
-        Intent::Unknown(_) => "I didn't catch that.".into(),
+        // Built from what was heard (21 Oct 2026), never a bare "I didn't
+        // catch that". The daemon's `unrecognised_line` adds the closest
+        // commands where a parser is at hand; this stock line has none.
+        Intent::Unknown(raw) => {
+            let heard: String = raw.trim().chars().take(60).collect();
+            if heard.is_empty() {
+                "I heard nothing to act on. Say a request, like \"open Notepad\" or \"what's on my agenda\".".into()
+            } else {
+                format!(
+                    "I heard \"{heard}\", but it isn't a command I know. Try a plain request, like \"open Notepad\" or \"what's on my agenda\"."
+                )
+            }
+        }
     }
 }
 

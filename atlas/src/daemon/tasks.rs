@@ -61,6 +61,11 @@ pub(crate) struct TaskLoop {
     waiting_for_scan: bool,
     completed: Vec<String>,
     checkpoint_pending: bool,
+    /// Where this loop's record is kept, so dropping it can end the record.
+    store: crate::store::Store,
+    /// `finish_task_job` has dealt with the record (ended it, or left it
+    /// open on purpose for work handed on), so dropping the loop must not.
+    closed: bool,
 }
 
 impl TaskLoop {
@@ -85,7 +90,23 @@ impl TaskLoop {
 
 impl Drop for TaskLoop {
     /// Atlas closing, or the loop dropped: the worker stops at its next step.
+    ///
+    /// A loop dropped while its record is still open ends Uncertain (21 Oct
+    /// 2026): the steps already taken happened and the rest did not, so what
+    /// it came to is not known, and "dropped before it ended" is said rather
+    /// than leaving a Running record that only a restart would sort out. A
+    /// record that already ended (the normal route) is left alone.
     fn drop(&mut self) {
+        if !self.closed && !self.job_id.is_empty() {
+            crate::heard!(crate::job::finish(
+                &self.store,
+                &self.job_id,
+                "task loop",
+                crate::job::State::Uncertain,
+                "dropped before it ended; check what it finished before running it again",
+                "taskloop dropped",
+            ));
+        }
         self.stop.store(true, std::sync::atomic::Ordering::SeqCst);
         crate::doorbell::ring();
     }
@@ -216,10 +237,20 @@ impl<'a> Daemon<'a> {
                 self.log.warn(&format!(
                     "could not read durable task receipts for {job_id}: {error}"
                 ));
+                // Still closed through the one ending helper (21 Oct 2026):
+                // if the journal really cannot be read this fails too and
+                // says so, but a read that only failed once is not left as a
+                // request with no ending.
+                self.close_task_job_anyway(job_id, run, &outcome);
                 self.capture_task_evidence(job_id, &outcome);
                 return;
             }
         };
+        if !records.iter().any(|record| record.job_id == job_id) {
+            // No record was ever kept for this loop: it is written and closed
+            // in one step rather than skipped.
+            self.close_task_job_anyway(job_id, run, &outcome);
+        }
         if let Some(record) = records.iter_mut().find(|record| record.job_id == job_id) {
             if let Ok(output) = crate::artifact::ArtifactRef::new(
                 format!("task-outcome:{job_id}"),
@@ -251,6 +282,59 @@ impl<'a> Daemon<'a> {
             }
         }
         self.capture_task_evidence(job_id, &outcome);
+    }
+
+    /// A loop's record ended by the loop itself, once, so dropping the loop
+    /// afterwards does not end it a second time as uncertain.
+    fn end_task_job(&mut self, tl: &mut TaskLoop, state: crate::job::State, detail: &str) {
+        let detail: String = detail.chars().take(300).collect();
+        if let Err(error) = crate::job::finish(
+            &self.store,
+            &tl.job_id,
+            "task loop",
+            state,
+            &detail,
+            "taskloop ended",
+        ) {
+            self.log.warn(&format!(
+                "could not close task-loop job {}: {error}",
+                tl.job_id
+            ));
+        }
+        tl.closed = true;
+    }
+
+    /// End a loop's record through `job::finish` when the normal route could
+    /// not find or read it. Only a terminal outcome can end it; a loop that
+    /// handed off or is waiting on you is not over.
+    fn close_task_job_anyway(
+        &mut self,
+        job_id: &str,
+        run: &crate::taskloop::Run,
+        outcome: &crate::taskloop::Outcome,
+    ) {
+        use crate::job::State;
+        let state = match outcome {
+            crate::taskloop::Outcome::Done(_) => State::Succeeded,
+            crate::taskloop::Outcome::Failed(_) if run.verdict == crate::taskloop::Verdict::Stopped => {
+                State::Cancelled
+            }
+            crate::taskloop::Outcome::Failed(_) => State::Failed,
+            crate::taskloop::Outcome::Started(_) | crate::taskloop::Outcome::NeedsYou(_) => return,
+        };
+        let detail: String = run.reply.chars().take(300).collect();
+        if let Err(error) = crate::job::finish(
+            &self.store,
+            job_id,
+            "task loop",
+            state,
+            &detail,
+            "taskloop verdict",
+        ) {
+            self.log.warn(&format!(
+                "could not close task-loop job {job_id}: {error}"
+            ));
+        }
     }
 
     fn capture_task_evidence(&self, job_id: &str, outcome: &crate::taskloop::Outcome) {
@@ -811,6 +895,8 @@ impl<'a> Daemon<'a> {
             waiting_for_scan: false,
             completed: Vec::new(),
             checkpoint_pending: false,
+            store: self.store.clone(),
+            closed: false,
         });
         let steps: Vec<String> = plan
             .iter()
@@ -1273,6 +1359,12 @@ impl<'a> Daemon<'a> {
             {
                 e.reply = reply.clone();
             }
+            // Its worker went without a word: not known to have finished.
+            self.end_task_job(
+                &mut tl,
+                crate::job::State::Uncertain,
+                "the worker stopped without finishing; check what was done before asking again",
+            );
             self.persist();
             out.push(reply);
             return out;
@@ -1286,6 +1378,25 @@ impl<'a> Daemon<'a> {
                 tl.started.elapsed().as_millis()
             ));
             let reply = self.parts_answer(&streams);
+            // The record of a request done side by side ends here too (21
+            // Oct 2026: only the step-by-step route closed it).
+            let (state, detail) = if streams
+                .iter()
+                .any(|s| s.state == crate::streams::State::Failed)
+            {
+                (crate::job::State::Failed, "at least one part did not work")
+            } else if streams
+                .iter()
+                .all(|s| s.state == crate::streams::State::Done)
+            {
+                (crate::job::State::Succeeded, "every part finished")
+            } else {
+                (
+                    crate::job::State::Uncertain,
+                    "not every part is known to have finished",
+                )
+            };
+            self.end_task_job(&mut tl, state, &format!("{detail}: {reply}"));
             self.streams = streams;
             if let Some(e) = self
                 .thread
@@ -1313,6 +1424,7 @@ impl<'a> Daemon<'a> {
         ));
         self.finish_steps(&run);
         self.finish_task_job(&tl.job_id, &run);
+        tl.closed = true;
         // The request's line in the conversation ends with the answer, not
         // the plan it started with.
         if let Some(e) = self
@@ -1531,6 +1643,8 @@ impl<'a> Daemon<'a> {
             waiting_for_scan: false,
             completed: Vec::new(),
             checkpoint_pending: false,
+            store: self.store.clone(),
+            closed: false,
         });
         let s = match parts.len() {
             2 => format!("Doing both at once: {}, and {}.", parts[0], parts[1]),

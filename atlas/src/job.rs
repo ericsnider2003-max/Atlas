@@ -11,6 +11,11 @@ const STORE_NAME: &str = "jobs";
 /// The start of every crew-errand record's job id (`Daemon::hand_off_as`),
 /// so the Hub can tell an errand's record from a research or build job.
 pub const ERRAND_PREFIX: &str = "errand:";
+/// A request waiting on the owner's yes or no (21 Oct 2026). One persisted
+/// `AwaitingApproval` record per pending approval, so it shows in the Hub's
+/// needs-you lane and survives a restart. It is only ever a reminder: after a
+/// restart the question is asked again and an old yes is never replayed.
+pub const APPROVAL_PREFIX: &str = "approval:";
 /// A durable receipt journal must not grow with every task forever. Active
 /// jobs are never evicted; terminal history is trimmed oldest-first once the
 /// bounded local journal reaches this limit.
@@ -341,9 +346,26 @@ pub fn finish(
 }
 
 /// Mark an ended job as reviewed, so it leaves the Failed and Interrupted
-/// lanes. `false` when there is no such finished record.
+/// lanes. `false` when there is no such finished record. A saved approval
+/// still waiting is first closed as cancelled (you dropped the question).
 pub fn dismiss(store: &crate::store::Store, job_id: &str) -> crate::error::Result<bool> {
     let mut records = load_checked(store)?;
+    if let Some(waiting) = records.iter_mut().find(|r| {
+        r.job_id == job_id && r.job_id.starts_with(APPROVAL_PREFIX) && !r.state.terminal()
+    }) {
+        waiting
+            .finish(
+                State::Cancelled,
+                "you dropped the question; nothing was done",
+                "dropped from the Hub",
+            )
+            .map_err(|error| {
+                crate::error::AtlasError::Io(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    error,
+                ))
+            })?;
+    }
     let Some(record) = records
         .iter_mut()
         .find(|r| r.job_id == job_id && r.state.terminal())
@@ -353,6 +375,86 @@ pub fn dismiss(store: &crate::store::Store, job_id: &str) -> crate::error::Resul
     record.dismissed = true;
     save(store, &records)?;
     Ok(true)
+}
+
+/// When this process began, for telling an approval it has itself handled
+/// from one an earlier run left.
+fn process_start() -> u64 {
+    static START: std::sync::OnceLock<u64> = std::sync::OnceLock::new();
+    *START.get_or_init(crate::store::now)
+}
+
+/// A short stable key for a question, so the same one asked again is the same
+/// waiting approval.
+pub fn approval_key(kind: &str, what: &str) -> String {
+    let mut h: u64 = 0xcbf29ce484222325;
+    for b in what.trim().bytes() {
+        h ^= u64::from(b);
+        h = h.wrapping_mul(0x100000001b3);
+    }
+    format!("{APPROVAL_PREFIX}{kind}-{h:016x}")
+}
+
+/// Make the saved approvals match what is waiting now (21 Oct 2026). `wanted`
+/// is (key from `approval_key`, the question). A waiting one gets a
+/// `NeedsYou` (`AwaitingApproval`) record; one that is no longer waiting is
+/// closed `Cancelled` ("answered or withdrawn"). A record an earlier run left
+/// is kept until the question is asked again and answered, you drop it, or it
+/// is a day old: this run has no yes to give it, and must never replay one.
+/// Returns whether anything was written.
+pub fn sync_approvals(
+    store: &crate::store::Store,
+    wanted: &[(String, String)],
+) -> crate::error::Result<bool> {
+    let now = crate::store::now();
+    let mut records = load_checked(store)?;
+    let mut changed = false;
+    for (key, question) in wanted {
+        let open = records
+            .iter_mut()
+            .find(|r| r.job_id.starts_with(key.as_str()) && !r.state.terminal());
+        match open {
+            // Asked again after a restart: the record is this run's now.
+            Some(r) if r.updated_at < process_start() => {
+                r.updated_at = now;
+                changed = true;
+            }
+            Some(_) => {}
+            None => {
+                let stage: String = question.chars().take(160).collect();
+                let mut r = Record::planned(format!("{key}:{now}"), stage);
+                // unheard-ok: Planned to AwaitingApproval is always allowed
+                let _ = r.transition(State::AwaitingApproval, "waiting for your yes or no");
+                r.checkpoint = Some(
+                    "Waiting for your yes or no. If Atlas restarts it asks again; an old yes is never replayed."
+                        .into(),
+                );
+                records.push(r);
+                changed = true;
+            }
+        }
+    }
+    for r in records.iter_mut().filter(|r| {
+        r.job_id.starts_with(APPROVAL_PREFIX)
+            && r.state == State::AwaitingApproval
+            && !wanted.iter().any(|(k, _)| r.job_id.starts_with(k.as_str()))
+    }) {
+        let ours = r.updated_at >= process_start();
+        let old = r.updated_at.saturating_add(86_400) < now;
+        if ours || old {
+            // unheard-ok: AwaitingApproval to Cancelled is always allowed
+            let _ = r.finish(
+                State::Cancelled,
+                "answered, or no longer waiting; nothing is replayed from it",
+                "approval sync",
+            );
+            changed = true;
+        }
+    }
+    if changed {
+        save(store, &records)?;
+    }
+    Ok(changed)
 }
 
 pub fn save(store: &crate::store::Store, records: &[Record]) -> crate::error::Result<()> {
@@ -468,6 +570,11 @@ fn reconcile_after_restart_except(
     let mut changed = Vec::new();
     for record in &mut records {
         if record.state.terminal() || Some(record.job_id.as_str()) == except_job_id {
+            continue;
+        }
+        // A question waiting on you is not work that was cut off: it stays
+        // for you to see and is asked again, never answered for you.
+        if record.job_id.starts_with(APPROVAL_PREFIX) && record.state == State::AwaitingApproval {
             continue;
         }
         record
@@ -1064,6 +1171,50 @@ mod tests {
             r#"[{"job_id":"o","state":"running","stage":"s","checkpoint":null,"receipt":null}]"#;
         let parsed: Vec<Record> = serde_json::from_str(old).unwrap();
         assert!(!parsed[0].internal);
+        let _ = std::fs::remove_dir_all(&root); // unheard-ok: scratch test directory
+    }
+
+    #[test]
+    fn a_waiting_approval_is_a_needs_you_record_that_survives_a_restart_and_is_never_replayed() {
+        let root = std::env::temp_dir().join(format!("atlas-job-approval-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root); // unheard-ok: scratch test directory
+        std::fs::create_dir_all(&root).unwrap();
+        let store = crate::store::Store::new(&root);
+        let key = super::approval_key("chat", "Close Chrome? Go ahead?");
+        let wanted = vec![(key.clone(), "Close Chrome? Go ahead?".to_string())];
+        assert!(super::sync_approvals(&store, &wanted).unwrap());
+        // The same question again is the same record.
+        assert!(!super::sync_approvals(&store, &wanted).unwrap());
+        let all = load_checked(&store).unwrap();
+        assert_eq!(all.len(), 1);
+        assert_eq!(all[0].state, State::AwaitingApproval);
+        assert!(all[0].job_id.starts_with(super::APPROVAL_PREFIX));
+        // A restart is not the end of a question: it is neither turned into
+        // an interrupted job nor answered.
+        assert!(super::reconcile_after_restart(&store).unwrap().is_empty());
+        assert_eq!(
+            load_checked(&store).unwrap()[0].state,
+            State::AwaitingApproval
+        );
+        // Answered or withdrawn in this run: closed.
+        assert!(super::sync_approvals(&store, &[]).unwrap());
+        assert_eq!(load_checked(&store).unwrap()[0].state, State::Cancelled);
+        // Dropping a waiting one from the Hub closes it and keeps it.
+        let other = super::approval_key("sched", "1:backup");
+        super::sync_approvals(&store, &[(other, "Scheduled: backup. Go ahead?".into())]).unwrap();
+        let id = load_checked(&store)
+            .unwrap()
+            .into_iter()
+            .find(|r| !r.state.terminal())
+            .unwrap()
+            .job_id;
+        assert!(super::dismiss(&store, &id).unwrap());
+        let closed = load_checked(&store)
+            .unwrap()
+            .into_iter()
+            .find(|r| r.job_id == id)
+            .unwrap();
+        assert!(closed.state == State::Cancelled && closed.dismissed);
         let _ = std::fs::remove_dir_all(&root); // unheard-ok: scratch test directory
     }
 }

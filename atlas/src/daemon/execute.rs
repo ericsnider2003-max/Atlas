@@ -3180,20 +3180,28 @@ impl<'a> Daemon<'a> {
         }
         // (kind, value) -> (times, newest)
         let mut seen: HashMap<(String, String), (u32, u64)> = HashMap::new();
-        let mut note = |text: &str, at: u64| {
+        let mut note = |text: &str, at: u64, paths_only: bool| {
             for (k, v) in crate::understood::targets_in(text) {
+                if paths_only && k != "folder" && k != "file" {
+                    continue;
+                }
                 let e = seen.entry((k, v)).or_insert((0, 0));
                 e.0 += 1;
                 e.1 = e.1.max(at);
             }
         };
+        // What you said, and what Atlas answered. From its answers only the
+        // paths (21 Oct 2026): a folder or file it names is one it used, but
+        // an app named in an offer ("I can close Google Chrome, then ...") is
+        // not one you chose, and read as one it put "then" and "Google" up as
+        // the app you meant by "close it".
         for t in &turns[from..] {
-            note(&t.said, t.at);
-            note(&t.reply, t.at);
+            note(&t.said, t.at, false);
+            note(&t.reply, t.at, true);
         }
         for e in self.journal.events.iter().rev().take(50) {
             if !e.kind.internal() {
-                note(&e.what, e.at);
+                note(&e.what, e.at, false);
             }
         }
         for ((k, v), (n, at)) in seen {

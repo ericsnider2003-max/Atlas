@@ -524,9 +524,11 @@ struct CrewLink {
     /// needs this; the housekeeping chores don't.
     topic: Option<String>,
     speak: SpeakPolicy,
-    /// The durable job record this errand writes (`job`), for the long
-    /// errands a restart must not make vanish: downloads, backups. `None`
-    /// for the many chores that don't need one.
+    /// The durable job record this errand writes (`job`). Always set since 21
+    /// Oct 2026: every errand gets one, ended by `take_crew_news` through
+    /// `job::finish`. Whether it is written at the start or only if the
+    /// errand goes wrong (Atlas's own housekeeping and self-work) is
+    /// `errand_stage`'s call, not whether this is set.
     job_id: Option<String>,
 }
 

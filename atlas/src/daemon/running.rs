@@ -259,6 +259,30 @@ impl<'a> Daemon<'a> {
                     at: crate::store::now(),
                 });
             }
+            // Each approval waiting is also a durable NeedsYou record, so the
+            // Hub shows it and a restart does not lose that it was asked
+            // (21 Oct 2026). A scheduled job parked for approval is one too,
+            // whether or not Atlas was Supervised enough to say so aloud.
+            let mut wanted: Vec<(String, String)> = Vec::new();
+            for j in self
+                .scheduler
+                .jobs
+                .iter()
+                .filter(|j| j.state == crate::scheduler::JobState::AwaitingApproval)
+            {
+                let q = format!("Scheduled: {}. Go ahead?", j.command);
+                wanted.push((crate::job::approval_key("sched", &format!("{}:{}", j.id, j.command)), q));
+            }
+            for (_, d) in self.session.all_approvals() {
+                if !wanted.iter().any(|(_, q)| *q == d) {
+                    wanted.push((crate::job::approval_key("chat", &d), d));
+                }
+            }
+            note(
+                &mut failed,
+                "approval_records",
+                crate::job::sync_approvals(&self.store, &wanted).map(|_| ()),
+            );
             note(
                 &mut failed,
                 "left_waiting",

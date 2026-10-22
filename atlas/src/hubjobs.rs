@@ -73,6 +73,13 @@ pub struct Job {
     finished: Option<u64>,
 }
 
+impl Job {
+    /// Wall-clock seconds when it ended; `None` while it runs.
+    pub fn finished_at(&self) -> Option<u64> {
+        self.finished
+    }
+}
+
 /// Every hub job, by number. Shared with the crew threads doing them.
 #[derive(Debug)]
 pub struct Jobs {
@@ -239,18 +246,24 @@ impl Jobs {
     }
 
     /// Every hub job that ended badly and is still remembered, newest first,
-    /// as (number, what it was doing, why it failed). Reads only; nothing is
+    /// as (number, what it was doing, why it failed, when). Reads only; nothing is
     /// marked shown. Outstanding's Failed lane uses it (20 Oct 2026: a hub
     /// button's job that failed was only ever a one-off line on its own page).
-    pub fn failures(&self) -> Vec<(u64, String, String)> {
+    pub fn failures(&self) -> Vec<(u64, String, String, Option<u64>)> {
         let g = self.held();
         g.1.iter()
             .rev()
             .filter_map(|(id, job)| match &job.state {
-                State::Failed(why) => Some((*id, job.label.clone(), why.clone())),
+                State::Failed(why) => Some((*id, job.label.clone(), why.clone(), job.finished)),
                 _ => None,
             })
             .collect()
+    }
+
+    /// Every job remembered, newest first, for answering "is it finished?"
+    /// from what is recorded. Reads only; nothing is marked shown.
+    pub fn snapshot(&self) -> Vec<Job> {
+        self.held().1.values().rev().cloned().collect()
     }
 
     /// Answers for `page` not shown yet, marked shown.

@@ -49,6 +49,19 @@ enum PartOutcome {
     Refused,
 }
 
+/// How a run of several parts ended, for its job record.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RunEnd {
+    /// Every part happened.
+    Done,
+    /// It stopped on a question or a yes for you.
+    Asked,
+    /// A part did not happen.
+    Failed,
+    /// Never reached an ending: the run was cut short.
+    Dropped,
+}
+
 impl<'a> Daemon<'a> {
     /// Carry out the parts `splitter::spoken_steps` read, in order, and say
     /// in one reply what was done.
@@ -68,12 +81,60 @@ impl<'a> Daemon<'a> {
         }
         let thread_had = self.thread.recent.len();
         let turns_had = self.session.turns.len();
-        let reply = self.carry_out_parts(&steps, t);
+        // A request of several parts is one request and is written down as
+        // one (21 Oct 2026): begun here, ended by how the parts came out. A
+        // run that stopped on a question is the saved approval's record
+        // (`job::sync_approvals`); one that ended on a part that did not
+        // happen is Failed; one dropped part-way is Uncertain.
+        static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+        let job_id = format!(
+            "spoken:{t}:{}",
+            SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+        );
+        let stage = format!("Several things at once ({} parts)", steps.len());
+        crate::heard!(crate::job::begin_as(
+            &self.store,
+            &job_id,
+            &stage,
+            &said.chars().take(120).collect::<String>(),
+            false
+        ));
+        let mut end = RunEnd::Dropped;
+        let reply = self.carry_out_parts(&steps, t, &mut end);
+        let (state, detail) = match end {
+            RunEnd::Done => (Some(crate::job::State::Succeeded), "every part finished"),
+            RunEnd::Failed => (Some(crate::job::State::Failed), "a part did not happen"),
+            // The question is its own record (a saved approval, in the Hub's
+            // needs-you lane); this one is closed so it is not left Running,
+            // and what was left undone is named in the reply.
+            RunEnd::Asked => (
+                Some(crate::job::State::Cancelled),
+                "stopped to ask you; the parts after it are not done until you answer and ask again",
+            ),
+            RunEnd::Dropped => (
+                Some(crate::job::State::Uncertain),
+                "dropped before it ended; check what it finished",
+            ),
+        };
+        if let Some(state) = state {
+            let detail = format!(
+                "{detail}: {}",
+                reply.chars().take(240).collect::<String>()
+            );
+            crate::heard!(crate::job::finish(
+                &self.store,
+                &job_id,
+                &stage,
+                state,
+                &detail,
+                "spoken steps"
+            ));
+        }
         self.keep_as_one_turn(said, &reply, thread_had, turns_had, t);
         reply
     }
 
-    fn carry_out_parts(&mut self, steps: &[SpokenStep], t: u64) -> String {
+    fn carry_out_parts(&mut self, steps: &[SpokenStep], t: u64, end: &mut RunEnd) -> String {
         let mut done: Vec<String> = Vec::new();
         // Outside text read so far in this run (see the module comment):
         // `run_command` clears the session flag for every part, because each
@@ -104,6 +165,7 @@ impl<'a> Daemon<'a> {
                     },
                     Resolution::Ambiguous(q) => {
                         self.session.ask(&q);
+                        *end = RunEnd::Asked;
                         return finish_spoken_steps(&done, &q, &rest, true);
                     }
                     Resolution::Unchanged(_) => step.clone(),
@@ -151,9 +213,11 @@ impl<'a> Daemon<'a> {
                                 resolved.words
                             )
                         };
+                        *end = RunEnd::Failed;
                         return finish_spoken_steps(&done, &line, &rest, false);
                     }
                 };
+                *end = RunEnd::Asked;
                 return finish_spoken_steps(&done, &q, &rest, true);
             }
             self.execution_receipt = None;
@@ -195,13 +259,23 @@ impl<'a> Daemon<'a> {
             };
             match outcome {
                 PartOutcome::Done => done.push(reply),
-                PartOutcome::Asked => return finish_spoken_steps(&done, &reply, &rest, true),
+                PartOutcome::Asked => {
+                    *end = RunEnd::Asked;
+                    return finish_spoken_steps(&done, &reply, &rest, true);
+                }
                 // The last part's own words say how it went.
-                _ if rest.is_empty() => done.push(reply),
+                _ if rest.is_empty() => {
+                    done.push(reply);
+                    *end = RunEnd::Failed;
+                }
                 PartOutcome::Failed | PartOutcome::Refused => {
-                    return finish_spoken_steps(&done, &reply, &rest, false)
+                    *end = RunEnd::Failed;
+                    return finish_spoken_steps(&done, &reply, &rest, false);
                 }
             }
+        }
+        if *end == RunEnd::Dropped {
+            *end = RunEnd::Done;
         }
         done.join(" ")
     }

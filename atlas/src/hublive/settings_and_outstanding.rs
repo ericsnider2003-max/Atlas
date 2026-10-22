@@ -144,7 +144,9 @@ impl Daemon<'_> {
     /// disagree. It reads memory plus one cached durable-job file
     /// (`job::load_cached`), so it is cheap enough for the pill on every page.
     pub(super) fn open_work(&self, now: u64) -> hub::Open {
-        /// How long a failure stays in the Failed lane unless dismissed.
+        /// How long a failed scheduled job stays in the Failed lane: this page
+        /// cannot drop it, so it ages out. Everything else that failed stays
+        /// until dismissed.
         const RECENT_SECS: u64 = 24 * 3600;
         /// What an interrupted item says about itself, so nobody reads a
         /// restart as a failure or as a success.
@@ -247,10 +249,10 @@ impl Daemon<'_> {
             });
             drops.interrupted.push(Some(format!("t:{}", task.id)));
         }
+        // A failed task stays until it is dropped (21 Oct 2026); only a
+        // scheduled job, which this page cannot take off, still ages out.
         for task in self.queue.tasks.iter().filter(|task| {
-            task.state == crate::lanes::TaskState::Failed
-                && !task.interrupted
-                && task.created.saturating_add(RECENT_SECS) >= clock
+            task.state == crate::lanes::TaskState::Failed && !task.interrupted
         }) {
             failed.push(hub::Ended {
                 what: sentence(&task.command),
@@ -307,6 +309,12 @@ impl Daemon<'_> {
         };
         for job in durable_jobs {
             use crate::job::State as S;
+            // Atlas working on itself is written down so it ends as done,
+            // failed or uncertain like anything else, but it is not the
+            // owner's to look at (21 Oct 2026): no lane shows it.
+            if job.internal {
+                continue;
+            }
             let name = durable_name(&job);
             let said = job.receipt.as_ref().map(|r| r.detail.clone());
             let artifact_note = job
@@ -334,9 +342,10 @@ impl Daemon<'_> {
                     });
                     drops.interrupted.push(Some(format!("j:{}", job.job_id)));
                 }
-                S::Failed
-                    if !job.dismissed && job.updated_at.saturating_add(RECENT_SECS) >= now =>
-                {
+                // A failure stays until it is dismissed (21 Oct 2026), however
+                // old: a request that failed overnight is still one the owner
+                // has not looked at. Its time is shown beside it.
+                S::Failed if !job.dismissed => {
                     failed.push(hub::Ended {
                         what: name,
                         detail: format!(
@@ -348,13 +357,33 @@ impl Daemon<'_> {
                     });
                     drops.failed.push(Some(format!("j:{}", job.job_id)));
                 }
-                S::Succeeded if job.updated_at >= today => {
+                S::Succeeded if !job.dismissed && job.updated_at >= today => {
                     done.push(hub::Ended {
                         what: name,
                         detail: said.unwrap_or_default(),
                         when: crate::localclock::hhmm_here(job.updated_at),
                         at: job.updated_at,
                     });
+                }
+                // Waiting on the owner's yes or no (21 Oct 2026): its own lane,
+                // not Blocked after fifteen quiet minutes. A saved approval is
+                // re-asked after a restart, never replayed, so it stays here
+                // until it is answered.
+                S::AwaitingApproval => {
+                    waiting.push((
+                        name,
+                        job.checkpoint
+                            .clone()
+                            .or(said.clone())
+                            .unwrap_or_else(|| "Asked, and not answered yet.".into()),
+                        hub::Page::Outstanding.href().to_string(),
+                    ));
+                    // A saved approval can be dropped; that closes it (`job::dismiss`).
+                    drops.waiting.push(
+                        job.job_id
+                            .starts_with(crate::job::APPROVAL_PREFIX)
+                            .then(|| format!("j:{}", job.job_id)),
+                    );
                 }
                 // Heavy self-repair work (`heavywork`): running, or paused and
                 // waiting for you to be away. It writes its record every
@@ -396,12 +425,12 @@ impl Daemon<'_> {
         }
         // A hub button's job that failed (`hubjobs`), including one a restart
         // cut off, which comes back as a failure with its own explanation.
-        for (_id, label, why) in self.hub_jobs.failures() {
+        for (_id, label, why, ended) in self.hub_jobs.failures() {
             failed.push(hub::Ended {
                 what: sentence(&label),
                 detail: why,
-                when: String::new(),
-                at: clock,
+                when: ended.map(crate::localclock::hhmm_here).unwrap_or_default(),
+                at: ended.unwrap_or(clock),
             });
             // Not droppable here: the page that started it already showed it,
             // and it leaves by itself.
@@ -879,6 +908,9 @@ impl Daemon<'_> {
 /// stage with "job" after it. The job number is for the receipt, not for you.
 fn durable_name(job: &crate::job::Record) -> String {
     if job.job_id.starts_with(crate::job::ERRAND_PREFIX)
+        || job.job_id.starts_with(crate::job::APPROVAL_PREFIX)
+        || job.job_id.starts_with("chat:")
+        || job.job_id.starts_with("spoken:")
         || job.job_id.starts_with(crate::heavywork::JOB_PREFIX)
     {
         job.stage.clone()
@@ -1285,6 +1317,54 @@ mod one_count_tests {
             .unwrap()
             .iter()
             .any(|r| r.job_id == "errand:housekeeping:1:1" && r.dismissed));
+    }
+
+    #[test]
+    fn lanes_skip_internal_keep_old_failures_and_give_needs_you_its_own_lane() {
+        let store = scratch("lanes");
+        let config = crate::config::Config::load(std::path::Path::new("config")).unwrap();
+        let platform = crate::platform::mock::MockPlatform::new(Vec::new());
+        let mut d = Daemon::new(
+            &config,
+            &platform,
+            None,
+            store.clone(),
+            crate::proactive::Proactive::new(crate::proactive::ProactiveConfig::default()),
+        );
+        let now = crate::store::now();
+        // Atlas working on itself, failed: not the owner's to look at.
+        crate::job::begin_as(&store, "errand:self-fix:1:1", "Self fix", "started", true).unwrap();
+        crate::job::finish(
+            &store,
+            "errand:self-fix:1:1",
+            "Self fix",
+            crate::job::State::Failed,
+            "no",
+            "t",
+        )
+        .unwrap();
+        // A request that failed three days ago is still there, undismissed.
+        let mut old = crate::job::Record::planned("chat:1:1", "open a thing");
+        old.transition(crate::job::State::Running, "started").unwrap();
+        old.finish(crate::job::State::Failed, "it did not open", "t").unwrap();
+        old.updated_at = now - 3 * 86_400;
+        crate::job::upsert(&store, old).unwrap();
+        // A saved approval: its own lane, with a way to drop it.
+        crate::job::sync_approvals(
+            &store,
+            &[(
+                crate::job::approval_key("chat", "Close Chrome? Go ahead?"),
+                "Close Chrome? Go ahead?".into(),
+            )],
+        )
+        .unwrap();
+        let o = d.open_work(now);
+        assert_eq!(o.failed.len(), 1, "{:?}", o.failed.iter().map(|f| &f.what).collect::<Vec<_>>());
+        assert_eq!(o.failed[0].what, "open a thing");
+        assert!(!o.failed[0].when.is_empty(), "a failure says when");
+        assert!(o.waiting.iter().any(|w| w.0.contains("Close Chrome")), "{:?}", o.waiting);
+        assert!(o.blocked.is_empty(), "a question waiting on you is not Blocked");
+        assert!(o.drops.waiting.iter().any(|k| k.as_deref().is_some_and(|k| k.starts_with("j:approval:"))));
     }
 
     #[test]
