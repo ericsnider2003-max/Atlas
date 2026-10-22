@@ -767,7 +767,13 @@ pub fn read_spoken(said: &str) -> Option<(&'static str, String, String, String)>
             g
         };
         let g = g.strip_suffix(" group").unwrap_or(g).trim();
-        (!g.is_empty()).then(|| g.to_string())
+        // A group is a short name, not a sentence (22 Oct 2026: "remove the
+        // older version from drop box and change drop box back to online
+        // only. You are filling my computer memory ..." took the rest of
+        // the paragraph as the group's name).
+        let a_name = g.split_whitespace().count() <= 4
+            && !g.contains(['.', ',', ';', '!', '?']);
+        (!g.is_empty() && a_name).then(|| g.to_string())
     };
     let cut = |from: usize, sep: &str| -> Option<(String, String)> {
         let rest = &t[from..];

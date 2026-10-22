@@ -1691,6 +1691,22 @@ pub(crate) fn fits_the_command(intent: &str, phrase: &str, rest: &str) -> bool {
             names_code(&r)
         }
         "build_it" => true,
+        // A phrase that starts a long message is not the command unless the
+        // command is the message (22 Oct 2026, found on real messages:
+        // "Are you working the Atlas direction and recovery charter?" ran
+        // the self-check; "test everything you can ... or create a handoff
+        // ... if you fail" ran the self-test; a paragraph of complaint that
+        // began "remove ... from drop box and change drop box back ..."
+        // became a group change). What may follow is a short tail
+        // ("right", "properly"), never a new subject or a second clause.
+        "self_check" => {
+            words <= 3
+                && !has(&[
+                    "the", "on", "and", "or", "with", "for", "my", "a", "an", "if", "so",
+                ])
+        }
+        "self_test" => words <= 5 && !has(&["or", "if", "and", "then", "so", "but"]),
+        "work_on_yourself" | "machine_health" | "change_group" => words <= 14,
         _ => true,
     }
 }

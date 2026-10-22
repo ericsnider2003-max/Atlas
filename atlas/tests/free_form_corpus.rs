@@ -1239,3 +1239,63 @@ fn free_form_a_compound_ages_the_taint_as_one_turn() {
     assert!(d.session.tainted_by_outside);
     assert!(reply.contains("You asked for this right after I read"), "{reply}");
 }
+
+/// Phrase-table misfires found on real messages (22 Oct 2026). A phrase at
+/// the start of, or a keyword inside, a long message is not that command
+/// unless the command is the message. None of these may act: each is
+/// `Unknown`, which goes to the model or the floor's honest reply.
+#[test]
+fn free_form_a_long_message_that_mentions_a_command_is_not_that_command() {
+    use atlas::intent::Intent;
+    let p = parser();
+    for said in [
+        // read as a group change: "remove X from <the rest of the paragraph>"
+        "Remove the older version from drop box and change drop box back to online only. You are filling my computer memory that i just corrected yesterday.",
+        // read as the machine check: keywords "memory" and "full" in a complaint
+        "Issue with not having my own, Atlas isn't running them properly meaning they don't run right. Barely load at all, cut out, take almost several minutes to respond when memory is almost full, doesn't even process information correct",
+        // read as a self-repair with no object
+        "Fix the issues",
+        "Fix the problems",
+        "Correct the issues",
+        // a question about the subject, read as the command
+        "Are you working the Atlas direction and recovery charter?",
+        "Are you working on the charter we wrote?",
+        // a long ask that opens with "test everything"
+        "Ok so test everything you can in a real world situation or create a complete handoff for me to attempt in Claude if you fail",
+        "Test everything in the garden and then tell me if the sprinkler works",
+        // near variants
+        "Remove the old backup from the shared folder and put it back online only. It is filling my disk.",
+        "My laptop has been awful lately, it barely loads anything, takes minutes to respond and the memory is nearly full all the time even when nothing is open",
+    ] {
+        let got = p.parse(said);
+        assert!(
+            matches!(got, Intent::Unknown(_)),
+            "{said:?} should not act, read as {got:?}"
+        );
+    }
+}
+
+/// The real commands the guards must leave alone.
+#[test]
+fn free_form_the_guards_leave_real_commands_alone() {
+    use atlas::intent::Intent;
+    let p = parser();
+    assert_eq!(p.parse("Ok please continue"), Intent::Resume);
+    assert!(matches!(
+        p.parse("Research github repos that will allow claude code to watch videos. /usage-max:usage-max"),
+        Intent::Research(_)
+    ));
+    assert_eq!(p.parse("are you working"), Intent::SelfCheck);
+    assert_eq!(p.parse("are you working right"), Intent::SelfCheck);
+    assert_eq!(p.parse("test everything"), Intent::SelfTest);
+    assert_eq!(p.parse("fix yourself"), Intent::WorkOnYourself(String::new()));
+    assert!(matches!(
+        p.parse("fix the issues found in the self test"),
+        Intent::WorkOnYourself(_)
+    ));
+    assert!(matches!(p.parse("add Sam to family"), Intent::ChangeGroup(_)));
+    assert!(matches!(
+        p.parse("remove Sam from the family group"),
+        Intent::ChangeGroup(_)
+    ));
+}
