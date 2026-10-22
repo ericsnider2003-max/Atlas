@@ -3309,6 +3309,28 @@ mod tests {
         assert_eq!(d.context_question("close it", "Which app?"), "Which app?");
     }
 
+    /// 22 Oct 2026: a request that ended in a question is not recorded as
+    /// done.
+    #[test]
+    fn a_request_that_asked_which_one_is_not_recorded_as_succeeded() {
+        let cfg = crate::config::Config::load(std::path::Path::new("config")).unwrap();
+        let p = MockPlatform::new(vec![]);
+        let mut d = daemon_with(&cfg, &p, "asked-not-done");
+        d.journal
+            .record_at(crate::activity::Kind::Asked, "opened Foo", true, 900);
+        d.journal
+            .record_at(crate::activity::Kind::Asked, "opened Bar", true, 901);
+        let reply = d.turn("close it", 1_000);
+        assert!(d.session.is_waiting(), "{reply}");
+        let records = crate::job::load_checked(&d.store).unwrap();
+        assert!(
+            !records
+                .iter()
+                .any(|r| r.job_id.starts_with("chat:") && r.state == crate::job::State::Succeeded),
+            "{records:?}"
+        );
+    }
+
     #[test]
     fn the_context_reads_the_last_things_said_and_done() {
         let cfg = crate::config::Config::load(std::path::Path::new("config")).unwrap();

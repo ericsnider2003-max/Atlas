@@ -541,11 +541,19 @@ fn bound(records: &mut Vec<Record>) -> crate::error::Result<()> {
         .filter(|record| record.state.terminal())
         .cloned()
         .collect();
-    terminal.sort_by_key(|record| record.updated_at);
+    // 22 Oct 2026: oldest first, but what is already reviewed or ended well
+    // (dismissed, Cancelled, Succeeded) goes before anything you have not
+    // looked at: an undismissed Failed or Uncertain is what you still need to
+    // see, and must not be evicted by a run of routine successes.
+    let disposable = |record: &Record| {
+        record.dismissed || matches!(record.state, State::Cancelled | State::Succeeded)
+    };
+    terminal.sort_by_key(|record| (!disposable(record), record.updated_at));
     let keep_terminal = MAX_RECORDS - active;
     if terminal.len() > keep_terminal {
         terminal.drain(..terminal.len() - keep_terminal);
     }
+    terminal.sort_by_key(|record| record.updated_at);
     records.clear();
     records.extend(keep_active);
     records.extend(terminal);
@@ -1013,6 +1021,28 @@ mod tests {
             .iter()
             .any(|record| record.job_id == "still-running"));
         assert!(!records.iter().any(|record| record.job_id == "done-0"));
+    }
+
+    /// 22 Oct 2026: an old undismissed Failed record outlives newer successes.
+    #[test]
+    fn the_bound_evicts_succeeded_before_an_unreviewed_failure() {
+        let mut records = Vec::new();
+        let mut failed = Record::planned("old-failed", "work");
+        failed.transition(State::Running, "started").unwrap();
+        failed.finish(State::Failed, "broke", "test").unwrap();
+        failed.updated_at = 0;
+        records.push(failed);
+        for n in 1..=MAX_RECORDS {
+            let mut record = Record::planned(format!("done-{n}"), "work");
+            record.transition(State::Running, "started").unwrap();
+            record.finish(State::Succeeded, "done", "test").unwrap();
+            record.updated_at = n as u64;
+            records.push(record);
+        }
+        super::bound(&mut records).unwrap();
+        assert_eq!(records.len(), MAX_RECORDS);
+        assert!(records.iter().any(|r| r.job_id == "old-failed"));
+        assert!(!records.iter().any(|r| r.job_id == "done-1"));
     }
 
     #[test]

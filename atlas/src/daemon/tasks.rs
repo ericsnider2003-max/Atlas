@@ -218,7 +218,10 @@ impl<'a> Daemon<'a> {
         job_id
     }
 
-    fn finish_task_job(&mut self, job_id: &str, run: &crate::taskloop::Run) {
+    /// `true` when the record was dealt with (ended, or left open on purpose
+    /// for work handed on); `false` when ending it failed, so dropping the
+    /// loop still ends it Uncertain (22 Oct 2026).
+    fn finish_task_job(&mut self, job_id: &str, run: &crate::taskloop::Run) -> bool {
         let outcome = match run.verdict {
             crate::taskloop::Verdict::Finished => crate::taskloop::Outcome::Done(run.reply.clone()),
             crate::taskloop::Verdict::Started => {
@@ -241,15 +244,16 @@ impl<'a> Daemon<'a> {
                 // if the journal really cannot be read this fails too and
                 // says so, but a read that only failed once is not left as a
                 // request with no ending.
-                self.close_task_job_anyway(job_id, run, &outcome);
+                let dealt = self.close_task_job_anyway(job_id, run, &outcome);
                 self.capture_task_evidence(job_id, &outcome);
-                return;
+                return dealt;
             }
         };
+        let mut dealt = true;
         if !records.iter().any(|record| record.job_id == job_id) {
             // No record was ever kept for this loop: it is written and closed
             // in one step rather than skipped.
-            self.close_task_job_anyway(job_id, run, &outcome);
+            dealt = self.close_task_job_anyway(job_id, run, &outcome);
         }
         if let Some(record) = records.iter_mut().find(|record| record.job_id == job_id) {
             if let Ok(output) = crate::artifact::ArtifactRef::new(
@@ -271,17 +275,22 @@ impl<'a> Daemon<'a> {
             match result {
                 Ok(_) => {
                     if let Err(error) = crate::job::save(&self.store, &records) {
+                        dealt = false;
                         self.log.warn(&format!(
                             "could not persist task-loop job {job_id}: {error}"
                         ));
                     }
                 }
-                Err(error) => self.log.warn(&format!(
-                    "could not finalize task-loop job {job_id}: {error}"
-                )),
+                Err(error) => {
+                    dealt = false;
+                    self.log.warn(&format!(
+                        "could not finalize task-loop job {job_id}: {error}"
+                    ))
+                }
             }
         }
         self.capture_task_evidence(job_id, &outcome);
+        dealt
     }
 
     /// A loop's record ended by the loop itself, once, so dropping the loop
@@ -312,7 +321,7 @@ impl<'a> Daemon<'a> {
         job_id: &str,
         run: &crate::taskloop::Run,
         outcome: &crate::taskloop::Outcome,
-    ) {
+    ) -> bool {
         use crate::job::State;
         let state = match outcome {
             crate::taskloop::Outcome::Done(_) => State::Succeeded,
@@ -320,7 +329,7 @@ impl<'a> Daemon<'a> {
                 State::Cancelled
             }
             crate::taskloop::Outcome::Failed(_) => State::Failed,
-            crate::taskloop::Outcome::Started(_) | crate::taskloop::Outcome::NeedsYou(_) => return,
+            crate::taskloop::Outcome::Started(_) | crate::taskloop::Outcome::NeedsYou(_) => return true,
         };
         let detail: String = run.reply.chars().take(300).collect();
         if let Err(error) = crate::job::finish(
@@ -334,7 +343,9 @@ impl<'a> Daemon<'a> {
             self.log.warn(&format!(
                 "could not close task-loop job {job_id}: {error}"
             ));
+            return false;
         }
+        true
     }
 
     fn capture_task_evidence(&self, job_id: &str, outcome: &crate::taskloop::Outcome) {
@@ -1423,8 +1434,7 @@ impl<'a> Daemon<'a> {
             run.verdict.plain()
         ));
         self.finish_steps(&run);
-        self.finish_task_job(&tl.job_id, &run);
-        tl.closed = true;
+        tl.closed = self.finish_task_job(&tl.job_id, &run);
         // The request's line in the conversation ends with the answer, not
         // the plan it started with.
         if let Some(e) = self

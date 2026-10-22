@@ -1555,26 +1555,18 @@ fn main() {
         // Lines are read on a thread so the prompt can still say what finished
         // while it waits (21 Oct 2026: a backup that ended while nothing was
         // being typed was never announced at this prompt).
-        let (lines_tx, lines_rx) = std::sync::mpsc::channel::<Option<String>>();
-        std::thread::spawn(move || loop {
-            let mut line = String::new();
-            // Nothing more to read (no keyboard: started by another program,
-            // or its input closed) is the end, not an empty line: read as an
-            // empty line it spun here for ever with no window (29 Sep 2026).
-            match io::stdin().read_line(&mut line) {
-                Ok(0) | Err(_) => {
-                    // unheard-ok: the prompt side has already gone
-                    let _ = lines_tx.send(None);
-                    return;
-                }
-                Ok(_) => {
-                    if lines_tx.send(Some(line)).is_err() {
-                        return;
-                    }
-                }
-            }
-        });
+        // 22 Oct 2026: a line is read only when asked for, at the prompt, so
+        // the thread is never reading while `typed::Console` asks for a
+        // secret (it would take the passphrase as the next command). Nothing
+        // more to read (no keyboard, or its input closed) is the end, not an
+        // empty line: read as an empty line it spun here for ever with no
+        // window (29 Sep 2026).
+        let (want_line, lines_rx) =
+            atlas::typed::lines_on_demand(|line: &mut String| io::stdin().read_line(line));
         loop {
+            // unheard-ok: the thread ends only at the end of input, which the
+            // receive below reports
+            let _ = want_line.send(());
             print!("> ");
             atlas::heard!(io::stdout().flush());
             let line = loop {

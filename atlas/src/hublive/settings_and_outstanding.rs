@@ -727,6 +727,39 @@ impl Daemon<'_> {
                     .and_then(|jobs| jobs.into_iter().find(|j| j.job_id == rest))
                     .map(|j| durable_name(&j))
                     .ok_or_else(gone)?;
+                // 22 Oct 2026: a saved approval is only a record of a question
+                // that is still waiting in the session or the scheduler, and
+                // `persist` writes the record again from them. Dismissing the
+                // record alone brought it back; the question goes too.
+                if rest.starts_with(crate::job::APPROVAL_PREFIX) {
+                    let key = rest.rsplit_once(':').map(|(k, _)| k).unwrap_or(rest);
+                    let waiting = self.session.all_approvals();
+                    let keep: Vec<_> = waiting
+                        .iter()
+                        .filter(|(_, d)| crate::job::approval_key("chat", d) != key)
+                        .cloned()
+                        .collect();
+                    if keep.len() != waiting.len() {
+                        self.session.drop_approvals();
+                        for (i, d) in keep {
+                            self.session.await_approval(i, &d);
+                        }
+                    }
+                    let parked: Vec<u64> = self
+                        .scheduler
+                        .jobs
+                        .iter()
+                        .filter(|j| j.state == crate::scheduler::JobState::AwaitingApproval)
+                        .filter(|j| {
+                            crate::job::approval_key("sched", &format!("{}:{}", j.id, j.command))
+                                == key
+                        })
+                        .map(|j| j.id)
+                        .collect();
+                    for id in parked {
+                        self.scheduler.cancel(id);
+                    }
+                }
                 let kept = crate::job::dismiss(&self.store, rest);
                 match kept {
                     Ok(true) => Ok(OffTheList {
@@ -1319,12 +1352,52 @@ mod one_count_tests {
             .any(|r| r.job_id == "errand:housekeeping:1:1" && r.dismissed));
     }
 
+    /// 22 Oct 2026: dropping a saved approval drops the question too, so the
+    /// next `persist` does not write the record again.
+    #[test]
+    fn a_dropped_approval_does_not_come_back_after_persist() {
+        let store = scratch("drop-approval");
+        let config = crate::config::Config::load(std::path::Path::new("config")).unwrap();
+        let platform = crate::platform::mock::MockPlatform::new(Vec::new());
+        let mut d = Daemon::new(
+            &config,
+            &platform,
+            None,
+            store.clone(),
+            crate::proactive::Proactive::new(crate::proactive::ProactiveConfig::default()),
+        );
+        let now = crate::store::now();
+        d.session.await_approval(
+            crate::intent::Intent::CloseApp("Chrome".into()),
+            "Close Chrome? Go ahead?",
+        );
+        d.persist();
+        let o = d.open_work(now);
+        let key = o
+            .drops
+            .waiting
+            .iter()
+            .flatten()
+            .find(|k| k.starts_with("j:approval:"))
+            .cloned()
+            .expect("the approval is a record");
+        d.drop_outstanding(&key, now).unwrap();
+        assert!(!d.session.is_waiting(), "the question itself is dropped");
+        d.persist();
+        let o = d.open_work(now);
+        assert!(
+            !o.drops.waiting.iter().flatten().any(|k| k.starts_with("j:approval:")),
+            "it came back: {:?}",
+            o.drops.waiting
+        );
+    }
+
     #[test]
     fn lanes_skip_internal_keep_old_failures_and_give_needs_you_its_own_lane() {
         let store = scratch("lanes");
         let config = crate::config::Config::load(std::path::Path::new("config")).unwrap();
         let platform = crate::platform::mock::MockPlatform::new(Vec::new());
-        let mut d = Daemon::new(
+        let d = Daemon::new(
             &config,
             &platform,
             None,

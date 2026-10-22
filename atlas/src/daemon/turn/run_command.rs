@@ -661,6 +661,10 @@ impl<'a> Daemon<'a> {
         // The turn's own time, for what the action reads the clock for
         // (`now_acting`): what was asked at 23:59 is about that day.
         self.acting_at = Some(_t);
+        // How this turn left the request, for the record at the tail: refused
+        // before asking, or parked for you while unattended (22 Oct 2026).
+        let mut refused = false;
+        let mut parked = false;
         let reply = match from_notes {
             Some(answer) => answer,
             // A line Atlas didn't understand is answered, not approved.
@@ -674,7 +678,7 @@ impl<'a> Daemon<'a> {
             None if matches!(intent, Intent::Unknown(_)) => self.execute(&intent),
             None => match call {
                 Decision::AutoProceed => self.execute(&intent),
-                Decision::ProceedAndReport => match self.fill_from_context(&intent) {
+                Decision::ProceedAndReport => match self.fill_from_context(&intent, call) {
                     Some(reply) => reply,
                     None => self.execute(&intent),
                 },
@@ -685,7 +689,7 @@ impl<'a> Daemon<'a> {
                     // 2026: "ask and think with context"). One clear reading
                     // is acted on and said; several are offered in one
                     // question; none says exactly what is missing.
-                    if let Some(reply) = self.fill_from_context(&intent) {
+                    if let Some(reply) = self.fill_from_context(&intent, call) {
                         reply
                     } else {
                     // When the reason we are asking is that the *reading* was
@@ -710,6 +714,7 @@ impl<'a> Daemon<'a> {
                 // question whose "yes" leads to "you can't" is a question wasted,
                 // and every wasted one teaches you to answer without reading.
                 Decision::RequireApproval if self.refused_before_asking(&intent).is_some() => {
+                    refused = true;
                     self.refused_before_asking(&intent).unwrap_or_default()
                 }
                 Decision::RequireApproval => {
@@ -723,6 +728,7 @@ impl<'a> Daemon<'a> {
                         // without reading code, and its `parked()` is the backlog
                         // item it becomes -- the one producer of
                         // `Blocker::NeedsYourDecision`, which had no caller.
+                        parked = true;
                         self.park_for_you(&crate::mend::about_approval(said), said, _t)
                     } else {
                         // What kind of thing you're approving, when it matters:
@@ -1071,12 +1077,19 @@ impl<'a> Daemon<'a> {
         // `job::finish`; one that left a question for you is the saved
         // approval's record (`job::sync_approvals`); a plain read leaves a
         // record only when it went wrong.
-        let waiting_on_you = matches!(
-            call,
-            Decision::AskClarification | Decision::RequireApproval
-        ) && self.session.is_waiting();
-        let ended = if waiting_on_you || matches!(intent, Intent::Say(_) | Intent::Ask(_) | Intent::Unknown(_)) {
+        //
+        // 22 Oct 2026: anything that left a question waiting is "waiting on
+        // you", not just an Ask/Require call (a ProceedAndReport fill that
+        // asked which one was recorded as done); refused before asking ends
+        // Cancelled; parked while unattended is a NeedsYou record, not done.
+        let waiting_on_you = self.session.is_waiting();
+        let ended = if waiting_on_you
+            || parked
+            || matches!(intent, Intent::Say(_) | Intent::Ask(_) | Intent::Unknown(_))
+        {
             None
+        } else if refused {
+            Some(crate::job::State::Cancelled)
         } else if failed_silent || self.last_turn_failed {
             Some(crate::job::State::Failed)
         } else if reply.trim().is_empty() {
@@ -1086,6 +1099,19 @@ impl<'a> Daemon<'a> {
         } else {
             Some(crate::job::State::Succeeded)
         };
+        if parked {
+            use std::sync::atomic::{AtomicU64, Ordering};
+            static PSEQ: AtomicU64 = AtomicU64::new(1);
+            let id = format!("chat:{_t}:p{}", PSEQ.fetch_add(1, Ordering::Relaxed));
+            let stage: String = intent.plain().chars().take(80).collect();
+            let mut r = crate::job::Record::planned(id, stage);
+            // unheard-ok: Planned to AwaitingApproval is always allowed
+            let _ = r.transition(
+                crate::job::State::AwaitingApproval,
+                "parked for your decision; nothing was done",
+            );
+            crate::heard!(crate::job::upsert(&self.store, r));
+        }
         if let Some(state) = ended {
             use std::sync::atomic::{AtomicU64, Ordering};
             static SEQ: AtomicU64 = AtomicU64::new(1);
@@ -1153,7 +1179,13 @@ impl<'a> Daemon<'a> {
     /// request is one that must be confirmed (it is then asked, with the
     /// reading in the question); several readings are one question that
     /// offers them; none says what is missing.
-    fn fill_from_context(&mut self, intent: &Intent) -> Option<String> {
+    ///
+    /// 22 Oct 2026: `call` is the turn's already-escalated decision, and the
+    /// filled request is held to the stricter of that and its own class. A
+    /// guess is never carried out when it sends something (a person guessed
+    /// from an old journal line is not a person you named) or when an earlier
+    /// turn read what someone else wrote (SEC2).
+    fn fill_from_context(&mut self, intent: &Intent, call: Decision) -> Option<String> {
         use crate::understood::{resolve, stated, Resolution};
         let (kind, what_for) = missing_target(intent)?;
         let ctx = self.resolution_context();
@@ -1162,7 +1194,11 @@ impl<'a> Daemon<'a> {
             Resolution::Clear { value, .. } => {
                 let filled = with_target(intent, value);
                 let said = stated(&filled.plain(), &r).unwrap_or_default();
-                match crate::policy::classify(&filled) {
+                let mut grade = crate::policy::Decision::max(call, crate::policy::classify(&filled));
+                if matches!(filled, Intent::Message(_)) || self.session.tainted_by_outside {
+                    grade = crate::policy::Decision::max(grade, Decision::RequireApproval);
+                }
+                match grade {
                     Decision::AutoProceed | Decision::ProceedAndReport => {
                         let done = self.execute(&filled);
                         Some(format!("{said} {done}"))
@@ -1179,5 +1215,36 @@ impl<'a> Daemon<'a> {
                 Some(question.clone())
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod fill_tests {
+    use super::*;
+    use crate::platform::mock::MockPlatform;
+
+    /// 22 Oct 2026: one person from an old journal line is a guess, and a
+    /// message is never sent on a guess: it is asked, naming the person.
+    #[test]
+    fn message_them_asks_about_the_one_person_it_found() {
+        let cfg = crate::config::Config::load(std::path::Path::new("config")).unwrap();
+        let p = MockPlatform::new(vec![]);
+        let root = std::env::temp_dir().join("atlas-fill-message-them");
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        let mut d = Daemon::new(
+            &cfg,
+            &p,
+            None,
+            crate::store::Store::new(root),
+            crate::proactive::Proactive::new(crate::proactive::ProactiveConfig::default()),
+        );
+        d.journal
+            .record_at(Act::Asked, "messaged Sam about lunch", true, 900);
+        let reply = d
+            .fill_from_context(&Intent::Message(String::new()), Decision::ProceedAndReport)
+            .expect("a message with no one named is read against the context");
+        assert!(d.session.is_waiting(), "nothing may be sent unasked: {reply}");
+        assert!(reply.contains("Sam") && reply.contains('?'), "{reply}");
     }
 }

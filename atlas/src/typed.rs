@@ -102,6 +102,46 @@ pub fn ask_quietly(prompt: &str) -> Option<String> {
     }
 }
 
+/// Lines for the prompt, read on a thread only when one is asked for
+/// (22 Oct 2026). A thread that reads ahead is already blocked in
+/// `read_line` while a masked prompt (`ask_quietly`, above) is on screen, and
+/// takes whatever is typed into it -- a passphrase would arrive as the next
+/// command. Here nothing is read until `want` is sent, and the caller sends
+/// it only when it is back at its own prompt, so while a secret is asked for
+/// nothing else is reading the same input. `None` in the channel is the end
+/// of input. Dropping either end stops the thread.
+pub fn lines_on_demand<F>(
+    mut read: F,
+) -> (
+    std::sync::mpsc::Sender<()>,
+    std::sync::mpsc::Receiver<Option<String>>,
+)
+where
+    F: FnMut(&mut String) -> std::io::Result<usize> + Send + 'static,
+{
+    let (want_tx, want_rx) = std::sync::mpsc::channel::<()>();
+    let (lines_tx, lines_rx) = std::sync::mpsc::channel::<Option<String>>();
+    std::thread::spawn(move || {
+        while want_rx.recv().is_ok() {
+            let mut line = String::new();
+            match read(&mut line) {
+                // Nothing more to read is the end, not an empty line.
+                Ok(0) | Err(_) => {
+                    // unheard-ok: the prompt side has already gone
+                    let _ = lines_tx.send(None);
+                    return;
+                }
+                Ok(_) => {
+                    if lines_tx.send(Some(line)).is_err() {
+                        return;
+                    }
+                }
+            }
+        }
+    });
+    (want_tx, lines_rx)
+}
+
 fn clean(line: String) -> Option<String> {
     let t = line.trim_end_matches(['\r', '\n']).to_string();
     if t.is_empty() {
@@ -336,6 +376,41 @@ fn hide_typing(on: bool) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 22 Oct 2026: nothing is read until a line is asked for, so a secret
+    /// typed at a masked prompt is never taken as the next command.
+    #[test]
+    fn lines_are_read_only_when_asked_for() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::Arc;
+        let reads = Arc::new(AtomicUsize::new(0));
+        let seen = reads.clone();
+        let (want, lines) = lines_on_demand(move |buf: &mut String| {
+            let n = seen.fetch_add(1, Ordering::SeqCst);
+            buf.push_str(&format!("line {n}\n"));
+            Ok(buf.len())
+        });
+        std::thread::sleep(std::time::Duration::from_millis(150));
+        assert_eq!(reads.load(Ordering::SeqCst), 0, "read without being asked");
+        assert!(lines.try_recv().is_err());
+        want.send(()).unwrap();
+        let got = lines
+            .recv_timeout(std::time::Duration::from_secs(5))
+            .unwrap();
+        assert_eq!(got.as_deref(), Some("line 0\n"));
+        std::thread::sleep(std::time::Duration::from_millis(150));
+        assert_eq!(reads.load(Ordering::SeqCst), 1, "read ahead of the prompt");
+    }
+
+    #[test]
+    fn the_end_of_input_is_none() {
+        let (want, lines) = lines_on_demand(|_: &mut String| Ok(0));
+        want.send(()).unwrap();
+        assert_eq!(
+            lines.recv_timeout(std::time::Duration::from_secs(5)).unwrap(),
+            None
+        );
+    }
 
     /// The default that keeps a test suite from hanging on stdin, and keeps
     /// Atlas from claiming to have asked.
