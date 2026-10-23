@@ -3068,6 +3068,7 @@ impl<'a> Daemon<'a> {
                 // work: asked first like any close (22 Oct 2026).
                 Some(intent) if crate::policy::is_hard_to_undo(&intent) => {
                     let q = format!("Just to check -- {}. Go ahead?", intent.plain());
+                    self.pending_undo_close = Some((id, intent.clone()));
                     self.session.await_approval(intent, &q);
                     return q;
                 }
@@ -3084,6 +3085,26 @@ impl<'a> Daemon<'a> {
 }
 
 impl<'a> Daemon<'a> {
+    /// An undo that closed an app, after its own yes: the history entry is
+    /// marked undone only when the close was checked (`on_close_app` says
+    /// "Closed ..." only then). Otherwise it stays as it was, and says so.
+    pub(super) fn finish_undo_close(&mut self, intent: &Intent, reply: String) -> String {
+        if !self.pending_undo_close.as_ref().is_some_and(|(_, c)| c == intent) {
+            return reply;
+        }
+        let Some((id, _)) = self.pending_undo_close.take() else {
+            return reply;
+        };
+        if !reply.starts_with("Closed ") {
+            return format!("{reply} It is not marked as undone.");
+        }
+        self.history.mark_undone(id);
+        match self.history.save_merged(&self.store) {
+            Ok(()) => format!("Undone. {reply}"),
+            Err(e) => format!("{reply} I couldn't save that it's undone ({e})."),
+        }
+    }
+
     /// A flow seen as a chain: which steps can be taken back and which leave
     /// the machine, with the first `done` of them marked done (G7).
     pub(super) fn chain_of(&self, run: &crate::flow::Run, done: usize) -> crate::chain::Chain {

@@ -333,6 +333,17 @@ fn undo_asks_and_then_actually_takes_it_back() {
             .any(|a| matches!(a, atlas::platform::mock::Action::Close(_))),
         "closed before the second yes"
     );
+    // The second yes closes it, checks it, and only then marks the entry
+    // undone, so a later "undo" does not offer it again.
+    let said = d.turn("yes", 1_002);
+    assert!(said.contains("Undone.") && said.contains("Closed notepad"), "{said}");
+    assert!(
+        d.history
+            .done
+            .iter()
+            .any(|x| x.what == "opened notepad" && x.undone),
+        "marked undone after the checked close"
+    );
 }
 
 // ------------------------------------------------------------------ G7

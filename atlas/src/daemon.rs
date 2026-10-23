@@ -1097,6 +1097,9 @@ pub struct Daemon<'a> {
     pending_wanted: Option<String>,
     /// The scheduled job whose approval question is outstanding.
     pending_job: Option<u64>,
+    /// An undo waiting on its own yes to close an app (history id and the
+    /// close it asked about): marked undone only once the close is checked.
+    pending_undo_close: Option<(u64, Intent)>,
     /// The backlog item Atlas last offered to do ("Want me to do it now?").
     /// Holds the item id so the yes/no that follows can run the original
     /// request or, on a no, `backlog::dismiss` it for good rather than raise
@@ -2107,6 +2110,7 @@ impl<'a> Daemon<'a> {
             pending_offer: None,
             pending_wanted: None,
             pending_job: None,
+            pending_undo_close: None,
             pending_backlog: None,
             tiers: Tiers::default(),
             power: Power::default(),

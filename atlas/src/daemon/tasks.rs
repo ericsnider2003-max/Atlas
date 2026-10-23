@@ -1735,6 +1735,7 @@ impl<'a> Daemon<'a> {
                 .record_approval(crate::session::kind_of(&intent), yes, None);
             let line = if yes {
                 let r = self.execute_approved_step(&intent);
+                let r = self.finish_undo_close(&intent, r);
                 // The first was what a scheduled job was waiting on.
                 if k == 0 {
                     if let Some(jid) = self.pending_job.take() {

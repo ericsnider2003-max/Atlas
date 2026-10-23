@@ -610,4 +610,12 @@ fn a_code_with_nowhere_to_type_it_says_so_without_asking() {
     let said = d.turn("type my code four eight two nine one seven", 1_000);
     assert!(said.contains("nothing in front of you"), "{said}");
     assert!(!said.contains("Go ahead?"), "{said}");
+    // Nothing was typed, and no question is left waiting for a yes.
+    assert!(
+        !p.actions()
+            .iter()
+            .any(|a| matches!(a, atlas::platform::mock::Action::Type(_))),
+        "typed with nowhere to type"
+    );
+    assert_eq!(d.session.approvals_waiting(), 0);
 }
