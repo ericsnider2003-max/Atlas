@@ -1,0 +1,30 @@
+== phonebench-3g
+┌─────────┬──────────────────────┬───────┬─────┬──────┬──────┐
+│ (index) │ path                 │ bytes │ fcp │ load │ h    │
+├─────────┼──────────────────────┼───────┼─────┼──────┼──────┤
+│ 0       │ '/hub'               │ 8724  │ 528 │ 591  │ 1588 │
+│ 1       │ '/hub/now'           │ 8530  │ 580 │ 599  │ 1206 │
+│ 2       │ '/hub/outstanding'   │ 7733  │ 548 │ 615  │ 1121 │
+│ 3       │ '/hub/talk'          │ 8144  │ 760 │ 708  │ 740  │
+│ 4       │ '/hub/settings'      │ 22507 │ 536 │ 937  │ 2318 │
+│ 5       │ '/hub/opportunities' │ 7593  │ 620 │ 611  │ 1505 │
+└─────────┴──────────────────────┴───────┴─────┴──────┴──────┘
+== phonebench
+┌─────────┬──────────────────────┬───────┬──────┬──────┬──────┐
+│ (index) │ path                 │ bytes │ fcp  │ load │ h    │
+├─────────┼──────────────────────┼───────┼──────┼──────┼──────┤
+│ 0       │ '/hub'               │ 15173 │ 252  │ 220  │ 1588 │
+│ 1       │ '/hub/now'           │ 9367  │ 272  │ 234  │ 1206 │
+│ 2       │ '/hub/outstanding'   │ 8570  │ 256  │ 242  │ 1121 │
+│ 3       │ '/hub/talk'          │ 8144  │ 1376 │ 1214 │ 740  │
+│ 4       │ '/hub/settings'      │ 23344 │ 1576 │ 1686 │ 2318 │
+│ 5       │ '/hub/opportunities' │ 8430  │ null │ 402  │ 1505 │
+└─────────┴──────────────────────┴───────┴──────┴──────┴──────┘
+== phonebench run1
+/hub fcp=364 load=346 | /hub/talk fcp=324 load=257 | /hub/settings fcp=284 load=389 | /hub/opportunities fcp=1036 load=979
+== phonebench-3g run1
+/hub fcp=552 load=594 | /hub/talk fcp=620 load=587 | /hub/settings fcp=1460 load=2260 | /hub/opportunities fcp=812 load=858
+== phonebench run2
+/hub fcp=264 load=237 | /hub/talk fcp=320 load=259 | /hub/settings fcp=308 load=519 | /hub/opportunities fcp=324 load=311
+== phonebench-3g run2
+/hub fcp=728 load=647 | /hub/talk fcp=620 load=1002 | /hub/settings fcp=560 load=924 | /hub/opportunities fcp=588 load=659

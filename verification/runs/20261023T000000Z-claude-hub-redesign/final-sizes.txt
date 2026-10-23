@@ -1,0 +1,11 @@
+home           200  wire=8448   raw=33188
+now            200  wire=8253   raw=30702
+outstanding    200  wire=7456   raw=29423
+talk           200  wire=7867   raw=29848
+workshop       200  wire=7192   raw=27685
+messages       200  wire=6920   raw=26890
+business       200  wire=6930   raw=26891
+settings       200  wire=21392  raw=105166
+status         200  wire=7871   raw=30198
+opportunities  200  wire=7316   raw=28447
+stylesheet wire=15676
