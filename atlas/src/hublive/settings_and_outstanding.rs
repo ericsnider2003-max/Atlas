@@ -1612,13 +1612,50 @@ thread_local! {
 /// Draw one page or reply with a single build of the work record. Only for
 /// reading: nothing inside may change the work and then read it again.
 pub(super) fn one_record<R>(draw: impl FnOnce() -> R) -> R {
+    /// Ends the drawing's record when the drawing ends, however it ends: a
+    /// page that panics (and is caught) must not leave a stale record behind
+    /// for every reader after it.
+    struct Ends(bool);
+    impl Drop for Ends {
+        fn drop(&mut self) {
+            if self.0 {
+                OPEN_ONCE.with(|c| *c.borrow_mut() = None);
+            }
+        }
+    }
     let outer = OPEN_ONCE.with(|c| c.borrow().is_some());
     if !outer {
         OPEN_ONCE.with(|c| *c.borrow_mut() = Some(None));
     }
-    let out = draw();
-    if !outer {
-        OPEN_ONCE.with(|c| *c.borrow_mut() = None);
+    let _ends = Ends(!outer);
+    draw()
+}
+
+#[cfg(test)]
+mod one_record_tests {
+    use super::*;
+
+    #[test]
+    fn a_panic_inside_a_drawing_leaves_no_record_behind() {
+        let caught = std::panic::catch_unwind(|| {
+            one_record(|| {
+                OPEN_ONCE.with(|c| *c.borrow_mut() = Some(Some(hub::Open::default())));
+                panic!("a page failed to draw");
+            })
+        });
+        assert!(caught.is_err());
+        assert!(OPEN_ONCE.with(|c| c.borrow().is_none()));
     }
-    out
+
+    #[test]
+    fn a_drawing_inside_a_drawing_keeps_the_outer_record() {
+        one_record(|| {
+            one_record(|| ());
+            assert!(
+                OPEN_ONCE.with(|c| c.borrow().is_some()),
+                "the inner end must not end the outer"
+            );
+        });
+        assert!(OPEN_ONCE.with(|c| c.borrow().is_none()));
+    }
 }
