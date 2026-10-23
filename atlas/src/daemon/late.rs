@@ -1844,9 +1844,7 @@ impl<'a> Daemon<'a> {
         // Read on your clock, kept in UTC (28 Sep 2026): "tomorrow at 9" was
         // read as 9 in UTC, hours out, the way offered meeting times once
         // were (`booking_from`).
-        let now_said = crate::intent::normalize(said)
-            .split_whitespace()
-            .any(|w| w == "now");
+        let now_said = now_as_a_time(said);
         let when = if now_said {
             Some(t)
         } else {
@@ -1891,7 +1889,7 @@ impl<'a> Daemon<'a> {
     /// When "post it ..." says to post, if it says: now, or a time on your
     /// clock, in UTC (the reading `schedule_post_at` uses).
     pub(super) fn time_for_post(&self, said: &str, t: u64) -> Option<u64> {
-        if crate::intent::normalize(said).split_whitespace().any(|w| w == "now") {
+        if now_as_a_time(said) {
             return Some(t);
         }
         let zone = self.home_zone();
@@ -5813,4 +5811,53 @@ mod publication_terminal_results {
         drop(daemon);
         let _ = std::fs::remove_dir_all(root);
     }
+}
+
+
+/// "Now" as the answer to "what time?": only when that is all it says
+/// ("now", "right now", "post it now", "now please"). "Not now", "now isn't
+/// good" and "not right now, later" are not a time (22 Oct 2026: they were
+/// read as "now" and the post went out).
+pub(crate) fn now_as_a_time(said: &str) -> bool {
+    const FILLER: &[&str] = &[
+        "now", "right", "please", "post", "it", "that", "go", "ahead", "just", "and", "thanks",
+        "thank", "you", "atlas", "schedule", "the", "for", "yes", "ok", "okay", "do",
+    ];
+    let t = crate::intent::normalize(said);
+    let words: Vec<&str> = t.split_whitespace().collect();
+    words.contains(&"now") && words.iter().all(|w| FILLER.contains(w))
+}
+
+/// A decline of "what time?": "no", "not now", "don't", "cancel", "stop",
+/// "never mind", "leave it", "later"/"not yet" with no time in it. A real
+/// time ("at 6pm", "tomorrow at 9") is never a decline.
+pub(crate) fn declines_the_post_time(said: &str, has_a_time: bool) -> bool {
+    if now_as_a_time(said) {
+        return false;
+    }
+    if crate::session::is_no(said) {
+        return true;
+    }
+    let t = crate::intent::normalize(said);
+    let words: Vec<&str> = t.split_whitespace().collect();
+    let has = |w: &str| words.contains(&w);
+    let phrase = |p: &str| format!(" {t} ").contains(&format!(" {p} "));
+    if has("no")
+        || has("not")
+        || has("dont")
+        || has("never")
+        || has("cancel")
+        || has("stop")
+        || has("wait")
+        || has("isnt")
+        || has("wont")
+        || has("cant")
+        || phrase("do not")
+        || phrase("leave it")
+        || phrase("hold off")
+        || phrase("never mind")
+    {
+        return true;
+    }
+    !has_a_time && (has("later") || has("nevermind") || phrase("not yet"))
 }

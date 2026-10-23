@@ -1250,6 +1250,14 @@ impl<'a> Daemon<'a> {
             }
             if let Some(id) = self.pending_post_when.take() {
                 self.session.pending = Pending::Nothing;
+                // A "no" to "what time?" leaves it a draft; it is never read
+                // as a time ("not now" is not "now").
+                if crate::daemon::late::declines_the_post_time(
+                    said,
+                    self.time_for_post(said, t).is_some(),
+                ) {
+                    return "Alright, it stays a draft.".into();
+                }
                 return self.schedule_post_at(id, said, t);
             }
             // "Go" on a mailbox rehearsal.

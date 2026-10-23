@@ -490,3 +490,45 @@ fn the_question_before_posting_names_the_draft_and_the_time() {
     assert!(q.contains("Shipping today with the new build") && q.contains("what time?"), "{q}");
     assert!(!q.contains("scheduling your post"), "{q}");
 }
+
+/// "What time?" answered "not now" or "no" leaves the post a draft; "now"
+/// posts it and "tomorrow at 9am" schedules it (22 Oct 2026: "not now"
+/// contained the word "now" and the post went out).
+#[test]
+fn a_no_to_what_time_is_not_a_time() {
+    use atlas::publish::PostState;
+    let (c, p) = (cfg(), plat());
+    let t = 1_790_760_000;
+    for (tag, answer, want) in [
+        ("p-notnow", "not now", PostState::AwaitingApproval),
+        ("p-dontnow", "no, don't post it now", PostState::AwaitingApproval),
+        ("p-no", "no", PostState::AwaitingApproval),
+        ("p-never", "never mind", PostState::AwaitingApproval),
+        ("p-nowbad", "now isn't good", PostState::AwaitingApproval),
+        ("p-later", "later", PostState::AwaitingApproval),
+        ("p-tomorrow", "tomorrow at 9am", PostState::Scheduled),
+    ] {
+        let mut d = daemon(&c, &p, tag);
+        let id = d.publisher.draft(Channel::X, "Shipping today");
+        d.publisher.request_approval(id);
+        let q = d.turn("schedule the post", t);
+        assert!(q.contains("what time?"), "{q}");
+        let said = d.turn(answer, t + 1);
+        let state = d.publisher.get(id).unwrap().state.clone();
+        assert_eq!(state, want, "{answer:?} -> {said}");
+        if want == PostState::AwaitingApproval && answer != "later" {
+            assert!(said.contains("stays a draft"), "{answer:?} -> {said}");
+        }
+    }
+    // "now" is a time: approved and on its way (not left a draft).
+    let mut d = daemon(&c, &p, "p-now");
+    let id = d.publisher.draft(Channel::X, "Shipping today");
+    d.publisher.request_approval(id);
+    let _ = d.turn("schedule the post", t);
+    let said = d.turn("right now", t + 1);
+    assert!(said.contains("Posting"), "{said}");
+    assert_ne!(
+        d.publisher.get(id).unwrap().state,
+        PostState::AwaitingApproval
+    );
+}
