@@ -312,7 +312,9 @@ pub fn settings_page(s: &Settings) -> String {
 
     let mut body = String::new();
     // The design's Settings index: one place that ties it together, with the
-    // cards that open each area. The full list of switches follows.
+    // cards that open each area. The full list of switches follows. Only the
+    // areas the section's tabs above don't already open (23 Oct 2026: Sound,
+    // Gestures and Accounts were a card and a tab, one above the other).
     body.push_str("<nav class=setcards aria-label='Settings areas'>");
     for (href, title, what) in [
         (
@@ -321,24 +323,9 @@ pub fn settings_page(s: &Settings) -> String {
             "Colourway, accent, text size, density, colour-blind mode.",
         ),
         (
-            Page::Sound.href(),
-            "Sound & voice",
-            "Atlas's voice, volume, the wake word, quiet hours, mute — and when it may pop up.",
-        ),
-        (
-            Page::Gestures.href(),
-            "Gestures",
-            "Hands-free on camera: whether it's on, and how each works.",
-        ),
-        (
             Page::Trusted.href(),
             "Trusted recipients",
             "Who Atlas can send to without asking.",
-        ),
-        (
-            Page::Accounts.href(),
-            "Calendars & accounts",
-            "Connect your email and calendars, and see which are working.",
         ),
         (
             Page::Help.href(),
