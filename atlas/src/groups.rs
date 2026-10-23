@@ -771,8 +771,17 @@ pub fn read_spoken(said: &str) -> Option<(&'static str, String, String, String)>
         // older version from drop box and change drop box back to online
         // only. You are filling my computer memory ..." took the rest of
         // the paragraph as the group's name).
+        // Nor a place on disk or a list ("remove the old files from the
+        // downloads folder"): the parser can't see the group list, so the
+        // words that name something else are refused here; `act` still
+        // checks the group exists.
+        let not_a_place = !matches!(
+            g.split_whitespace().last().map(str::to_ascii_lowercase).as_deref(),
+            Some("folder" | "directory" | "drive" | "list" | "desktop" | "downloads" | "bin" | "trash")
+        );
         let a_name = g.split_whitespace().count() <= 4
-            && !g.contains(['.', ',', ';', '!', '?']);
+            && !g.contains(['.', ',', ';', '!', '?'])
+            && not_a_place;
         (!g.is_empty() && a_name).then(|| g.to_string())
     };
     let cut = |from: usize, sep: &str| -> Option<(String, String)> {

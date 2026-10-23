@@ -184,6 +184,10 @@ fn hard_to_undo() -> Vec<Intent> {
         Intent::AcceptPairing("code".into()),
         // one-time codes
         Intent::TypeCode("the code from my texts".into()),
+        // telling a tester something is a send
+        Intent::Feedback("reply:2 fixing".into()),
+        // publishing: naming the time approves the post
+        Intent::SchedulePost("post it at 6pm".into()),
     ];
     // The phone's own model is fetched only on a phone build.
     #[cfg(feature = "phone-llm")]
@@ -270,5 +274,34 @@ fn a_plan_stops_at_a_hard_to_undo_step() {
             "{i:?} would run inside a multi-part plan without a stop"
         );
         assert!(policy::classify(&i).needs_consent(), "{i:?}");
+    }
+}
+
+/// The follow-ups built only after the yes are not asked about a second
+/// time, and declining the coding agent can only ever lead to work that is
+/// not itself hard to undo (it runs after a "no").
+#[test]
+fn the_follow_ups_after_a_yes_do_not_ask_again() {
+    for i in [
+        Intent::Feedback("confirmed-send".into()),
+        Intent::Updates("undo-confirmed".into()),
+        Intent::Feedback("list".into()),
+    ] {
+        assert!(!policy::is_hard_to_undo(&i), "{i:?}");
+        assert_ne!(policy::classify(&i), Decision::RequireApproval, "{i:?}");
+    }
+    use atlas::coding_agent::{declined, HAND_OVER};
+    let mut seen = 0;
+    for said in ["Build", "Improve"] {
+        let w = format!("{HAND_OVER}make a script");
+        let i = if said == "Build" { Intent::Build(w) } else { Intent::Improve(w) };
+        let own = declined(&i).expect("a hand-over has its own fallback");
+        assert!(!policy::is_hard_to_undo(&own), "{own:?}");
+        seen += 1;
+    }
+    assert_eq!(seen, 2);
+    // Anything that is not a hand-over has no fallback at all.
+    for i in hard_to_undo() {
+        assert!(declined(&i).is_none(), "{i:?}");
     }
 }

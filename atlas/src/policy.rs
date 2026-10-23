@@ -103,6 +103,8 @@ pub fn is_hard_to_undo(intent: &Intent) -> bool {
         | Intent::TypeCode(_)
         | Intent::WorkOnYourself(_) => true,
         Intent::Updates(what) => what == "install",
+        Intent::Feedback(what) => what.starts_with("reply:"),
+        Intent::SchedulePost(said) => !said.to_lowercase().contains("cancel"),
         Intent::PhoneModel(what) => what == "get" && cfg!(feature = "phone-llm"),
         Intent::MakePicture(said) => fetches_the_picture_maker(said),
         _ => false,
@@ -127,6 +129,15 @@ pub fn classify(intent: &Intent) -> Decision {
         // Installing the waiting update replaces the running build and
         // restarts into it. ("undo" and the checks ask their own question.)
         Intent::Updates(what) if what == "install" => Decision::RequireApproval,
+        // "Post it at 6pm" approves the waiting post and schedules it, so from
+        // a schedule or a task loop it would publish a draft nobody read
+        // back (22 Oct 2026). Cancelling is the safe direction and is not asked.
+        Intent::SchedulePost(said) if !said.to_lowercase().contains("cancel") => {
+            Decision::RequireApproval
+        }
+        // Telling a tester something ("answer feedback 2 fixing") is a send.
+        // The follow-ups built after a yes ("confirmed-send") are not.
+        Intent::Feedback(what) if what.starts_with("reply:") => Decision::RequireApproval,
         // Fetching a model onto this machine is an install: gigabytes, and a
         // thing that then runs.
         // (Only where it can fetch: on a computer it just says what it is.)

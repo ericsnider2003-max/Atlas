@@ -599,3 +599,15 @@ fn signing_up_fills_the_form_agrees_to_the_terms_and_stops_at_a_card() {
         "{got:?}"
     );
 }
+
+/// With nothing in front to type into, it says so rather than asking
+/// "Go ahead?" about a typing that cannot happen (22 Oct 2026).
+#[test]
+fn a_code_with_nowhere_to_type_it_says_so_without_asking() {
+    let cfg: &'static Config = Box::leak(Box::new(Config::load(Path::new("config")).unwrap()));
+    let p = plat();
+    let mut d = daemon_with(cfg, &p, "nowhere");
+    let said = d.turn("type my code four eight two nine one seven", 1_000);
+    assert!(said.contains("nothing in front of you"), "{said}");
+    assert!(!said.contains("Go ahead?"), "{said}");
+}

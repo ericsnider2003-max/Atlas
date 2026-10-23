@@ -323,14 +323,15 @@ fn undo_asks_and_then_actually_takes_it_back() {
     );
     let said = d.turn("undo", 1_000);
     assert!(said.starts_with("Undo \"opened notepad\"?"), "{said}");
+    // Closing the app it opened can discard unsaved work, so it is asked
+    // about again before anything closes (22 Oct 2026). Nothing closed yet.
     let said = d.turn("yes", 1_001);
-    assert!(said.starts_with("Undone: opened notepad."), "{said}");
+    assert!(said.contains("Go ahead?"), "{said}");
     assert!(
-        d.history
-            .done
+        !p.actions()
             .iter()
-            .any(|x| x.what == "opened notepad" && x.undone),
-        "marked undone"
+            .any(|a| matches!(a, atlas::platform::mock::Action::Close(_))),
+        "closed before the second yes"
     );
 }
 

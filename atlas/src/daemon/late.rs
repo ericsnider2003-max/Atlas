@@ -246,7 +246,7 @@ impl<'a> Daemon<'a> {
 
     /// Where a code you asked to be typed goes: the sign-in Atlas is in the
     /// middle of, or the window in front of you.
-    fn code_target(&self) -> Option<(crate::twofactor::Target, Option<String>)> {
+    pub(super) fn code_target(&self) -> Option<(crate::twofactor::Target, Option<String>)> {
         if let Some(site) = &self.signing_in_waiting {
             return Some((
                 crate::twofactor::Target::AtlasBrowser { site: site.clone() },
@@ -3064,6 +3064,13 @@ impl<'a> Daemon<'a> {
             }
         } else {
             match undo_intent(&d.what) {
+                // Taking back "opened X" closes X, which can discard unsaved
+                // work: asked first like any close (22 Oct 2026).
+                Some(intent) if crate::policy::is_hard_to_undo(&intent) => {
+                    let q = format!("Just to check -- {}. Go ahead?", intent.plain());
+                    self.session.await_approval(intent, &q);
+                    return q;
+                }
                 Some(intent) => self.execute(&intent),
                 None => return format!("I don't know how to take back \"{}\" myself.", d.what),
             }

@@ -1299,3 +1299,20 @@ fn free_form_the_guards_leave_real_commands_alone() {
         Intent::ChangeGroup(_)
     ));
 }
+
+/// "remove X from <a place on disk>" is not a group change (22 Oct 2026).
+#[test]
+fn free_form_removing_files_from_a_folder_is_not_a_group_change() {
+    use atlas::intent::Intent;
+    let p = parser();
+    for said in [
+        "remove the old files from the downloads folder",
+        "remove the duplicates from my desktop",
+        "take the old stuff out of the downloads folder",
+    ] {
+        assert!(
+            !matches!(p.parse(said), Intent::ChangeGroup(_)),
+            "{said:?} read as a group change"
+        );
+    }
+}
