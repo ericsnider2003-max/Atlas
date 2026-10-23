@@ -5818,7 +5818,7 @@ mod publication_terminal_results {
 /// ("now", "right now", "post it now", "now please"). "Not now", "now isn't
 /// good" and "not right now, later" are not a time (22 Oct 2026: they were
 /// read as "now" and the post went out).
-pub(crate) fn now_as_a_time(said: &str) -> bool {
+fn now_as_a_time(said: &str) -> bool {
     const FILLER: &[&str] = &[
         "now", "right", "please", "post", "it", "that", "go", "ahead", "just", "and", "thanks",
         "thank", "you", "atlas", "schedule", "the", "for", "yes", "ok", "okay", "do",
@@ -5828,10 +5828,13 @@ pub(crate) fn now_as_a_time(said: &str) -> bool {
     words.contains(&"now") && words.iter().all(|w| FILLER.contains(w))
 }
 
-/// A decline of "what time?": "no", "not now", "don't", "cancel", "stop",
-/// "never mind", "leave it", "later"/"not yet" with no time in it. A real
-/// time ("at 6pm", "tomorrow at 9") is never a decline.
-pub(crate) fn declines_the_post_time(said: &str, has_a_time: bool) -> bool {
+
+impl<'a> Daemon<'a> {
+    /// A decline of "what time?": "no", "not now", "don't", "cancel", "stop",
+    /// "never mind", "leave it", "later"/"not yet" with no time in it. A real
+    /// time ("at 6pm", "tomorrow at 9") is never a decline.
+    pub(super) fn declines_the_post_time(&self, said: &str, t: u64) -> bool {
+        let has_a_time = self.time_for_post(said, t).is_some();
     if now_as_a_time(said) {
         return false;
     }
@@ -5860,4 +5863,5 @@ pub(crate) fn declines_the_post_time(said: &str, has_a_time: bool) -> bool {
         return true;
     }
     !has_a_time && (has("later") || has("nevermind") || phrase("not yet"))
+    }
 }
