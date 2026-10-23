@@ -8,6 +8,18 @@ use super::*;
 impl<'a> Daemon<'a> {
     /// The turn itself.
     pub(super) fn turn_unwatched(&mut self, said: &str, t: u64, how: Arrival) -> String {
+        // "What time?" is answered by the very next turn or not at all: a
+        // turn handled by anything else ("later" -> "I'll be here.") drops
+        // it, so a time said afterwards schedules nothing (22 Oct 2026).
+        self.post_when_touched = false;
+        let reply = self.turn_unwatched_inner(said, t, how);
+        if !self.post_when_touched {
+            self.pending_post_when = None;
+        }
+        reply
+    }
+
+    fn turn_unwatched_inner(&mut self, said: &str, t: u64, how: Arrival) -> String {
         // "List, did you hear me?": the misheard name said to Atlas comes off,
         // so it isn't read as a command of its own (`kws::misheard_name_opening`).
         let unnamed;
@@ -1243,12 +1255,14 @@ impl<'a> Daemon<'a> {
                     return "Alright — it stays a draft.".into();
                 }
                 self.pending_post_when = Some(id);
+                self.post_when_touched = true;
                 let q = "When should it go? Right now, or a time like at 6pm or tomorrow at 9."
                     .to_string();
                 self.session.ask(&q);
                 return q;
             }
             if let Some(id) = self.pending_post_when.take() {
+                self.post_when_touched = true;
                 self.session.pending = Pending::Nothing;
                 // A "no" to "what time?" leaves it a draft; it is never read
                 // as a time ("not now" is not "now").

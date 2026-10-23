@@ -532,3 +532,23 @@ fn a_no_to_what_time_is_not_a_time() {
         PostState::AwaitingApproval
     );
 }
+
+/// A "what time?" the next turn did not answer is dropped: "later" -> "I'll
+/// be here." and then a time said afterwards schedules nothing.
+#[test]
+fn a_what_time_question_does_not_outlive_the_turn_after_it() {
+    use atlas::publish::PostState;
+    let (c, p) = (cfg(), plat());
+    let t = 1_790_760_000;
+    let mut d = daemon(&c, &p, "p-stale-when");
+    let id = d.publisher.draft(Channel::X, "Shipping today");
+    d.publisher.request_approval(id);
+    assert!(d.turn("schedule the post", t).contains("what time?"));
+    let _ = d.turn("later", t + 1);
+    let said = d.turn("tomorrow at 9am", t + 2);
+    assert_eq!(
+        d.publisher.get(id).unwrap().state,
+        PostState::AwaitingApproval,
+        "a time said later scheduled it: {said}"
+    );
+}

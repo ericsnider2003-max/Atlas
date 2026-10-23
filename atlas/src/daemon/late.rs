@@ -1855,6 +1855,7 @@ impl<'a> Daemon<'a> {
         };
         let Some(at) = when else {
             self.pending_post_when = Some(id);
+            self.post_when_touched = true;
             let q =
                 "I didn't catch the time — \"now\", \"at 6pm\" or \"tomorrow at 9\"?".to_string();
             self.session.ask(&q);
@@ -1934,6 +1935,7 @@ impl<'a> Daemon<'a> {
             }
             None => {
                 self.pending_post_when = Some(id);
+                self.post_when_touched = true;
                 let q = format!("I'll {what} \u{2014} what time?");
                 self.session.ask(&q);
                 Some(q)
