@@ -42,6 +42,7 @@ pub(super) fn pill(kind: &str, word: &str) -> String {
             "<rect x=3 y=4.5 width=18 height=16.5 rx=2.5 /><path d='M3 9.5h18'/>",
         ),
         "stopped" => ("stop", state_icon("blocked")),
+        "idle" => ("info", state_icon("idle")),
         "failed" => ("stop", state_icon("failed")),
         "interrupted" => ("wait", state_icon("interrupted")),
         "online" => (
@@ -63,6 +64,7 @@ pub(super) fn today_html(d: &Deck) -> String {
         let (class, p) = match mark {
             Mark::Done => ("day done", pill("done", "Done")),
             Mark::Now => ("day now", pill("working", "Working")),
+            Mark::Idle => ("day now", pill("idle", "Now")),
             Mark::Later => ("day", pill("next", "Next")),
         };
         rows.push_str(&format!(

@@ -672,6 +672,10 @@ pub enum Mark {
     Done,
     /// Now — what Atlas is working on.
     Now,
+    /// Now, with nothing running: the day's divider without the "Working"
+    /// pill (22 Oct 2026: Home showed "Working" beside "Nothing underway"
+    /// whenever anything was on the calendar).
+    Idle,
     /// Still to come.
     Later,
 }
@@ -769,8 +773,16 @@ pub struct Open {
     /// (what, a line on why it's yours, where to act on it)
     pub waiting: Vec<(String, String, String)>,
     pub blocked: Vec<Stopped>,
-    /// (what, who's on it or how far along)
+    /// (what, who's on it or how far along). Only work that is actually
+    /// running: something waiting its turn is in `queued`, never here
+    /// (22 Oct 2026: Home said "Working" and Outstanding "In progress 2" for
+    /// a self-repair run that was waiting for memory, while Now said nothing
+    /// was underway).
     pub in_progress: Vec<(String, String)>,
+    /// (what, why it hasn't started, in plain words). Accepted and going to
+    /// happen, but not running yet: next in line, waiting for you to step
+    /// away, for a connection, or for the laptop.
+    pub queued: Vec<(String, String)>,
     /// (what, days carried)
     pub carried: Vec<(String, u64)>,
     /// What each item's remove button sends back, lane by lane, in the same
@@ -811,6 +823,7 @@ pub struct Drops {
     pub waiting: Vec<Option<String>>,
     pub blocked: Vec<Option<String>>,
     pub in_progress: Vec<Option<String>>,
+    pub queued: Vec<Option<String>>,
     pub carried: Vec<Option<String>>,
     pub failed: Vec<Option<String>>,
     pub interrupted: Vec<Option<String>>,

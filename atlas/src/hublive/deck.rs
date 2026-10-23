@@ -172,6 +172,19 @@ impl Daemon<'_> {
                 },
                 what.clone(),
             )
+        } else if let Some((what, why)) = open.queued.first() {
+            // Accepted and waiting its turn: said as queued, with why, never
+            // as "Working" and never as nothing at all (22 Oct 2026).
+            let more = counts.queued.saturating_sub(1);
+            (
+                format!("Queued: {}", what.trim_end_matches('.')),
+                if more > 0 {
+                    format!("{why} {more} more queued.")
+                } else {
+                    why.clone()
+                },
+                "Nothing running".to_string(),
+            )
         } else {
             (
                 "Nothing underway.".to_string(),
@@ -199,8 +212,10 @@ impl Daemon<'_> {
             .skip(done.len().saturating_sub(3))
             .map(|(_, t, w, _)| (t.clone(), w.clone(), hub::Mark::Done))
             .collect();
-        if !events.is_empty() || running.is_some() || counts.running > 0 {
+        if running.is_some() || counts.running > 0 {
             spine.push(("NOW".to_string(), now_short, hub::Mark::Now));
+        } else if !events.is_empty() {
+            spine.push(("NOW".to_string(), now_short, hub::Mark::Idle));
         }
         spine.extend(
             later

@@ -524,6 +524,48 @@ fn sentence(said: &str) -> String {
     out
 }
 
+/// The work record as the phone and other apps read it: each lane's items
+/// and its count, from the same `Open` the pages draw.
+fn work_json(o: &hub::Open) -> serde_json::Value {
+    let pairs = |v: &[(String, String)]| -> Vec<serde_json::Value> {
+        v.iter()
+            .map(|(what, why)| serde_json::json!({ "what": what, "why": why }))
+            .collect()
+    };
+    let ended = |v: &[hub::Ended]| -> Vec<serde_json::Value> {
+        v.iter()
+            .map(|e| serde_json::json!({ "what": e.what, "why": e.detail, "at": e.at }))
+            .collect()
+    };
+    let needs: Vec<serde_json::Value> = o
+        .waiting
+        .iter()
+        .map(|(what, why, href)| serde_json::json!({ "what": what, "why": why, "href": href }))
+        .collect();
+    let mut stopped: Vec<serde_json::Value> = o
+        .blocked
+        .iter()
+        .map(|s| serde_json::json!({ "what": s.what, "why": s.stopped, "needs": s.needs }))
+        .collect();
+    stopped.extend(ended(&o.failed));
+    stopped.extend(ended(&o.interrupted));
+    let c = hub::Counts::of(o);
+    serde_json::json!({
+        "needs_you": needs,
+        "working": pairs(&o.in_progress),
+        "queued": pairs(&o.queued),
+        "failed": stopped,
+        "done": ended(&o.done),
+        "counts": {
+            "needs_you": c.waiting,
+            "working": c.running,
+            "queued": c.queued,
+            "failed": c.stopped(),
+            "done": c.done_today,
+        },
+    })
+}
+
 pub fn reply(daemon: &mut Daemon, action: Action) -> Reply {
     daemon.hub_reply(action)
 }
@@ -605,6 +647,9 @@ impl Daemon<'_> {
                     // these to iOS when the app goes to the background, so
                     // they ring with the app closed -- nothing online.
                     "upcoming": crate::phonealarms::upcoming(&self.scheduler, now),
+                    // The one work record every page draws (22 Oct 2026), so
+                    // the phone's widget and notifications say what the hub says.
+                    "work": work_json(&self.open_work(now)),
                 });
                 Reply::ok(body.to_string())
             }
