@@ -1097,6 +1097,9 @@ pub struct Daemon<'a> {
     pending_wanted: Option<String>,
     /// The scheduled job whose approval question is outstanding.
     pending_job: Option<u64>,
+    /// An undo waiting on its own yes to close an app (history id and the
+    /// close it asked about): marked undone only once the close is checked.
+    pending_undo_close: Option<(u64, Intent, String)>,
     /// The backlog item Atlas last offered to do ("Want me to do it now?").
     /// Holds the item id so the yes/no that follows can run the original
     /// request or, on a no, `backlog::dismiss` it for good rather than raise
@@ -1480,6 +1483,9 @@ pub struct Daemon<'a> {
     pending_post_approval: Option<u64>,
     /// An approved-in-principle post waiting for when to go.
     pending_post_when: Option<u64>,
+    /// Whether this turn used or (re)asked `pending_post_when`; one not
+    /// touched by the turn that follows it is dropped with the question.
+    post_when_touched: bool,
     /// Posts being sent, or waiting to retry: (post, not before). A slow
     /// send isn't started twice, and a retry waits five minutes rather than
     /// going round every tick.
@@ -2107,6 +2113,7 @@ impl<'a> Daemon<'a> {
             pending_offer: None,
             pending_wanted: None,
             pending_job: None,
+            pending_undo_close: None,
             pending_backlog: None,
             tiers: Tiers::default(),
             power: Power::default(),
@@ -2286,6 +2293,7 @@ impl<'a> Daemon<'a> {
             pending_mail_sort: false,
             pending_post_approval: None,
             pending_post_when: None,
+            post_when_touched: false,
             posting: Vec::new(),
             publication_jobs: Default::default(),
             dial_later: false,

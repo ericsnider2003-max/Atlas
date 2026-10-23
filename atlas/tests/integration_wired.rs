@@ -459,3 +459,96 @@ fn a_complete_command_containing_a_pronoun_is_not_questioned() {
     // A genuinely incomplete one still asks.
     assert_eq!(d.turn("close it", 110), "Which app?");
 }
+
+/// The question before a post goes names what will be posted and when
+/// (22 Oct 2026); with no time said, the one question asks the time too.
+#[test]
+fn the_question_before_posting_names_the_draft_and_the_time() {
+    let (c, p) = (cfg(), plat());
+    let mut d = daemon(&c, &p, "post-question");
+    let id = d.publisher.draft(
+        Channel::X,
+        "Shipping today with the new build and a few other small things besides",
+    );
+    d.publisher.request_approval(id);
+    let q = d.turn("post it tomorrow at 9am", 1_790_760_000);
+    assert!(
+        q.contains("Shipping today with the new build and a\u{2026}") && q.contains("Go ahead?"),
+        "{q}"
+    );
+    assert!(q.contains("9:00") || q.contains("09:00") || q.contains("9 AM") || q.contains("9am"), "{q}");
+    assert_eq!(
+        d.publisher.posts.last().unwrap().state,
+        atlas::publish::PostState::AwaitingApproval,
+        "nothing was approved by the question"
+    );
+
+    let mut d = daemon(&c, &p, "post-question-2");
+    let id = d.publisher.draft(Channel::X, "Shipping today with the new build");
+    d.publisher.request_approval(id);
+    let q = d.turn("schedule the post", 1_790_760_000);
+    assert!(q.contains("Shipping today with the new build") && q.contains("what time?"), "{q}");
+    assert!(!q.contains("scheduling your post"), "{q}");
+}
+
+/// "What time?" answered "not now" or "no" leaves the post a draft; "now"
+/// posts it and "tomorrow at 9am" schedules it (22 Oct 2026: "not now"
+/// contained the word "now" and the post went out).
+#[test]
+fn a_no_to_what_time_is_not_a_time() {
+    use atlas::publish::PostState;
+    let (c, p) = (cfg(), plat());
+    let t = 1_790_760_000;
+    for (tag, answer, want) in [
+        ("p-notnow", "not now", PostState::AwaitingApproval),
+        ("p-dontnow", "no, don't post it now", PostState::AwaitingApproval),
+        ("p-no", "no", PostState::AwaitingApproval),
+        ("p-never", "never mind", PostState::AwaitingApproval),
+        ("p-nowbad", "now isn't good", PostState::AwaitingApproval),
+        ("p-later", "later", PostState::AwaitingApproval),
+        ("p-tomorrow", "tomorrow at 9am", PostState::Scheduled),
+    ] {
+        let mut d = daemon(&c, &p, tag);
+        let id = d.publisher.draft(Channel::X, "Shipping today");
+        d.publisher.request_approval(id);
+        let q = d.turn("schedule the post", t);
+        assert!(q.contains("what time?"), "{q}");
+        let said = d.turn(answer, t + 1);
+        let state = d.publisher.get(id).unwrap().state.clone();
+        assert_eq!(state, want, "{answer:?} -> {said}");
+        if want == PostState::AwaitingApproval && answer != "later" {
+            assert!(said.contains("stays a draft"), "{answer:?} -> {said}");
+        }
+    }
+    // "now" is a time: approved and on its way (not left a draft).
+    let mut d = daemon(&c, &p, "p-now");
+    let id = d.publisher.draft(Channel::X, "Shipping today");
+    d.publisher.request_approval(id);
+    let _ = d.turn("schedule the post", t);
+    let said = d.turn("right now", t + 1);
+    assert!(said.contains("Posting"), "{said}");
+    assert_ne!(
+        d.publisher.get(id).unwrap().state,
+        PostState::AwaitingApproval
+    );
+}
+
+/// A "what time?" the next turn did not answer is dropped: "later" -> "I'll
+/// be here." and then a time said afterwards schedules nothing.
+#[test]
+fn a_what_time_question_does_not_outlive_the_turn_after_it() {
+    use atlas::publish::PostState;
+    let (c, p) = (cfg(), plat());
+    let t = 1_790_760_000;
+    let mut d = daemon(&c, &p, "p-stale-when");
+    let id = d.publisher.draft(Channel::X, "Shipping today");
+    d.publisher.request_approval(id);
+    assert!(d.turn("schedule the post", t).contains("what time?"));
+    let _ = d.turn("later", t + 1);
+    let said = d.turn("tomorrow at 9am", t + 2);
+    assert_eq!(
+        d.publisher.get(id).unwrap().state,
+        PostState::AwaitingApproval,
+        "a time said later scheduled it: {said}"
+    );
+}

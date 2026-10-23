@@ -80,6 +80,14 @@ pub fn rescue(said: &str) -> Option<String> {
     if w.is_empty() {
         return None;
     }
+    // These read a keyword anywhere in the sentence, so they are for a short
+    // ask. A long message that merely mentions memory or a laptop is a
+    // complaint or a story, not "check the machine" (22 Oct 2026: a
+    // forty-word report of Atlas running badly "when memory is almost full"
+    // ran the health check). The model, or the floor's honest reply, has it.
+    if w.len() > 24 {
+        return None;
+    }
     let found: Vec<String> = [
         wit(&w),
         desktop(&w),

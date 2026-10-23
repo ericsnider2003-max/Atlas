@@ -150,3 +150,158 @@ fn a_consent_decision_is_the_same_every_time_it_is_asked() {
         );
     }
 }
+
+/// What the owner confirmed on 22 Oct 2026: anything hard to undo always gets
+/// a quick confirm -- sending (messages, emails, posts), deleting files,
+/// moving files, installs, sign-ins, posting/publishing, two-factor codes.
+///
+/// One entry per intent that is itself that act. Intents that ask their own,
+/// more specific question before acting (so that a second, vaguer "go ahead?"
+/// in front would be two questions for one decision) are not here; they are
+/// listed in `hard_to_undo_that_asks_for_itself` so the list is visible and
+/// a new one has to be put in one place or the other:
+/// `Mail` only reads, sorts and summarises (sends go through `Message` and
+/// `DraftPost`); `SchedulePost` and `PressButton` and `Operate` ask at the
+/// post and at the button; `TwoFactor` reads the setting back and waits for
+/// a yes; `Feedback` and `Updates("undo")` hold their own question;
+/// `MoveBigFiles`, `TidyDesktop`, `PcTune` and `EditMedia` show a plan and wait.
+fn hard_to_undo() -> Vec<Intent> {
+    let mut v = vec![
+        // sending
+        Intent::Message("sam hello".into()),
+        // moving and deleting files (closing an app discards work too)
+        Intent::MoveFile("report to archive".into()),
+        Intent::CloseApp("chrome".into()),
+        Intent::WorkspaceOff,
+        // installs
+        Intent::Updates("install".into()),
+        Intent::MakePicture("get the picture maker".into()),
+        Intent::WorkOnYourself("fix it".into()),
+        // sign-ins and sign-ups, pairing
+        Intent::SignIn("github".into()),
+        Intent::CreateAccount("github".into()),
+        Intent::Pair("code".into()),
+        Intent::AcceptPairing("code".into()),
+        // one-time codes
+        Intent::TypeCode("the code from my texts".into()),
+        // telling a tester something is a send
+        Intent::Feedback("reply:2 fixing".into()),
+        // publishing: naming the time approves the post
+        Intent::SchedulePost("post it at 6pm".into()),
+    ];
+    // The phone's own model is fetched only on a phone build.
+    #[cfg(feature = "phone-llm")]
+    v.push(Intent::PhoneModel("get".into()));
+    v
+}
+
+#[test]
+fn every_hard_to_undo_intent_asks_first() {
+    let mem = Memory::default();
+    let cfg = PolicyConfig::default();
+    for i in hard_to_undo() {
+        assert_eq!(
+            policy::classify(&i),
+            Decision::RequireApproval,
+            "{i:?} must be asked about first"
+        );
+        assert!(
+            policy::classify_with_policy(&i, &mem, &cfg).needs_consent(),
+            "{i:?} must be asked about first on the daemon route"
+        );
+        assert!(
+            policy::gate(&i, &SaysNo).is_err(),
+            "{i:?} passed the command-line gate unasked"
+        );
+    }
+}
+
+/// The same acts, said so that they are NOT the hard ones, stay unasked, so
+/// the confirm stays rare enough to be read.
+#[test]
+fn the_easy_neighbours_are_not_newly_asked() {
+    for i in [
+        Intent::Updates("status".into()),
+        Intent::PhoneModel("status".into()),
+        Intent::MakePicture("draw me a lighthouse".into()),
+        Intent::CreateFile("notes".into()),
+        Intent::ReadFile("notes".into()),
+    ] {
+        assert_ne!(
+            policy::classify(&i),
+            Decision::RequireApproval,
+            "{i:?} started needing approval"
+        );
+    }
+}
+
+/// Five hundred earlier yeses to a send or a move must not teach Atlas to
+/// stop asking, even when the kind is on the learnable list.
+#[test]
+fn history_cannot_relax_a_hard_to_undo_confirm() {
+    let mut mem = Memory::default();
+    for i in hard_to_undo() {
+        assert!(policy::is_hard_to_undo(&i), "{i:?} is missing from is_hard_to_undo");
+        let kind = atlas::session::kind_of(&i);
+        for _ in 0..50 {
+            mem.record_approval(kind, true, None);
+        }
+    }
+    let cfg = PolicyConfig {
+        always_ask: Vec::new(),
+        learnable: hard_to_undo()
+            .iter()
+            .map(|i| atlas::session::kind_of(i).to_string())
+            .collect(),
+        min_samples: 1,
+    };
+    for i in hard_to_undo() {
+        assert_eq!(
+            policy::classify_with_policy(&i, &mem, &cfg),
+            Decision::RequireApproval,
+            "{i:?} was learned away"
+        );
+    }
+}
+
+/// A step of a multi-part plan is held at a hard-to-undo step, and an
+/// add-on step reads the same grade (`splitter::destructive`, plugins).
+#[test]
+fn a_plan_stops_at_a_hard_to_undo_step() {
+    for i in hard_to_undo() {
+        assert!(
+            atlas::splitter::destructive(&i),
+            "{i:?} would run inside a multi-part plan without a stop"
+        );
+        assert!(policy::classify(&i).needs_consent(), "{i:?}");
+    }
+}
+
+/// The follow-ups built only after the yes are not asked about a second
+/// time, and declining the coding agent can only ever lead to work that is
+/// not itself hard to undo (it runs after a "no").
+#[test]
+fn the_follow_ups_after_a_yes_do_not_ask_again() {
+    for i in [
+        Intent::Feedback("confirmed-send".into()),
+        Intent::Updates("undo-confirmed".into()),
+        Intent::Feedback("list".into()),
+    ] {
+        assert!(!policy::is_hard_to_undo(&i), "{i:?}");
+        assert_ne!(policy::classify(&i), Decision::RequireApproval, "{i:?}");
+    }
+    use atlas::coding_agent::{declined, HAND_OVER};
+    let mut seen = 0;
+    for said in ["Build", "Improve"] {
+        let w = format!("{HAND_OVER}make a script");
+        let i = if said == "Build" { Intent::Build(w) } else { Intent::Improve(w) };
+        let own = declined(&i).expect("a hand-over has its own fallback");
+        assert!(!policy::is_hard_to_undo(&own), "{own:?}");
+        seen += 1;
+    }
+    assert_eq!(seen, 2);
+    // Anything that is not a hand-over has no fallback at all.
+    for i in hard_to_undo() {
+        assert!(declined(&i).is_none(), "{i:?}");
+    }
+}

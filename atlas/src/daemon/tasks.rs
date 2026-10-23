@@ -1113,6 +1113,8 @@ impl<'a> Daemon<'a> {
     }
 
     pub(super) fn abandon_dependent_question(&mut self) {
+        // The question an undo asked is dropped with the rest.
+        self.pending_undo_close = None;
         if let Some(tl) = self.task_loop.as_mut() {
             if tl.waiting_for_approval.take().is_some()
                 || tl.waiting_for_question.take().is_some()
@@ -1735,6 +1737,7 @@ impl<'a> Daemon<'a> {
                 .record_approval(crate::session::kind_of(&intent), yes, None);
             let line = if yes {
                 let r = self.execute_approved_step(&intent);
+                let r = self.finish_undo_close(&intent, &description, r);
                 // The first was what a scheduled job was waiting on.
                 if k == 0 {
                     if let Some(jid) = self.pending_job.take() {
@@ -1750,6 +1753,13 @@ impl<'a> Daemon<'a> {
                 );
                 if k == 0 {
                     self.pending_job = None;
+                }
+                if self
+                    .pending_undo_close
+                    .as_ref()
+                    .is_some_and(|(_, c, q)| *c == intent && *q == description)
+                {
+                    self.pending_undo_close = None;
                 }
                 let (what, kind) = crate::person::learn_from_refusal(&description);
                 self.person.notice(&what, kind, t);

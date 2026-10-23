@@ -1264,6 +1264,37 @@ impl<'a> Daemon<'a> {
     /// Why this would be refused however you answered, if it would -- so the
     /// refusal comes first and the question never does.
     pub(super) fn refused_before_asking(&self, intent: &Intent) -> Option<String> {
+        // Nothing to install, or nowhere to type: said, not asked (22 Oct
+        // 2026, when both began to ask first).
+        match intent {
+            Intent::Updates(what) if what == "install" => {
+                let a = crate::update_courier::Available::load(&self.store);
+                if a.notice.is_none() {
+                    return Some("There's no update waiting.".into());
+                }
+                if a.downloaded.is_empty() {
+                    return Some(format!("Atlas {} is out, but it hasn't finished arriving yet. I'll install it once it's here and checked.", a.version));
+                }
+                return None;
+            }
+            // Words that name no feedback to answer: the help, not a question.
+            Intent::Feedback(what)
+                if what
+                    .strip_prefix("reply:")
+                    .is_some_and(|r| crate::feedback::read_reply(r).is_none()) =>
+            {
+                return Some(
+                    "Say \"answer feedback\", its number, and seen, fixing, fixed and the version, or wont -- for example \"answer feedback 2 fixing\"."
+                        .into(),
+                );
+            }
+            Intent::TypeCode(_) if self.code_target().is_none() => {
+                return Some(
+                    "There's nothing in front of you for me to type a code into.".into(),
+                );
+            }
+            _ => {}
+        }
         let Intent::Message(raw) = intent else {
             return None;
         };

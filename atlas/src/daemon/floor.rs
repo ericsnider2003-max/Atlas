@@ -137,6 +137,20 @@ impl<'a> Daemon<'a> {
     /// "Is the backup of src finished?" (21 Oct 2026), answered from the Hub's
     /// job list and the durable job records -- no model. Running, done with
     /// when and where, failed with why, or that there is no such job.
+    /// "Is it done?" right after a job you started or one that just ended:
+    /// "it" is that job, answered from the job records with no model. With no
+    /// recent job in this session it is not read here (small talk, or the
+    /// what's-running answer, take it as before).
+    pub(super) fn job_context_status_help(&mut self, raw: &str) -> Option<String> {
+        let ask = crate::floor::status_question_about_it(raw)?;
+        let now = crate::store::now();
+        let recent = self.hub_jobs.snapshot().iter().any(|j| {
+            j.finished_at()
+                .map_or(true, |at| now.saturating_sub(at) <= 600)
+        });
+        recent.then(|| self.on_job_status(&ask))
+    }
+
     fn on_job_status(&mut self, ask: &crate::floor::StatusAsk) -> String {
         use crate::floor::{JobView, Life};
         let mut views: Vec<JobView> = self

@@ -246,7 +246,7 @@ impl<'a> Daemon<'a> {
 
     /// Where a code you asked to be typed goes: the sign-in Atlas is in the
     /// middle of, or the window in front of you.
-    fn code_target(&self) -> Option<(crate::twofactor::Target, Option<String>)> {
+    pub(super) fn code_target(&self) -> Option<(crate::twofactor::Target, Option<String>)> {
         if let Some(site) = &self.signing_in_waiting {
             return Some((
                 crate::twofactor::Target::AtlasBrowser { site: site.clone() },
@@ -1844,9 +1844,7 @@ impl<'a> Daemon<'a> {
         // Read on your clock, kept in UTC (28 Sep 2026): "tomorrow at 9" was
         // read as 9 in UTC, hours out, the way offered meeting times once
         // were (`booking_from`).
-        let now_said = crate::intent::normalize(said)
-            .split_whitespace()
-            .any(|w| w == "now");
+        let now_said = now_as_a_time(said);
         let when = if now_said {
             Some(t)
         } else {
@@ -1857,6 +1855,7 @@ impl<'a> Daemon<'a> {
         };
         let Some(at) = when else {
             self.pending_post_when = Some(id);
+            self.post_when_touched = true;
             let q =
                 "I didn't catch the time — \"now\", \"at 6pm\" or \"tomorrow at 9\"?".to_string();
             self.session.ask(&q);
@@ -1885,6 +1884,62 @@ impl<'a> Daemon<'a> {
                 "Scheduled {what} for {} — I'll check it again just before it goes, and \"cancel the post\" stops it any time until then.",
                 crate::localclock::hhmm_here(at)
             )
+        }
+    }
+
+    /// When "post it ..." says to post, if it says: now, or a time on your
+    /// clock, in UTC (the reading `schedule_post_at` uses).
+    pub(super) fn time_for_post(&self, said: &str, t: u64) -> Option<u64> {
+        if now_as_a_time(said) {
+            return Some(t);
+        }
+        let zone = self.home_zone();
+        let lnow = zone.to_local(t as i64).max(0) as u64;
+        crate::calendar::resolve_when(said, lnow).map(|w| zone.to_utc(w.start as i64).max(0) as u64)
+    }
+
+    /// The question before a post goes: what will be posted (the first words
+    /// of the draft) and when. With no time said, the one question asks the
+    /// time too, and the answer to it is read as the time (`pending_post_when`).
+    /// `None` when there is no post waiting; the handler says so.
+    pub(super) fn ask_before_posting(&mut self, said: &str, t: u64) -> Option<String> {
+        let (id, body) = self
+            .publisher
+            .posts
+            .iter()
+            .rev()
+            .find(|p| {
+                matches!(
+                    p.state,
+                    crate::publish::PostState::AwaitingApproval
+                        | crate::publish::PostState::Scheduled
+                        | crate::publish::PostState::ReadyToSend
+                        | crate::publish::PostState::Held
+                )
+            })
+            .map(|p| (p.id, p.body.clone()))?;
+        let words: Vec<&str> = body.split_whitespace().take(8).collect();
+        let more = if body.split_whitespace().count() > 8 { "\u{2026}" } else { "" };
+        let what = format!("post \"{}{more}\"", words.join(" "));
+        match self.time_for_post(said, t) {
+            Some(at) if at <= t => {
+                self.pending_post_when = None;
+                Some(format!("Just to check -- {what} now. Go ahead?"))
+            }
+            Some(at) => {
+                self.pending_post_when = None;
+                Some(format!(
+                    "Just to check -- {what} at {}. Go ahead?",
+                    crate::localclock::hhmm_here(at)
+                ))
+            }
+            None => {
+                self.pending_post_when = Some(id);
+                self.post_when_touched = true;
+                let q = format!("I'll {what} \u{2014} what time?");
+                self.session.ask(&q);
+                Some(q)
+            }
         }
     }
 
@@ -3064,6 +3119,21 @@ impl<'a> Daemon<'a> {
             }
         } else {
             match undo_intent(&d.what) {
+                // Taking back "opened X" closes X, which can discard unsaved
+                // work: asked first like any close (22 Oct 2026).
+                Some(intent) if crate::policy::is_hard_to_undo(&intent) => {
+                    // The question is the key: only a yes to this very question
+                    // marks this entry undone (`finish_undo_close`), never a
+                    // later, unrelated "close notepad".
+                    let q = format!(
+                        "To take back \"{}\" I'd close it -- {}. Go ahead?",
+                        d.what,
+                        intent.plain()
+                    );
+                    self.pending_undo_close = Some((id, intent.clone(), q.clone()));
+                    self.session.await_approval(intent, &q);
+                    return q;
+                }
                 Some(intent) => self.execute(&intent),
                 None => return format!("I don't know how to take back \"{}\" myself.", d.what),
             }
@@ -3077,6 +3147,35 @@ impl<'a> Daemon<'a> {
 }
 
 impl<'a> Daemon<'a> {
+    /// An undo that closed an app, after its own yes: the history entry is
+    /// marked undone only when the close was checked (`on_close_app` says
+    /// "Closed ..." only then). Otherwise it stays as it was, and says so.
+    pub(super) fn finish_undo_close(
+        &mut self,
+        intent: &Intent,
+        question: &str,
+        reply: String,
+    ) -> String {
+        if !self
+            .pending_undo_close
+            .as_ref()
+            .is_some_and(|(_, c, q)| c == intent && q == question)
+        {
+            return reply;
+        }
+        let Some((id, _, _)) = self.pending_undo_close.take() else {
+            return reply;
+        };
+        if !reply.starts_with("Closed ") {
+            return format!("{reply} It is not marked as undone.");
+        }
+        self.history.mark_undone(id);
+        match self.history.save_merged(&self.store) {
+            Ok(()) => format!("Undone. {reply}"),
+            Err(e) => format!("{reply} I couldn't save that it's undone ({e})."),
+        }
+    }
+
     /// A flow seen as a chain: which steps can be taken back and which leave
     /// the machine, with the first `done` of them marked done (G7).
     pub(super) fn chain_of(&self, run: &crate::flow::Run, done: usize) -> crate::chain::Chain {
@@ -5713,5 +5812,58 @@ mod publication_terminal_results {
         assert!(daemon.posting.is_empty());
         drop(daemon);
         let _ = std::fs::remove_dir_all(root);
+    }
+}
+
+
+/// "Now" as the answer to "what time?": only when that is all it says
+/// ("now", "right now", "post it now", "now please"). "Not now", "now isn't
+/// good" and "not right now, later" are not a time (22 Oct 2026: they were
+/// read as "now" and the post went out).
+fn now_as_a_time(said: &str) -> bool {
+    const FILLER: &[&str] = &[
+        "now", "right", "please", "post", "it", "that", "go", "ahead", "just", "and", "thanks",
+        "thank", "you", "atlas", "schedule", "the", "for", "yes", "ok", "okay", "do",
+    ];
+    let t = crate::intent::normalize(said);
+    let words: Vec<&str> = t.split_whitespace().collect();
+    words.contains(&"now") && words.iter().all(|w| FILLER.contains(w))
+}
+
+
+impl<'a> Daemon<'a> {
+    /// A decline of "what time?": "no", "not now", "don't", "cancel", "stop",
+    /// "never mind", "leave it", "later"/"not yet" with no time in it. A real
+    /// time ("at 6pm", "tomorrow at 9") is never a decline.
+    pub(super) fn declines_the_post_time(&self, said: &str, t: u64) -> bool {
+        let has_a_time = self.time_for_post(said, t).is_some();
+    if now_as_a_time(said) {
+        return false;
+    }
+    if crate::session::is_no(said) {
+        return true;
+    }
+    let t = crate::intent::normalize(said);
+    let words: Vec<&str> = t.split_whitespace().collect();
+    let has = |w: &str| words.contains(&w);
+    let phrase = |p: &str| format!(" {t} ").contains(&format!(" {p} "));
+    if has("no")
+        || has("not")
+        || has("dont")
+        || has("never")
+        || has("cancel")
+        || has("stop")
+        || has("wait")
+        || has("isnt")
+        || has("wont")
+        || has("cant")
+        || phrase("do not")
+        || phrase("leave it")
+        || phrase("hold off")
+        || phrase("never mind")
+    {
+        return true;
+    }
+    !has_a_time && (has("later") || has("nevermind") || phrase("not yet"))
     }
 }

@@ -24,6 +24,7 @@ Dates are UTC. The card at the top of `AGENTS.md` holds the facts; this file hol
 - `model-training` Train Atlas's own model: data from Eric's own messages, clean open datasets, REA/Replica/Atlas repo; stages, cost, first 3 steps — home: [docs/ATLAS_MODEL_TRAINING_PLAN_2026-10-21.md](ATLAS_MODEL_TRAINING_PLAN_2026-10-21.md) — open since 2026-10-21 (claude)
 - `completion-path` One completion path + context-before-asking: built in owned files; wiring in run_command/spoken_steps/tasks/floor/brain and the approval contract handed off — home: [docs/HANDOFF_ONE_COMPLETION_PATH_2026-10-21.md](HANDOFF_ONE_COMPLETION_PATH_2026-10-21.md) — doing since 2026-10-22 (claude-items)
 - `i095f` Phone Atlas standalone-first (owner decision 22 Oct 2026) — home: [docs/PLATFORM.md](PLATFORM.md) — open since 2026-10-23 (agent)
+- `iff9c` kokoro-per-call-slowdown Kokoro: back-to-back synth calls slow to ~2x real time; profile threads/power before chunking (branch fix/kokoro-first-clause-2026-10-22 unmerged) — open since 2026-10-23 (claude)
 
 ## Last session
 

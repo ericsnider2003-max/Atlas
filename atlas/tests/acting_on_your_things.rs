@@ -323,14 +323,58 @@ fn undo_asks_and_then_actually_takes_it_back() {
     );
     let said = d.turn("undo", 1_000);
     assert!(said.starts_with("Undo \"opened notepad\"?"), "{said}");
+    // Closing the app it opened can discard unsaved work, so it is asked
+    // about again before anything closes (22 Oct 2026). Nothing closed yet.
     let said = d.turn("yes", 1_001);
-    assert!(said.starts_with("Undone: opened notepad."), "{said}");
+    assert!(said.contains("Go ahead?"), "{said}");
+    assert!(
+        !p.actions()
+            .iter()
+            .any(|a| matches!(a, atlas::platform::mock::Action::Close(_))),
+        "closed before the second yes"
+    );
+    // The second yes closes it, checks it, and only then marks the entry
+    // undone, so a later "undo" does not offer it again.
+    let said = d.turn("yes", 1_002);
+    assert!(said.contains("Undone.") && said.contains("Closed notepad"), "{said}");
     assert!(
         d.history
             .done
             .iter()
             .any(|x| x.what == "opened notepad" && x.undone),
-        "marked undone"
+        "marked undone after the checked close"
+    );
+}
+
+/// The yes to an undo's close question marks that entry undone; a later,
+/// unrelated "close notepad" and yes must not (22 Oct 2026).
+#[test]
+fn an_abandoned_undo_question_does_not_mark_the_entry_undone_later() {
+    let c = cfg();
+    let p = plat();
+    let mut d = daemon(c, &p, "undo-stale");
+    d.history.note(
+        "opened notepad",
+        "windows",
+        atlas::undo::Undo::Atlas("close notepad".into()),
+        true,
+        10,
+    );
+    assert!(d.turn("undo", 1_000).starts_with("Undo \"opened notepad\"?"));
+    let q = d.turn("yes", 1_001);
+    assert!(q.contains("Go ahead?"), "{q}");
+    // Something else instead of an answer: the question is dropped.
+    let _ = d.turn("what time is it", 1_002);
+    // Later, an unrelated close, asked and answered yes.
+    let q = d.turn("close notepad", 1_003);
+    assert!(q.contains("Go ahead?"), "{q}");
+    let _ = d.turn("yes", 1_004);
+    assert!(
+        d.history
+            .done
+            .iter()
+            .any(|x| x.what == "opened notepad" && !x.undone),
+        "the old entry was marked undone by an unrelated close"
     );
 }
 

@@ -60,10 +60,7 @@ impl<'a> Daemon<'a> {
     /// (`imagemake`), on the crew -- it takes a few minutes on a laptop, and
     /// Atlas keeps listening meanwhile. "Get the picture maker" fetches it.
     pub(super) fn make_picture(&mut self, said: &str) -> String {
-        let l = said.to_lowercase();
-        if l.contains("picture maker")
-            && (l.contains("get") || l.contains("download") || l.contains("fetch"))
-        {
+        if crate::policy::fetches_the_picture_maker(said) {
             return self.get_picture_maker();
         }
         let tools = self.tools_cfg();

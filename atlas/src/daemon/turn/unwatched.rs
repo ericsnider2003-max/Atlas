@@ -7,7 +7,19 @@ use super::*;
 
 impl<'a> Daemon<'a> {
     /// The turn itself.
-    pub(super) fn turn_unwatched(&mut self, said: &str, t: u64, how: Arrival) -> String {
+    pub(super) fn turn_dropping_stale_questions(&mut self, said: &str, t: u64, how: Arrival) -> String {
+        // "What time?" is answered by the very next turn or not at all: a
+        // turn handled by anything else ("later" -> "I'll be here.") drops
+        // it, so a time said afterwards schedules nothing (22 Oct 2026).
+        self.post_when_touched = false;
+        let reply = self.turn_unwatched(said, t, how);
+        if !self.post_when_touched {
+            self.pending_post_when = None;
+        }
+        reply
+    }
+
+    fn turn_unwatched(&mut self, said: &str, t: u64, how: Arrival) -> String {
         // "List, did you hear me?": the misheard name said to Atlas comes off,
         // so it isn't read as a command of its own (`kws::misheard_name_opening`).
         let unnamed;
@@ -876,6 +888,7 @@ impl<'a> Daemon<'a> {
                     self.session.pending = Pending::Nothing;
                     self.memory.record_approval(&kind, true, None);
                     let reply = self.execute_approved_step(&intent);
+                    let reply = self.finish_undo_close(&intent, &description, reply);
                     self.session.record(said, &intent, &reply);
                     let reply = self.and_the_next_approval(reply);
                     self.persist();
@@ -900,6 +913,7 @@ impl<'a> Daemon<'a> {
                 self.memory.record_approval(&kind, yes, None);
                 let reply = if yes {
                     let r = self.execute_approved_step(&intent);
+                    let r = self.finish_undo_close(&intent, &description, r);
                     // If this was a scheduled job asking, close it out too.
                     if let Some(jid) = self.pending_job.take() {
                         self.scheduler.approve(jid);
@@ -914,6 +928,7 @@ impl<'a> Daemon<'a> {
                     self.execute(&own)
                 } else {
                     self.pending_job = None;
+                    self.pending_undo_close = None;
                     // Worth learning once, per its own doc comment -- not a rule
                     // inferred from a single no, just a pattern that starts
                     // counting. `notice` is the same dedup-by-text used for every
@@ -1240,13 +1255,20 @@ impl<'a> Daemon<'a> {
                     return "Alright — it stays a draft.".into();
                 }
                 self.pending_post_when = Some(id);
+                self.post_when_touched = true;
                 let q = "When should it go? Right now, or a time like at 6pm or tomorrow at 9."
                     .to_string();
                 self.session.ask(&q);
                 return q;
             }
             if let Some(id) = self.pending_post_when.take() {
+                self.post_when_touched = true;
                 self.session.pending = Pending::Nothing;
+                // A "no" to "what time?" leaves it a draft; it is never read
+                // as a time ("not now" is not "now").
+                if self.declines_the_post_time(said, t) {
+                    return "Alright, it stays a draft.".into();
+                }
                 return self.schedule_post_at(id, said, t);
             }
             // "Go" on a mailbox rehearsal.

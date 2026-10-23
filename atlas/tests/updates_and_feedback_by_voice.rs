@@ -238,7 +238,11 @@ fn on_the_releasers_own_atlas_feedback_is_filed_listed_and_answered_by_voice() {
         said.contains("Number 2, from Priya") && said.contains("Typing goes wrong in Notepad"),
         "{said}"
     );
-    let said = d.turn("answer feedback 2 fixing", 1_003);
+    // Telling a tester something is a send: asked first (22 Oct 2026).
+    let asked = d.turn("answer feedback 2 fixing", 1_003);
+    assert!(asked.contains("Go ahead?"), "{asked}");
+    assert_eq!(answers_out(&eric.store()).len(), 0, "sent before the yes");
+    let said = d.turn("yes", 1_003);
     assert!(
         said.contains("being fixed") && said.contains("Priya"),
         "{said}"
@@ -261,6 +265,7 @@ fn updates_said_out_loud_and_going_back_is_asked_first() {
         said.contains(&format!("This is Atlas {}", atlas::upgrade::version())),
         "{said}"
     );
+    // Nothing waiting: said, not asked about (22 Oct 2026).
     assert_eq!(
         d.turn("install the update", 1_001),
         "There's no update waiting."
@@ -351,4 +356,16 @@ fn the_phones_own_model_asked_for_on_a_computer_says_what_it_is() {
     assert!(d
         .turn("how's the model download", 1_001)
         .contains("for Atlas on a phone"));
+}
+
+/// Said, not asked: nothing waiting to install means no "Go ahead?" first
+/// (22 Oct 2026). Asking about an install that cannot happen teaches a yes
+/// without reading.
+#[test]
+fn installing_with_nothing_waiting_says_so_without_asking() {
+    let (c, p) = (cfg(), plat());
+    let i = Install::new("nothing-to-install");
+    let mut d = i.daemon(&c, &p);
+    let said = d.turn("install the update", 1_000);
+    assert_eq!(said, "There's no update waiting.");
 }

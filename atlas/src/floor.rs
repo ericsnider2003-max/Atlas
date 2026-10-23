@@ -1440,6 +1440,18 @@ const SUBJECTS: &[(&[&str], &str, &[&str])] = &[
 /// "Is the backup finished?", "how's the backup going", "did the backup of
 /// src finish", "is it done". `None` for anything else.
 pub(crate) fn status_question(raw: &str) -> Option<StatusAsk> {
+    status_ask(raw, false)
+}
+
+/// The same, also reading "is it done?", "is that finished?", "how's it
+/// going" -- a pronoun for a subject. Only for a caller that knows a job was
+/// started or finished a moment ago (22 Oct 2026): with no job in context
+/// "how's it going" is small talk, and `status_question` leaves it alone.
+pub(crate) fn status_question_about_it(raw: &str) -> Option<StatusAsk> {
+    status_ask(raw, true)
+}
+
+fn status_ask(raw: &str, pronoun_ok: bool) -> Option<StatusAsk> {
     let lower = raw.to_lowercase();
     let mut w: Vec<String> = lower
         .split_whitespace()
@@ -1485,8 +1497,13 @@ pub(crate) fn status_question(raw: &str) -> Option<StatusAsk> {
         });
     if subject.is_none() {
         // "how's it going", "is it done yet" name no job: the existing
-        // what's-running handler answers those, from what is running.
-        return None;
+        // what's-running handler answers those, from what is running --
+        // unless a job is in context (`status_question_about_it`), when "it"
+        // is that job.
+        let about_it = has(&["it", "that"]);
+        if !(pronoun_ok && about_it) {
+            return None;
+        }
     }
     let detail = w
         .iter()
@@ -1935,6 +1952,14 @@ mod tests {
             assert_eq!(ask.subject, subject, "{said:?}");
             assert_eq!(ask.detail.as_deref(), detail, "{said:?}");
         }
+        // With a job in context a pronoun is that job; without one (the plain
+        // reading) it is still nothing.
+        for said in ["is it done?", "is it done yet", "is that finished", "how's it going"] {
+            let ask = status_question_about_it(said).unwrap_or_else(|| panic!("{said:?}"));
+            assert_eq!(ask.subject, None, "{said:?}");
+            assert!(status_question(said).is_none(), "{said:?}");
+        }
+        assert!(status_question_about_it("how's the weather going").is_none());
         for not in [
             "back up my Documents folder to D:\\Backups",
             "what's the weather",

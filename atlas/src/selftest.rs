@@ -798,9 +798,13 @@ pub fn run_all(
             v = Verdict::Broken("an error said as the answer".into());
         }
         // Says it did something when nothing was done or started: the
-        // failure Eric hears as "it doesn't actually do it".
+        // failure Eric hears as "it doesn't actually do it". Not when the
+        // reply is the question before doing it ("Moving the file. Go
+        // ahead?"): that is asking first, which a move now always does
+        // (22 Oct 2026).
         if would.is_empty()
             && d.last_reached().is_none()
+            && v != Verdict::AsksFirst
             && crate::repeating::sentences(&reply)
                 .iter()
                 .any(|s| crate::backed::claims_work_started(s))

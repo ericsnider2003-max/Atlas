@@ -1094,9 +1094,14 @@ commands:
               # found" became a complaint ("You haven't had to correct me
               # yet") and "Correct the issues found in the self test" ran the
               # self-test again.
-              "correct the issues", "correct the issues found", "fix the issues", "fix the issues found",
+              # 22 Oct 2026: the bare "fix the issues" / "fix the problems" /
+              # "correct the issues" were dropped. "Fix the issues" said to
+              # anything else ran a self-repair of Atlas's own code; the
+              # object must be named ("found", "you found", "yourself").
+              "correct the issues found", "fix the issues found", "fix the issues it found", "fix the issues you found",
+              "correct the issues you found", "correct the problems found", "fix the problems found",
               "fix the problems you found", "fix what you found", "fix what the self test found",
-              "correct the problems", "fix the problems", "repair yourself", "fix yourself"]
+              "repair yourself", "fix yourself"]
     takes_argument: true
     argument_optional: true
 

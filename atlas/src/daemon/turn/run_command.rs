@@ -713,9 +713,13 @@ impl<'a> Daemon<'a> {
                 // Never ask about something that would be refused anyway: a
                 // question whose "yes" leads to "you can't" is a question wasted,
                 // and every wasted one teaches you to answer without reading.
-                Decision::RequireApproval if self.refused_before_asking(&intent).is_some() => {
+                // Worked out once: `Updates` reads the disk, so two looks could
+                // disagree and leave an empty reply.
+                Decision::RequireApproval
+                    if let Some(refusal) = self.refused_before_asking(&intent) =>
+                {
                     refused = true;
-                    self.refused_before_asking(&intent).unwrap_or_default()
+                    refusal
                 }
                 Decision::RequireApproval => {
                     if self.autonomy == Autonomy::Unattended {
@@ -752,6 +756,13 @@ impl<'a> Daemon<'a> {
                         (Intent::CreateAccount(w) | Intent::SignIn(w), _) if w.trim().is_empty() => {
                             return "Which site?".into();
                         }
+                        (Intent::SchedulePost(w), _) => match self.ask_before_posting(w, _t) {
+                            // The time was missing: that one question is
+                            // already asked and waiting for the time.
+                            Some(q) if self.pending_post_when.is_some() => return q,
+                            Some(q) => q,
+                            None => return "There's no post ready to schedule \u{2014} draft one first.".into(),
+                        },
                         (Intent::Message(_), _) => format!("{} -- it goes out as you. Go ahead?", capital_first(&say.trim_end_matches('.').replace("Just to check -- ", ""))),
                         (Intent::Pair(_) | Intent::AcceptPairing(_), _) => format!(
                             "{} -- that Atlas and this one could then reach each other. Go ahead?",
