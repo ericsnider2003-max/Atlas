@@ -44,7 +44,7 @@ impl<'a> Daemon<'a> {
     /// again.
     pub fn turn_from(&mut self, said: &str, t: u64, how: Arrival) -> String {
         if self.watching_turn {
-            return self.turn_unwatched(said, t, how);
+            return self.turn_dropping_stale_questions(said, t, how);
         }
         // Atlas's own voice coming back through the speakers is not you.
         // Only ambient audio is judged; typed and wake-word turns never are.
@@ -60,7 +60,7 @@ impl<'a> Daemon<'a> {
         let heard = mended.as_deref().unwrap_or(said);
         // What the turn adds goes to your other devices (item 16).
         let before = self.before_the_turn();
-        let reply = self.turn_unwatched(heard, t, how);
+        let reply = self.turn_dropping_stale_questions(heard, t, how);
         self.carry_what_the_turn_added(before, t);
         self.watching_turn = false;
         self.turn_watched(watch, heard, reply, t)
@@ -95,6 +95,7 @@ impl<'a> Daemon<'a> {
             .or_else(|| self.move_window_help(raw))
             .or_else(|| self.improvements_help(raw))
             .or_else(|| self.compose_help(raw))
+            .or_else(|| self.job_context_status_help(raw))
             .or_else(|| self.progress_help(raw))
             .or_else(|| self.unsubscribe_help(raw))
             .or_else(|| self.note_asked(raw, t))

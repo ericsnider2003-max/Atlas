@@ -289,10 +289,15 @@ fn a_file_is_read_and_moved_with_each_step_checked() {
         read.contains("8 bytes") && read.contains("buy milk"),
         "{read}"
     );
-    let moved = d.turn(
+    // Moving a file is asked about first (owner rule, 22 Oct 2026); nothing
+    // moves until the yes.
+    let asked = d.turn(
         &format!("move note.txt from {} to {}", a.display(), b.display()),
         T0 + 1,
     );
+    assert!(asked.contains("Go ahead?"), "{asked}");
+    assert!(a.join("note.txt").exists(), "moved before the yes");
+    let moved = d.turn("yes", T0 + 1);
     assert!(
         moved.starts_with("Moved") && moved.contains("Checked"),
         "{moved}"
@@ -307,10 +312,13 @@ fn a_file_is_read_and_moved_with_each_step_checked() {
         .any(|r| r.stage == "Move a file" && r.state == atlas::job::State::Succeeded));
     // Something already there is never replaced.
     std::fs::write(a.join("note.txt"), "new").unwrap();
-    let clash = d.turn(
+    let mut clash = d.turn(
         &format!("move note.txt from {} to {}", a.display(), b.display()),
         T0 + 2,
     );
+    if clash.contains("Go ahead?") {
+        clash = d.turn("yes", T0 + 2);
+    }
     assert!(clash.contains("already exists"), "{clash}");
     assert_eq!(std::fs::read_to_string(a.join("note.txt")).unwrap(), "new");
     assert_eq!(

@@ -7,19 +7,19 @@ use super::*;
 
 impl<'a> Daemon<'a> {
     /// The turn itself.
-    pub(super) fn turn_unwatched(&mut self, said: &str, t: u64, how: Arrival) -> String {
+    pub(super) fn turn_dropping_stale_questions(&mut self, said: &str, t: u64, how: Arrival) -> String {
         // "What time?" is answered by the very next turn or not at all: a
         // turn handled by anything else ("later" -> "I'll be here.") drops
         // it, so a time said afterwards schedules nothing (22 Oct 2026).
         self.post_when_touched = false;
-        let reply = self.turn_unwatched_inner(said, t, how);
+        let reply = self.turn_unwatched(said, t, how);
         if !self.post_when_touched {
             self.pending_post_when = None;
         }
         reply
     }
 
-    fn turn_unwatched_inner(&mut self, said: &str, t: u64, how: Arrival) -> String {
+    fn turn_unwatched(&mut self, said: &str, t: u64, how: Arrival) -> String {
         // "List, did you hear me?": the misheard name said to Atlas comes off,
         // so it isn't read as a command of its own (`kws::misheard_name_opening`).
         let unnamed;
