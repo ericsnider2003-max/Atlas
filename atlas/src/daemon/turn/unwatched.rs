@@ -876,7 +876,7 @@ impl<'a> Daemon<'a> {
                     self.session.pending = Pending::Nothing;
                     self.memory.record_approval(&kind, true, None);
                     let reply = self.execute_approved_step(&intent);
-                    let reply = self.finish_undo_close(&intent, reply);
+                    let reply = self.finish_undo_close(&intent, &description, reply);
                     self.session.record(said, &intent, &reply);
                     let reply = self.and_the_next_approval(reply);
                     self.persist();
@@ -901,7 +901,7 @@ impl<'a> Daemon<'a> {
                 self.memory.record_approval(&kind, yes, None);
                 let reply = if yes {
                     let r = self.execute_approved_step(&intent);
-                    let r = self.finish_undo_close(&intent, r);
+                    let r = self.finish_undo_close(&intent, &description, r);
                     // If this was a scheduled job asking, close it out too.
                     if let Some(jid) = self.pending_job.take() {
                         self.scheduler.approve(jid);

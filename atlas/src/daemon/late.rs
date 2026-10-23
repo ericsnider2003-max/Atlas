@@ -1888,6 +1888,61 @@ impl<'a> Daemon<'a> {
         }
     }
 
+    /// When "post it ..." says to post, if it says: now, or a time on your
+    /// clock, in UTC (the reading `schedule_post_at` uses).
+    pub(super) fn time_for_post(&self, said: &str, t: u64) -> Option<u64> {
+        if crate::intent::normalize(said).split_whitespace().any(|w| w == "now") {
+            return Some(t);
+        }
+        let zone = self.home_zone();
+        let lnow = zone.to_local(t as i64).max(0) as u64;
+        crate::calendar::resolve_when(said, lnow).map(|w| zone.to_utc(w.start as i64).max(0) as u64)
+    }
+
+    /// The question before a post goes: what will be posted (the first words
+    /// of the draft) and when. With no time said, the one question asks the
+    /// time too, and the answer to it is read as the time (`pending_post_when`).
+    /// `None` when there is no post waiting; the handler says so.
+    pub(super) fn ask_before_posting(&mut self, said: &str, t: u64) -> Option<String> {
+        let (id, body) = self
+            .publisher
+            .posts
+            .iter()
+            .rev()
+            .find(|p| {
+                matches!(
+                    p.state,
+                    crate::publish::PostState::AwaitingApproval
+                        | crate::publish::PostState::Scheduled
+                        | crate::publish::PostState::ReadyToSend
+                        | crate::publish::PostState::Held
+                )
+            })
+            .map(|p| (p.id, p.body.clone()))?;
+        let words: Vec<&str> = body.split_whitespace().take(8).collect();
+        let more = if body.split_whitespace().count() > 8 { "\u{2026}" } else { "" };
+        let what = format!("post \"{}{more}\"", words.join(" "));
+        match self.time_for_post(said, t) {
+            Some(at) if at <= t => {
+                self.pending_post_when = None;
+                Some(format!("Just to check -- {what} now. Go ahead?"))
+            }
+            Some(at) => {
+                self.pending_post_when = None;
+                Some(format!(
+                    "Just to check -- {what} at {}. Go ahead?",
+                    crate::localclock::hhmm_here(at)
+                ))
+            }
+            None => {
+                self.pending_post_when = Some(id);
+                let q = format!("I'll {what} \u{2014} what time?");
+                self.session.ask(&q);
+                Some(q)
+            }
+        }
+    }
+
     /// "Post it at 6pm" / "schedule the post for tomorrow at 9" (G2), for
     /// the newest post that's approved or waiting for approval.
     pub(super) fn schedule_post(&mut self, said: &str, t: u64) -> String {
@@ -3067,8 +3122,15 @@ impl<'a> Daemon<'a> {
                 // Taking back "opened X" closes X, which can discard unsaved
                 // work: asked first like any close (22 Oct 2026).
                 Some(intent) if crate::policy::is_hard_to_undo(&intent) => {
-                    let q = format!("Just to check -- {}. Go ahead?", intent.plain());
-                    self.pending_undo_close = Some((id, intent.clone()));
+                    // The question is the key: only a yes to this very question
+                    // marks this entry undone (`finish_undo_close`), never a
+                    // later, unrelated "close notepad".
+                    let q = format!(
+                        "To take back \"{}\" I'd close it -- {}. Go ahead?",
+                        d.what,
+                        intent.plain()
+                    );
+                    self.pending_undo_close = Some((id, intent.clone(), q.clone()));
                     self.session.await_approval(intent, &q);
                     return q;
                 }
@@ -3088,11 +3150,20 @@ impl<'a> Daemon<'a> {
     /// An undo that closed an app, after its own yes: the history entry is
     /// marked undone only when the close was checked (`on_close_app` says
     /// "Closed ..." only then). Otherwise it stays as it was, and says so.
-    pub(super) fn finish_undo_close(&mut self, intent: &Intent, reply: String) -> String {
-        if !self.pending_undo_close.as_ref().is_some_and(|(_, c)| c == intent) {
+    pub(super) fn finish_undo_close(
+        &mut self,
+        intent: &Intent,
+        question: &str,
+        reply: String,
+    ) -> String {
+        if !self
+            .pending_undo_close
+            .as_ref()
+            .is_some_and(|(_, c, q)| c == intent && q == question)
+        {
             return reply;
         }
-        let Some((id, _)) = self.pending_undo_close.take() else {
+        let Some((id, _, _)) = self.pending_undo_close.take() else {
             return reply;
         };
         if !reply.starts_with("Closed ") {

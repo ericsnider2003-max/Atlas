@@ -459,3 +459,34 @@ fn a_complete_command_containing_a_pronoun_is_not_questioned() {
     // A genuinely incomplete one still asks.
     assert_eq!(d.turn("close it", 110), "Which app?");
 }
+
+/// The question before a post goes names what will be posted and when
+/// (22 Oct 2026); with no time said, the one question asks the time too.
+#[test]
+fn the_question_before_posting_names_the_draft_and_the_time() {
+    let (c, p) = (cfg(), plat());
+    let mut d = daemon(&c, &p, "post-question");
+    let id = d.publisher.draft(
+        Channel::X,
+        "Shipping today with the new build and a few other small things besides",
+    );
+    d.publisher.request_approval(id);
+    let q = d.turn("post it tomorrow at 9am", 1_790_760_000);
+    assert!(
+        q.contains("Shipping today with the new build and a\u{2026}") && q.contains("Go ahead?"),
+        "{q}"
+    );
+    assert!(q.contains("9:00") || q.contains("09:00") || q.contains("9 AM") || q.contains("9am"), "{q}");
+    assert_eq!(
+        d.publisher.posts.last().unwrap().state,
+        atlas::publish::PostState::AwaitingApproval,
+        "nothing was approved by the question"
+    );
+
+    let mut d = daemon(&c, &p, "post-question-2");
+    let id = d.publisher.draft(Channel::X, "Shipping today with the new build");
+    d.publisher.request_approval(id);
+    let q = d.turn("schedule the post", 1_790_760_000);
+    assert!(q.contains("Shipping today with the new build") && q.contains("what time?"), "{q}");
+    assert!(!q.contains("scheduling your post"), "{q}");
+}

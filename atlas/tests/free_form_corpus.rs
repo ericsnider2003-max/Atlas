@@ -1316,3 +1316,16 @@ fn free_form_removing_files_from_a_folder_is_not_a_group_change() {
         );
     }
 }
+
+/// A group may be named like a list; a place on disk is not a group
+/// (22 Oct 2026).
+#[test]
+fn free_form_a_reading_list_can_be_a_group_and_a_downloads_folder_cannot() {
+    use atlas::intent::Intent;
+    let p = parser();
+    assert!(matches!(p.parse("add Sam to Reading List"), Intent::ChangeGroup(_)));
+    assert!(!matches!(
+        p.parse("remove the old files from the downloads folder"),
+        Intent::ChangeGroup(_)
+    ));
+}
