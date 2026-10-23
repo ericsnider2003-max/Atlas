@@ -84,6 +84,7 @@ pub use inbox::{one_message_asked, OneMessage};
 mod askthelaptop;
 mod calendar_delivery;
 mod execute;
+mod correction_log;
 mod learning;
 mod making;
 mod onethread;
@@ -822,6 +823,8 @@ pub struct Daemon<'a> {
     /// A correction waiting on you to say what right looks like. "That's
     /// wrong" is a signal to ask, not a lesson to file.
     pending_correction: Option<String>,
+    /// The correction log and what it is holding (23 Oct 2026, `corrlog`).
+    corr: crate::corrlog::Keeper,
     /// The words of this turn, as you actually said them.
     ///
     /// Exists because the phrase parser hands an intent the text *after* the
@@ -1996,6 +1999,7 @@ impl<'a> Daemon<'a> {
             self_fix_done: Default::default(),
             proof_check_done: Default::default(),
             pending_correction: None,
+            corr: crate::corrlog::Keeper::open(&store_for_load),
             last_said: String::new(),
             pending_edit: None,
             outbox: crate::notify::Outbox::load(&store_for_load2),

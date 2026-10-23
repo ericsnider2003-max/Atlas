@@ -820,6 +820,7 @@ impl<'a> Daemon<'a> {
                 Resolution::Ambiguous(q) => {
                     // Offer what context suggests (21 Oct 2026).
                     let q = self.context_question(said, &q);
+                    self.note_unsure(&q, None);
                     self.session.ask(&q);
                     return q;
                 }

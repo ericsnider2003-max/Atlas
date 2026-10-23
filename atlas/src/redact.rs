@@ -426,6 +426,11 @@ pub fn secrets_in(text: &str) -> Vec<&'static str> {
 }
 
 impl Scrubber {
+    /// How many distinct spans have been replaced so far.
+    pub fn found_count(&self) -> usize {
+        self.found.len()
+    }
+
     /// `text` with every secret and personal number replaced by a placeholder.
     pub fn scrub(&mut self, text: &str) -> String {
         let spans = find(text);

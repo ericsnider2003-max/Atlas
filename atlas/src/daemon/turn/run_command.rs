@@ -706,6 +706,7 @@ impl<'a> Daemon<'a> {
                     } else {
                         decision.say.clone()
                     };
+                    self.note_unsure(&ask, Some(Vec::new()));
                     self.session.ask(&ask);
                     ask
                     }
@@ -1221,7 +1222,13 @@ impl<'a> Daemon<'a> {
                     }
                 }
             }
-            Resolution::Choose { question, .. } | Resolution::Missing { question } => {
+            Resolution::Choose { question, options } => {
+                self.note_unsure(question, Some(options.clone()));
+                self.session.ask(question);
+                Some(question.clone())
+            }
+            Resolution::Missing { question } => {
+                self.note_unsure(question, Some(Vec::new()));
                 self.session.ask(question);
                 Some(question.clone())
             }

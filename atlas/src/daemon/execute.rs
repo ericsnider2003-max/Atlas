@@ -3243,6 +3243,7 @@ impl<'a> Daemon<'a> {
             return generic.to_string();
         }
         let short: String = said.trim().chars().take(40).collect();
+        self.note_unsure("", Some(options.clone()));
         crate::understood::ask_with_options(&format!("\"{short}\""), &options)
     }
 
