@@ -46,7 +46,6 @@ Every answer is here or in ONE file named here. All docs, one line each, open it
 
 ### Superseded docs
 
-- `33_MERGE_2026-09-26_three_chats.md` → `docs/archive/33_MERGE_2026-09-26_three_chats_ARCHIVED_2026-10-19.md`, superseded by docs/STATUS.md
 - `36_PHONES_WITHOUT_A_MAC_2026-09-26.md` → `docs/archive/36_PHONES_WITHOUT_A_MAC_2026-09-26_ARCHIVED_2026-10-19.md`, superseded by docs/STATUS.md
 - `37_MERGE_2026-09-27_26b_and_friends.md` → `docs/archive/37_MERGE_2026-09-27_26b_and_friends_ARCHIVED_2026-10-19.md`, superseded by docs/STATUS.md
 - `38_HANDOFF_2026-09-27_windows_ios_android.md` → `docs/archive/38_HANDOFF_2026-09-27_windows_ios_android_ARCHIVED_2026-10-19.md`, superseded by docs/STATUS.md
@@ -54,7 +53,8 @@ Every answer is here or in ONE file named here. All docs, one line each, open it
 - `OPEN_GAPS.md` → `docs/archive/OPEN_GAPS_ARCHIVED_2026-10-19.md`, superseded by docs/STATUS.md
 - `OUTSTANDING_2026-09-26.md` → `docs/archive/OUTSTANDING_2026-09-26_ARCHIVED_2026-10-19.md`, superseded by docs/STATUS.md
 - `WINDOWS_SIGNING_TODAY.md` → `docs/archive/WINDOWS_SIGNING_TODAY_ARCHIVED_2026-10-19.md`, superseded by docs/STATUS.md
-- +12 more in `docs/archive/INDEX.tsv`
+- `docs/PLATFORM.md` → `docs/archive/PLATFORM_ARCHIVED_2026-10-22.md`, superseded by docs/PLATFORM.md (22 Oct 2026: phone standalone-first, owner decision)
+- +13 more in `docs/archive/INDEX.tsv`
 
 ### Standing corrections
 
