@@ -572,9 +572,20 @@ pub fn reply(daemon: &mut Daemon, action: Action) -> Reply {
 
 /// Build an immutable view without consuming notices, changing read receipts,
 /// approving work, or exposing accounts. Query/action pages are never cached.
-pub(crate) fn readonly_pages(daemon: &Daemon) -> Vec<(Page, Reply)> {
+pub(crate) fn readonly_pages(daemon: &mut Daemon) -> Vec<(Page, Reply)> {
     let now = crate::store::now();
+    // Home too (22 Oct 2026): it is where the status lives now, so it must
+    // answer at once even while Atlas is busy.
+    let cards = daemon.dashboard_cards(now);
+    let home = hub::dashboard_deck(
+        &daemon.dashboard,
+        &cards,
+        daemon.arranging,
+        daemon.waiting_count(now),
+        &daemon.deck(now, crate::localclock::offset_secs()),
+    );
     [
+        (Page::Dashboard, home),
         (Page::Now, daemon.now_page_live()),
         (Page::Outstanding, daemon.outstanding_page_live(now)),
     ]

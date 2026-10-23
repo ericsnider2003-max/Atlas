@@ -1,0 +1,17 @@
+{
+  "schema_version": 2,
+  "project": "20261023T000000Z-claude-hub-redesign",
+  "date": "2026-10-23",
+  "findings": [],
+  "product": "Atlas Hub (redesign, 22 Oct 2026)",
+  "standard": "WCAG 2.2 AA",
+  "mode": "fix",
+  "legal": false,
+  "jurisdiction": {
+    "value": "unknown",
+    "inferred": true,
+    "basis": "Personal product for one owner; no legal or procurement exposure raised"
+  },
+  "sr_tested": false,
+  "render_args": "render-check http://127.0.0.1:26551/hub --routes /hub,/hub/now,/hub/outstanding,/hub/talk,/hub/workshop,/hub/messages --login bc-login.mjs"
+}

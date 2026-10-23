@@ -254,6 +254,7 @@ impl Daemon<'_> {
             asks,
             businesses: self.glances(now),
             first_run,
+            work: open,
         }
     }
 

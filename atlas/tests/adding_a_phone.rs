@@ -59,7 +59,7 @@ fn page(d: &mut Daemon, q: &str) -> String {
 fn the_page_is_in_your_devices_and_findable() {
     assert!(hub::NAV
         .iter()
-        .any(|(g, ps)| *g == "Your devices" && ps.contains(&Page::Phone)));
+        .any(|(g, ps)| *g == "Devices and connections" && ps.contains(&Page::Phone)));
     assert_eq!(hub::route("/hub/phone"), Some(Page::Phone));
     assert!(Page::Phone.reads_query(), "the phone picked would be lost");
     assert!(atlas::palette::catalogue()

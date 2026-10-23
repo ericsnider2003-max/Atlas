@@ -151,6 +151,10 @@ impl Daemon<'_> {
                 let v = self.now_view();
                 (hub::live_version(&v), v.working)
             }
+            "home" => {
+                let open = self.open_work(crate::store::now());
+                (hub::work_version(&open), !open.in_progress.is_empty())
+            }
             "talk" => {
                 self.thread.len().hash(&mut h);
                 self.thread.last().map(|e| e.reply.len()).hash(&mut h);

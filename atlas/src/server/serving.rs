@@ -288,7 +288,9 @@ impl Server {
         // bytes on every install. Nothing of the request is read beyond its
         // first line, so this is no wider a door than a 401 is.
         if let Some(file) = crate::hub::public_file(&req.method, &req.path) {
-            let _ = stream.write_all(&render_file(file.content_type, file.headers, file.bytes));
+            // The stylesheet is 60 KB of text: compressed when the browser
+            // takes it, and kept by the browser for good either way.
+            let _ = stream.write_all(&render_public(&file, takes_gzip(&head)));
             let _ = stream.flush();
             return Ok(None);
         }
@@ -442,6 +444,7 @@ impl Server {
                     stream,
                     action,
                     page: None,
+                    gzip: false,
                 }));
             }
         }
@@ -488,6 +491,7 @@ impl Server {
                 return Ok(Some(Asked {
                     stream,
                     action,
+                    gzip: takes_gzip(&head),
                     page: Some((req.method.clone(), req.path.clone())),
                 }));
             }
@@ -549,7 +553,7 @@ impl Server {
                 ));
             }
             None => {
-                let _ = stream.write_all(render(&r).as_bytes());
+                let _ = stream.write_all(&render_bytes(&r, asked.gzip));
             }
         }
         let _ = stream.flush();

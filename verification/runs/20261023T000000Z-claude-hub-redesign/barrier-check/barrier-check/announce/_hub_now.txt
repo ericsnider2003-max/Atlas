@@ -1,0 +1,47 @@
+What a screen reader is given on /hub/now (accessibility tree, reading order)
+
+link: Skip to the page
+navigation: Atlas
+link: Atlas, Home
+  Atlas
+link: Search Ctrl K
+link: Home
+link: Talk
+link: Projects
+link: Messages
+link: Business
+link: Settings
+banner
+link: Find anything
+  Find anything Ctrl K
+link: Nothing waiting
+link: Help
+group
+button: Quit Atlas
+main
+heading 1: Now
+status
+navigation: Home
+link: Home
+link: Now
+link: Outstanding
+link: Calendar
+link: History
+link: Activity
+img: idle
+  Waiting for you. Nothing underway right now.
+navigation: How much to show
+link: Plain
+link: Detailed
+status
+button: Pause live updates
+link: Refresh
+complementary
+  If this doesn't hold up
+  Kept for you
+list
+listitem
+listitem
+listitem
+  "On"
+button: Pause Atlas and stop listening

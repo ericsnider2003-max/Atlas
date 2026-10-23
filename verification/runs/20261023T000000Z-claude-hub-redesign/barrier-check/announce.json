@@ -1,0 +1,27 @@
+{
+  "results": [
+    {
+      "page": "/hub",
+      "controls": 24,
+      "issues": [],
+      "elements": [],
+      "axe": []
+    },
+    {
+      "page": "/hub/now",
+      "controls": 24,
+      "issues": [],
+      "elements": [],
+      "axe": []
+    },
+    {
+      "page": "/hub/talk",
+      "controls": 15,
+      "issues": [],
+      "elements": [],
+      "axe": []
+    }
+  ],
+  "not_read": [],
+  "axe": true
+}

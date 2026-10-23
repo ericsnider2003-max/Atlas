@@ -109,10 +109,14 @@ fn the_page_you_are_on_is_marked() {
             && !html.contains(&format!("class='nav on' href='{}'", Page::Accounts.href())),
         "only the current page is marked"
     );
-    // A page under More is marked there, and More opens itself to show it.
+    // A page inside a section (22 Oct 2026, the six sections): its section
+    // is marked in the sidebar, and the page itself in the section's tabs.
     let deep = hub::shell_at(Some(Page::Accounts), "Accounts", "<p>x</p>");
-    assert!(deep.contains(&format!("class='here' href='{}'", Page::Accounts.href())));
-    assert!(deep.contains("<details class=more open>"));
+    assert!(deep.contains(&format!("class='nav on' href='{}'", Page::Settings.href())));
+    assert!(deep.contains(&format!(
+        "<a href='{}' aria-current=page class=on>",
+        Page::Accounts.href()
+    )));
 }
 
 #[test]
@@ -148,13 +152,10 @@ fn the_breadcrumb_does_not_link_to_the_page_you_are_already_on() {
 
 #[test]
 fn the_front_page_does_not_get_a_trail_back_to_itself() {
-    // The design's top bar reads "Personal / Home": where you are, with
-    // nothing in it linking back to the page you're on.
+    // Home is its section's front page, so the top bar just says Home
+    // (22 Oct 2026: "Home / Home" would be a trail back to itself).
     let trail = hub::crumbs(Page::Dashboard);
-    assert_eq!(
-        trail,
-        "<p class=crumbs>Personal<span>/</span><b>Home</b></p>"
-    );
+    assert_eq!(trail, "<p class=crumbs><b>Home</b></p>");
     assert!(!trail.contains("href"), "nothing links to itself: {trail}");
 }
 
@@ -224,16 +225,12 @@ fn the_hubs_front_door_is_the_dashboard() {
 
 #[test]
 fn the_dashboard_is_home_under_personal_as_the_design_files_it() {
-    // It used to be its own group of one ("the front door is not an item
-    // inside a category"). The design Eric locked on 20-21 Sep files Home
-    // first under Personal, beside the business groups that appear once a
-    // business exists, and its top bar reads "Personal / Home".
-    assert_eq!(Page::Dashboard.group(), Some("Personal"));
-    assert_eq!(
-        hub::NAV[1].1[0],
-        Page::Dashboard,
-        "Home leads the Personal group"
-    );
+    // 22 Oct 2026, Eric approved the six sections: Home leads the Home
+    // section, which is first, and opens on the front page.
+    assert_eq!(Page::Dashboard.group(), Some("Home"));
+    assert_eq!(hub::NAV[0].1[0], Page::Dashboard, "Home leads its section");
+    assert_eq!(Page::Dashboard.section().1, Page::Dashboard);
+    assert_eq!(hub::SECTIONS[0].0, "Home");
 }
 
 #[test]

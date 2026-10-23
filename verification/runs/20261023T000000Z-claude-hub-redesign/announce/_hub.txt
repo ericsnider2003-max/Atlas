@@ -1,0 +1,58 @@
+What a screen reader is given on /hub (accessibility tree, reading order)
+
+link: Skip to the page
+navigation: Atlas
+link: Atlas, Home
+  Atlas
+link: Search Ctrl K
+link: Home
+link: Talk
+link: Projects
+link: Messages
+link: Business
+link: Settings
+banner
+link: Find anything
+  Find anything Ctrl K
+link: Nothing waiting
+link: Help
+group
+button: Quit Atlas
+main
+navigation: Home
+link: Home
+link: Now
+link: Outstanding
+link: Calendar
+link: History
+link: Activity
+heading 1: Home
+status
+  Hello. On, typing
+region: Your brief
+region: What's happening
+heading 2: What's happening
+status
+button: Pause live updates
+heading 2: Today
+time
+  Done Memory is at 91 percent.
+time
+  Done Memory is at 91 percent.
+time
+  Now You're here
+heading 2: Right now
+textbox: Find anything
+button: Find
+heading 2: Your cards
+button: Arrange
+heading 3: Projects
+heading 3: Health
+  15.7 GB memory, 28% free 953 GB disk, 52% free 100% battery, plugged in
+heading 3: What I did without being asked
+list
+listitem
+listitem
+listitem
+listitem
+link: Full activity →

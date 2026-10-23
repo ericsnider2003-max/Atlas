@@ -20,6 +20,7 @@ impl Deck {
             asks: Vec::new(),
             businesses: Vec::new(),
             first_run: false,
+            work: Open::default(),
         }
     }
 }
@@ -160,6 +161,164 @@ pub(super) fn brief_html(d: &Deck) -> String {
     )
 }
 
+/// What is happening, before anything else on Home (22 Oct 2026, Eric:
+/// "Nothing ever showed as in work, failed so how can I trust that it's
+/// actually working?").
+///
+/// The one work record, in the order that matters to you: what needs you,
+/// what failed and why, what is running, what is queued and why, what got
+/// done today. A lane with something in it is drawn in full (up to four, then
+/// "N more"); empty lanes are one quiet line together, so the first screen of
+/// a phone is never four "Nothing..." headings. Each state has its own icon
+/// and word as well as its colour.
+fn work_lanes(o: &Open) -> String {
+    const SHOWN: usize = 4;
+    struct Lane<'a> {
+        id: &'static str,
+        icon: &'static str,
+        label: &'static str,
+        none: &'static str,
+        items: Vec<(&'a str, &'a str, Option<&'a str>)>,
+    }
+    let mut failed: Vec<(&str, &str, Option<&str>)> = o
+        .blocked
+        .iter()
+        .map(|s| (s.what.as_str(), s.stopped.as_str(), None))
+        .collect();
+    failed.extend(
+        o.failed
+            .iter()
+            .map(|e| (e.what.as_str(), e.detail.as_str(), None)),
+    );
+    failed.extend(
+        o.interrupted
+            .iter()
+            .map(|e| (e.what.as_str(), e.detail.as_str(), None)),
+    );
+    let lanes = [
+        Lane {
+            id: "waiting",
+            icon: "waiting",
+            label: "Needs you",
+            none: "nothing needs you",
+            items: o
+                .waiting
+                .iter()
+                .map(|(w, why, href)| (w.as_str(), why.as_str(), Some(href.as_str())))
+                .collect(),
+        },
+        Lane {
+            id: "failed",
+            icon: "failed",
+            label: "Failed or stopped",
+            none: "nothing failed",
+            items: failed,
+        },
+        Lane {
+            id: "running",
+            icon: "running",
+            label: "Working",
+            none: "nothing running",
+            items: o
+                .in_progress
+                .iter()
+                .map(|(w, h)| (w.as_str(), h.as_str(), None))
+                .collect(),
+        },
+        Lane {
+            id: "queued",
+            icon: "queued",
+            label: "Queued",
+            none: "nothing queued",
+            items: o
+                .queued
+                .iter()
+                .map(|(w, h)| (w.as_str(), h.as_str(), None))
+                .collect(),
+        },
+        Lane {
+            id: "done",
+            icon: "done",
+            label: "Done today",
+            none: "nothing finished yet today",
+            items: o
+                .done
+                .iter()
+                .map(|e| (e.what.as_str(), e.detail.as_str(), None))
+                .collect(),
+        },
+    ];
+    let mut out = String::new();
+    let mut quiet: Vec<&str> = Vec::new();
+    for lane in &lanes {
+        if lane.items.is_empty() {
+            quiet.push(lane.none);
+            continue;
+        }
+        out.push_str(&format!(
+            "<div class='wlane st-{id}' id=work-{id}><h3><svg viewBox='0 0 24 24' fill=none stroke=currentColor stroke-width=2 aria-hidden=true>{icon}</svg>{label}<span class=n>{n}</span></h3><ul>",
+            id = lane.id,
+            icon = state_icon(lane.icon),
+            label = lane.label,
+            n = lane.items.len(),
+        ));
+        for (what, why, href) in lane.items.iter().take(SHOWN) {
+            let what = match href {
+                Some(h) if !h.is_empty() => format!("<a href='{}'>{}</a>", esc(h), esc(what)),
+                _ => esc(what),
+            };
+            out.push_str(&format!(
+                "<li><b>{what}</b>{}</li>",
+                if why.is_empty() {
+                    String::new()
+                } else {
+                    format!("<span>{}</span>", esc(why))
+                }
+            ));
+        }
+        if lane.items.len() > SHOWN {
+            out.push_str(&format!(
+                "<li class=more><a href='{}#lane-{}'>{} more</a></li>",
+                Page::Outstanding.href(),
+                lane.id,
+                lane.items.len() - SHOWN
+            ));
+        }
+        out.push_str("</ul></div>");
+    }
+    if quiet.len() == 5 {
+        // All quiet: the Brief above already says nothing needs you, so this
+        // line says only what the Brief doesn't (23 Oct, no saying it twice).
+        out.push_str("<p class=quietlanes>Nothing running, queued or failed.</p>");
+    } else if !quiet.is_empty() {
+        let mut line = quiet.join(" · ");
+        if let Some(f) = line.get(..1) {
+            line = f.to_uppercase() + &line[1..];
+        }
+        out.push_str(&format!("<p class=quietlanes>{}.</p>", esc(&line)));
+    }
+    out
+}
+
+/// The work lanes' version, for `/hub/changed.json?p=home`: the page asks
+/// for this every few seconds (a few bytes) and fetches itself only when it
+/// moved, so Home stays true without reloading.
+pub(crate) fn work_version(o: &Open) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    work_lanes(o).hash(&mut h);
+    h.finish()
+}
+
+/// Home's work section, live: `live.js` swaps the lanes when they change.
+pub(super) fn work_html(o: &Open) -> String {
+    format!(
+        "<section class=work aria-labelledby=work-h><h2 id=work-h>What's happening</h2>         <div data-live=home data-v='{v}' aria-live=polite>{lanes}</div></section>         <p class=liveline><span id=liveword role=status>Updating live.</span>          <button type=button id=livepause aria-pressed=false>Pause live updates</button></p>{LIVE_SCRIPT}",
+        v = work_version(o),
+        lanes = work_lanes(o),
+    )
+}
+
 /// First run: calm, not blank. A few guided steps, each skippable, all of
 /// which work offline.
 pub(super) fn first_run_html(d: &Deck) -> String {
@@ -237,6 +396,7 @@ pub fn dashboard_deck(
         body.push_str(&first_run_html(deck));
     } else {
         body.push_str(&brief_html(deck));
+        body.push_str(&work_html(&deck.work));
     }
     body.push_str("<div class=living>");
     body.push_str(&today_html(deck));
