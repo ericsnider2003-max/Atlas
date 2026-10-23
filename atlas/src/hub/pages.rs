@@ -382,8 +382,16 @@ pub fn settings_page(s: &Settings) -> String {
     // How it looks: the colourway (Warm Paper by default), accent, colour-blind
     // mode and density. These were kept by `appearance` with no page to
     // change them until 26 Sep 2026.
-    body.push_str("<h2 id='how-it-looks'>How it looks</h2>");
+    // 23 Oct 2026: each area opens on its own (the approved map: Settings
+    // had become one page of about 32 phone screens). Closed, the page is
+    // the index. No script, as this page has always been: a link to a
+    // setting inside a closed area opens it in Chromium (Windows and Android
+    // WebViews), and anywhere else the area's name is one tap away.
+    body.push_str(
+        "<details class=setgroup id='how-it-looks'><summary><h2>How it looks</h2></summary>",
+    );
     body.push_str(&crate::appearance::Appearance::load().settings_html());
+    body.push_str("</details>");
 
     // The index. Forty-odd settings down one page is a scroll, not a choice —
     // and the thing you came to change is never the one at the top.
@@ -399,7 +407,12 @@ pub fn settings_page(s: &Settings) -> String {
     body.push_str("</div>");
 
     for group in &groups {
-        body.push_str(&format!("<h2 id='{}'>{}</h2>", slug(group), esc(group)));
+        body.push_str(&format!(
+            "<details class=setgroup id='{}'><summary><h2>{}</h2><span class=n>{}</span></summary>",
+            slug(group),
+            esc(group),
+            s.in_group(group).len()
+        ));
         // A heading with nothing under it makes you open every section to
         // find out which one holds the thing you came for.
         if let Some(note) = Settings::group_note(group) {
@@ -421,6 +434,7 @@ pub fn settings_page(s: &Settings) -> String {
                 control(item)
             ));
         }
+        body.push_str("</details>");
     }
     shell_at(Some(Page::Settings), "Settings", &body)
 }

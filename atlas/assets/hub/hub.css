@@ -1003,3 +1003,15 @@ header .allpages .side a{display:flex;align-items:center;min-height:44px;padding
   .subnav::-webkit-scrollbar{display:none}
   .subnav a{flex:none}
 }
+/* Settings areas open one at a time (23 Oct 2026): closed, the page is short. */
+.setgroup{border-top:1px solid var(--edge)}
+.setgroup>summary{display:flex;align-items:center;gap:10px;min-height:48px;cursor:pointer;list-style:none;padding:4px 0}
+.setgroup>summary::-webkit-details-marker{display:none}
+.setgroup>summary h2{margin:0;font-size:17px;flex:1}
+.setgroup>summary .n{font-family:var(--mono);font-variant-numeric:tabular-nums;color:var(--ink-dim);font-size:13px}
+.setgroup>summary::after{content:'';width:9px;height:9px;border-right:2px solid var(--ink-dim);border-bottom:2px solid var(--ink-dim);
+  transform:rotate(45deg);margin:0 6px 4px 0;transition:transform .15s}
+.setgroup[open]>summary::after{transform:rotate(-135deg);margin-bottom:-4px}
+.setgroup>summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:6px}
+.setgroup[open]{padding-bottom:16px}
+@media (prefers-reduced-motion:reduce){.setgroup>summary::after{transition:none}}
