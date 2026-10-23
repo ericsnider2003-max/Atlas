@@ -87,7 +87,11 @@ impl Daemon<'_> {
             ));
         }
         for e in self.journal.since(now.saturating_sub(86_400)) {
+            // Things Atlas said (a memory notice, an offer) are not things
+            // done: they stay in Activity, not on Today (23 Oct 2026: Home's
+            // Today was three "Memory is at 91 percent." marked Done).
             if e.kind == crate::activity::Kind::Upkeep
+                || e.kind == crate::activity::Kind::Offered
                 || e.kind.internal()
                 || day(e.at, off) != today
             {
@@ -190,10 +194,9 @@ impl Daemon<'_> {
                 "Nothing underway.".to_string(),
                 match next {
                     Some((_, time, what, _)) => format!("Next: {what} at {time}."),
-                    None if crate::phonemode::on() => {
-                        "Say what you need, or tap the search to find anything.".to_string()
-                    }
-                    None => "Say what you need, or press Ctrl K to find anything.".to_string(),
+                    // The same words on every device: a phone reaching the
+                    // laptop's hub has no Ctrl key either (23 Oct 2026).
+                    None => "Say what you need, or search to find anything.".to_string(),
                 },
                 "You're here".to_string(),
             )
