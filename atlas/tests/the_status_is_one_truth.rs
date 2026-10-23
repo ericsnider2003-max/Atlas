@@ -259,3 +259,66 @@ fn running_and_failed_work_agree_on_every_surface() {
         "Now must show what Home says is running"
     );
 }
+
+/// A self-repair run that is actually running.
+fn running_self_repair(store: &Store) {
+    let mut r = atlas::job::Record::planned(
+        format!("{}2:0", atlas::heavywork::JOB_PREFIX),
+        "Self-repair: test sweep",
+    );
+    r.transition(atlas::job::State::Running, "Running while you're away.")
+        .unwrap();
+    r.heartbeat("Running while you're away.");
+    atlas::job::upsert(store, r).unwrap();
+}
+
+#[test]
+fn home_names_what_runs_before_what_waits_and_marks_it_working() {
+    // The review, 23 Oct 2026: with an errand running and a task queued,
+    // Right now said "About to start" under the Working mark.
+    let root = home("order");
+    let c = Config::load(Path::new("config")).unwrap();
+    let p = plat();
+    let mut d = Daemon::new(
+        &c,
+        &p,
+        None,
+        Store::new(&root),
+        Proactive::new(ProactiveConfig::default()),
+    );
+    running_self_repair(&d.store);
+    d.queue.push("tidy the downloads folder", Lane::Background);
+    let deck = d.deck(atlas::store::now(), atlas::localclock::offset_secs());
+    assert_eq!(deck.now, "Self-repair: test sweep", "{deck:?}");
+    assert!(
+        deck.spine
+            .iter()
+            .any(|(_, _, m)| *m == atlas::hub::Mark::Now),
+        "something runs, so the day is marked Working: {:?}",
+        deck.spine
+    );
+}
+
+#[test]
+fn a_businesss_tabs_keep_the_business() {
+    let root = home("business-tabs");
+    let c = Config::load(Path::new("config")).unwrap();
+    let p = plat();
+    let mut d = Daemon::new(
+        &c,
+        &p,
+        None,
+        Store::new(&root),
+        Proactive::new(ProactiveConfig::default()),
+    );
+    let html = atlas::hublive::reply(&mut d, Action::HubQ(Page::Clients, "b=Acme".into())).body;
+    let tabs = &html[html.find("<nav class=subnav").expect("the section's tabs")..];
+    let tabs = &tabs[..tabs.find("</nav>").unwrap()];
+    for href in [
+        "/hub/business?b=Acme",
+        "/hub/tasks?b=Acme",
+        "/hub/partners?b=Acme",
+    ] {
+        assert!(tabs.contains(href), "{href} missing from {tabs}");
+    }
+}

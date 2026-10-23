@@ -143,16 +143,6 @@ impl Daemon<'_> {
                 },
                 sentence(&t.command),
             )
-        } else if let Some(t) = waiting_to_start {
-            (
-                format!("About to start: {}", t.command.trim()),
-                if t.state == crate::lanes::TaskState::WaitingForGap {
-                    "Waiting for you to stop typing, so it doesn't get in your way.".to_string()
-                } else {
-                    "Next in line.".to_string()
-                },
-                "About to start".to_string(),
-            )
         } else if self.attention.is_paused() {
             (
                 "Paused.".to_string(),
@@ -171,6 +161,16 @@ impl Daemon<'_> {
                     how.clone()
                 },
                 what.clone(),
+            )
+        } else if let Some(t) = waiting_to_start {
+            (
+                format!("About to start: {}", t.command.trim()),
+                if t.state == crate::lanes::TaskState::WaitingForGap {
+                    "Waiting for you to stop typing, so it doesn't get in your way.".to_string()
+                } else {
+                    "Next in line.".to_string()
+                },
+                "About to start".to_string(),
             )
         } else if let Some((what, why)) = open.queued.first() {
             // Accepted and waiting its turn: said as queued, with why, never
@@ -212,9 +212,14 @@ impl Daemon<'_> {
             .skip(done.len().saturating_sub(3))
             .map(|(_, t, w, _)| (t.clone(), w.clone(), hub::Mark::Done))
             .collect();
-        if running.is_some() || counts.running > 0 {
+        // The NOW mark says Working only when the headline is something
+        // running (23 Oct 2026, the review: "About to start" and "Paused"
+        // were drawn with the Working mark whenever an errand ran).
+        let working =
+            running.is_some() || (!self.attention.is_paused() && !open.in_progress.is_empty());
+        if working {
             spine.push(("NOW".to_string(), now_short, hub::Mark::Now));
-        } else if !events.is_empty() {
+        } else if !events.is_empty() || counts.running > 0 || counts.queued > 0 {
             spine.push(("NOW".to_string(), now_short, hub::Mark::Idle));
         }
         spine.extend(

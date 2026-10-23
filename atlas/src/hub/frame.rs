@@ -490,6 +490,33 @@ pub(super) fn sidebar_html(here: Option<Page>, waiting: usize) -> String {
     out
 }
 
+/// The Business section's tabs, each carrying which business (`?b=`).
+pub(crate) fn tabs_for_business(page: String, business: &str) -> String {
+    let (Some(start), q) = (
+        page.find("<nav class=subnav"),
+        format!("?b={}", esc(&crate::research::urlencode(business))),
+    ) else {
+        return page;
+    };
+    let end = page[start..]
+        .find("</nav>")
+        .map(|e| start + e)
+        .unwrap_or(page.len());
+    let mut tabs = page[start..end].to_string();
+    for p in [
+        Page::Business,
+        Page::SharedTasks,
+        Page::Clients,
+        Page::Partners,
+    ] {
+        tabs = tabs.replace(
+            &format!("href='{}'", p.href()),
+            &format!("href='{}{q}'", p.href()),
+        );
+    }
+    format!("{}{tabs}{}", &page[..start], &page[end..])
+}
+
 /// A section's own pages, as a row of tabs at the top of each of them: the
 /// group the page is in, then the section's other groups by name. Drawn the
 /// same on a laptop and a phone, so every page is one press from its section

@@ -704,7 +704,15 @@ pub fn render(reply: &Reply) -> String {
 pub(super) fn takes_gzip(head: &str) -> bool {
     head.lines().any(|l| {
         let l = l.to_ascii_lowercase();
-        l.starts_with("accept-encoding:") && l.contains("gzip")
+        let Some(list) = l.strip_prefix("accept-encoding:") else {
+            return false;
+        };
+        // "gzip;q=0" is a refusal, not an offer.
+        list.split(',').any(|t| {
+            let mut parts = t.trim().split(';');
+            parts.next().map(str::trim) == Some("gzip")
+                && !parts.any(|p| matches!(p.trim(), "q=0" | "q=0.0" | "q=0.00" | "q=0.000"))
+        })
     })
 }
 
@@ -750,11 +758,14 @@ pub(crate) fn render_bytes(reply: &Reply, gzip_ok: bool) -> Vec<u8> {
 /// browser takes gzip. The rest are images and small scripts.
 pub(super) fn render_public(file: &crate::hub::PublicFile, gzip_ok: bool) -> Vec<u8> {
     if gzip_ok && file.content_type.starts_with("text/css") {
+        // Compressed once per run: the file never changes while Atlas runs.
+        static PACKED: std::sync::OnceLock<Vec<u8>> = std::sync::OnceLock::new();
+        let packed = PACKED.get_or_init(|| gzip(file.bytes));
         let headers = format!(
             "{}Content-Encoding: gzip\r\nVary: Accept-Encoding\r\n",
             file.headers
         );
-        render_file(file.content_type, &headers, &gzip(file.bytes))
+        render_file(file.content_type, &headers, packed)
     } else {
         render_file(file.content_type, file.headers, file.bytes)
     }
@@ -834,6 +845,15 @@ mod compressed_replies {
         assert!(head.contains("Content-Encoding: gzip"), "{head}");
         assert!(head.lines().skip(1).all(|l| l.contains(": ")), "{head}");
         assert_eq!(inflate(&out[head.len() + 4..]), page.body.as_bytes());
+        assert!(takes_gzip(
+            "GET / HTTP/1.1\r\nAccept-Encoding: gzip, deflate, br\r\n"
+        ));
+        assert!(!takes_gzip(
+            "GET / HTTP/1.1\r\nAccept-Encoding: gzip;q=0, br\r\n"
+        ));
+        assert!(!takes_gzip(
+            "GET / HTTP/1.1\r\nAccept-Encoding: identity\r\n"
+        ));
         let plain = render_bytes(&page, false);
         assert!(!head_of(&plain).contains("Content-Encoding"));
         assert!(String::from_utf8_lossy(&plain).ends_with(&page.body));

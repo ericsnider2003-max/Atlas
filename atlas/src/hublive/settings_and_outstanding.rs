@@ -143,7 +143,25 @@ impl Daemon<'_> {
     /// the lane headings -- reads `hub::Counts::of` this, so they cannot
     /// disagree. It reads memory plus one cached durable-job file
     /// (`job::load_cached`), so it is cheap enough for the pill on every page.
+    /// The one work record. Built once per page or reply drawn: inside
+    /// `one_record`, every reader (Home's lanes, its brief, the header count,
+    /// Now, `live.json`) gets the same build rather than each reading the
+    /// saved jobs again (23 Oct 2026, the review: seven builds per Home).
     pub(super) fn open_work(&self, now: u64) -> hub::Open {
+        let cached = OPEN_ONCE.with(|c| c.borrow().as_ref().and_then(|o| o.clone()));
+        if let Some(open) = cached {
+            return open;
+        }
+        let open = self.open_work_built(now);
+        OPEN_ONCE.with(|c| {
+            if let Some(slot) = c.borrow_mut().as_mut() {
+                *slot = Some(open.clone());
+            }
+        });
+        open
+    }
+
+    fn open_work_built(&self, now: u64) -> hub::Open {
         /// How long a failed scheduled job stays in the Failed lane: this page
         /// cannot drop it, so it ages out. Everything else that failed stays
         /// until dismissed.
@@ -1581,4 +1599,26 @@ mod one_count_tests {
         assert!(page.contains("st-failed") && page.contains("st-done"));
         assert!(!page.contains("mutation sweep"));
     }
+}
+
+thread_local! {
+    /// `Some` while one page or reply is being drawn (`one_record`); holds
+    /// that drawing's work record once built. `None` otherwise, so a reader
+    /// outside a drawing always gets a fresh one.
+    static OPEN_ONCE: std::cell::RefCell<Option<Option<hub::Open>>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+/// Draw one page or reply with a single build of the work record. Only for
+/// reading: nothing inside may change the work and then read it again.
+pub(super) fn one_record<R>(draw: impl FnOnce() -> R) -> R {
+    let outer = OPEN_ONCE.with(|c| c.borrow().is_some());
+    if !outer {
+        OPEN_ONCE.with(|c| *c.borrow_mut() = Some(None));
+    }
+    let out = draw();
+    if !outer {
+        OPEN_ONCE.with(|c| *c.borrow_mut() = None);
+    }
+    out
 }

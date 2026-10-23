@@ -313,7 +313,7 @@ pub(crate) fn work_version(o: &Open) -> u64 {
 /// Home's work section, live: `live.js` swaps the lanes when they change.
 pub(super) fn work_html(o: &Open) -> String {
     format!(
-        "<section class=work aria-labelledby=work-h><h2 id=work-h>What's happening</h2>         <div data-live=home data-v='{v}' aria-live=polite>{lanes}</div></section>         <p class=liveline><span id=liveword role=status>Updating live.</span>          <button type=button id=livepause aria-pressed=false>Pause live updates</button></p>{LIVE_SCRIPT}",
+        "<section class=work aria-labelledby=work-h><h2 id=work-h>What's happening</h2>         <div data-live=home data-v='{v}'>{lanes}</div></section>         <p class=liveline><span id=liveword role=status>Updating live.</span>          <button type=button id=livepause aria-pressed=false>Pause live updates</button></p>{LIVE_SCRIPT}",
         v = work_version(o),
         lanes = work_lanes(o),
     )

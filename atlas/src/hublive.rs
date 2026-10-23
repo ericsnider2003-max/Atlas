@@ -573,6 +573,10 @@ pub fn reply(daemon: &mut Daemon, action: Action) -> Reply {
 /// Build an immutable view without consuming notices, changing read receipts,
 /// approving work, or exposing accounts. Query/action pages are never cached.
 pub(crate) fn readonly_pages(daemon: &mut Daemon) -> Vec<(Page, Reply)> {
+    settings_and_outstanding::one_record(|| readonly_pages_drawn(daemon))
+}
+
+fn readonly_pages_drawn(daemon: &mut Daemon) -> Vec<(Page, Reply)> {
     let now = crate::store::now();
     // Home too (22 Oct 2026): it is where the status lives now, so it must
     // answer at once even while Atlas is busy.
@@ -609,8 +613,11 @@ impl Daemon<'_> {
     fn hub_reply(&mut self, action: Action) -> Reply {
         match action {
             // Every page, from one place. See `hub::with_palette`.
-            Action::Hub(page) => self.hub_answer(page, ""),
-            Action::HubQ(page, q) => self.hub_answer(page, &q),
+            // A page is drawn from one build of the work record.
+            Action::Hub(page) => settings_and_outstanding::one_record(|| self.hub_answer(page, "")),
+            Action::HubQ(page, q) => {
+                settings_and_outstanding::one_record(|| self.hub_answer(page, &q))
+            }
             Action::HubBack(page, said) => hub::back_with(page.href(), "", &said),
             Action::HubPost { path, fields } => self.hub_post(&path, &fields),
             // The pages that replaced terminal commands (`hubvault`).
@@ -628,7 +635,8 @@ impl Daemon<'_> {
                 let (v, busy) = self.live_page_state(&which);
                 Reply::ok(serde_json::json!({ "v": v.to_string(), "busy": busy }).to_string())
             }
-            Action::LiveJson => {
+            // One build of the work record for the whole reply.
+            Action::LiveJson => settings_and_outstanding::one_record(|| {
                 let now = crate::store::now();
                 let off = crate::localclock::offset_secs();
                 let deck = self.deck(now, off);
@@ -663,7 +671,7 @@ impl Daemon<'_> {
                     "work": work_json(&self.open_work(now)),
                 });
                 Reply::ok(body.to_string())
-            }
+            }),
             Action::VoiceSample(id) => match self.voice_sample(&id) {
                 Ok(bytes) => Reply::media("audio/mpeg", bytes),
                 Err(why) => Reply { status: 404, body: serde_json::json!({ "error": why }).to_string(), ..Reply::default() },
