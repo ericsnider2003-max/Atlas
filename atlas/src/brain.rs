@@ -2873,7 +2873,8 @@ pub fn parse_decision(reply: &str) -> Result<Decision> {
         .get("action")
         .and_then(|a| a.as_str())
         .unwrap_or("")
-        .to_lowercase();
+        .trim()
+        .to_string();
     let arg = v
         .get("arg")
         .and_then(|a| a.as_str())

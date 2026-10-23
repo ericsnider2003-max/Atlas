@@ -63,6 +63,15 @@ impl<'a> Daemon<'a> {
         let reply = self.turn_dropping_stale_questions(heard, t, how);
         self.carry_what_the_turn_added(before, t);
         self.watching_turn = false;
+        // A model that named something that isn't a command: said once per
+        // turn, and not in the correction log (`intent::gate_model_call`).
+        let turned_away = crate::intent::take_rejected_names();
+        if !turned_away.is_empty() {
+            self.log.info(&format!(
+                "debug: not run, not a command Atlas has (handed on): {}",
+                turned_away.join(", ")
+            ));
+        }
         self.turn_watched(watch, heard, reply, t)
     }
 

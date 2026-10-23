@@ -2225,42 +2225,135 @@ impl ToolBook {
     }
 }
 
-/// A tool call as the command it names. `said` is the sentence it answers,
-/// which the commands that read the whole utterance are given, exactly as
-/// the phrase path gives it to them. `None` for a name that isn't a command
-/// or that the model may not choose.
-pub fn from_tool(name: &str, args: &serde_json::Value, said: &str) -> Option<Intent> {
-    let name = name.trim();
-    if NEVER_FOR_THE_MODEL.contains(&name) {
-        return None;
+/// Why a tool call from a model was not turned into a command (23 Oct 2026).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Rejected {
+    /// The name is not one of the commands in `commands.yaml`: invented, or
+    /// a near miss of a real one. Never matched loosely, never "corrected".
+    NotACommand,
+    /// A real command the model may not choose (`NEVER_FOR_THE_MODEL`).
+    NotForTheModel,
+    /// The arguments are not the shape a command takes: a text, or an object
+    /// whose `arg` is a text.
+    BadArguments,
+}
+
+/// Names a model has offered that were turned away this turn, for the one
+/// line the daemon logs at the end of it.
+static REJECTED_NAMES: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
+
+/// The names turned away since the last call, each once.
+pub fn take_rejected_names() -> Vec<String> {
+    match REJECTED_NAMES.lock() {
+        Ok(mut v) => std::mem::take(&mut *v),
+        Err(_) => Vec::new(),
     }
+}
+
+fn note_rejected(name: &str) {
+    if let Ok(mut v) = REJECTED_NAMES.lock() {
+        let name: String = name.chars().take(40).collect();
+        if v.len() < 16 && !v.contains(&name) {
+            v.push(name);
+        }
+    }
+}
+
+/// Is this the shape of a command's name? Lower-case words joined by `_`.
+/// Checked before anything else so a sentence or a path in the name slot is
+/// never looked up at all.
+fn is_a_name(name: &str) -> bool {
+    !name.is_empty()
+        && name.len() <= 64
+        && name.starts_with(|c: char| c.is_ascii_lowercase())
+        && name
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
+}
+
+/// The one gate where what a model chose becomes a command to run
+/// (item 7, 23 Oct 2026). The name has to be exactly a command `build`
+/// knows -- the ones `commands.yaml` lists -- that the model may choose, with
+/// arguments of the shape a command takes. Anything else is turned away,
+/// its name noted for the log, and the caller hands the turn on (the floor's
+/// honest reply, a bigger model, a question to you): it is never run and
+/// never changed into the nearest real name.
+///
+/// `said` is the sentence the call answers, which the commands that read the
+/// whole utterance are given, exactly as the phrase path gives it to them.
+pub fn gate_model_call(
+    name: &str,
+    args: &serde_json::Value,
+    said: &str,
+) -> Result<Intent, Rejected> {
+    let name = name.trim();
+    let reject = |why: Rejected| {
+        note_rejected(name);
+        Err(why)
+    };
     // Another program's tool (`mcp`): carried as it came, to be placed,
-    // asked about and run by the daemon. No command has this prefix.
+    // asked about and run by the daemon, which refuses one no connected
+    // program has (`use_mcp_tool`). No command has this prefix.
     if name.starts_with(crate::mcp::PREFIX) {
-        return Some(Intent::McpTool(crate::mcp::payload(name, args)));
+        if name.len() > 128
+            || !name
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.'))
+        {
+            return reject(Rejected::NotACommand);
+        }
+        return Ok(Intent::McpTool(crate::mcp::payload(name, args)));
+    }
+    if !is_a_name(name) {
+        return reject(Rejected::NotACommand);
+    }
+    if NEVER_FOR_THE_MODEL.contains(&name) {
+        return reject(Rejected::NotForTheModel);
     }
     let arg = match args {
         serde_json::Value::String(s) => s.clone(),
-        serde_json::Value::Object(m) => m
-            .get("arg")
-            .and_then(|v| v.as_str())
-            .map(str::to_string)
+        serde_json::Value::Null => String::new(),
+        serde_json::Value::Object(m) => match m.get("arg") {
+            Some(serde_json::Value::String(s)) => s.clone(),
+            Some(serde_json::Value::Null) | None if m.is_empty() => String::new(),
+            Some(serde_json::Value::Null) => String::new(),
+            Some(_) => return reject(Rejected::BadArguments),
             // A small model sometimes names the argument after what it is.
-            .or_else(|| m.values().find_map(|v| v.as_str().map(str::to_string)))
-            .unwrap_or_default(),
-        _ => String::new(),
+            None => match m.values().find_map(|v| v.as_str()) {
+                Some(s) => s.to_string(),
+                None if m.values().all(|v| v.is_null()) => String::new(),
+                None => return reject(Rejected::BadArguments),
+            },
+        },
+        _ => return reject(Rejected::BadArguments),
     };
     // A dependent loop may have just found a file. Use the selected path
     // rather than the original request (which may not name that file).
     if name == "ask" {
-        return (!arg.trim().is_empty()).then(|| Intent::Ask(arg.trim().to_string()));
+        return if arg.trim().is_empty() {
+            reject(Rejected::BadArguments)
+        } else {
+            Ok(Intent::Ask(arg.trim().to_string()))
+        };
     }
-    if matches!(name, "read_document" | "unzip" | "edit_media" | "operate")
+    let raw = if matches!(name, "read_document" | "unzip" | "edit_media" | "operate")
         && !arg.trim().is_empty()
     {
-        return command_by_name(name, arg.trim().to_string(), arg.trim());
+        arg.trim()
+    } else {
+        said
+    };
+    match command_by_name(name, arg.trim().to_string(), raw) {
+        Some(i) => Ok(i),
+        None => reject(Rejected::NotACommand),
     }
-    command_by_name(name, arg.trim().to_string(), said)
+}
+
+/// A tool call as the command it names, through `gate_model_call`. `None`
+/// for a name that isn't a command, that the model may not choose, or with
+/// arguments of the wrong shape.
+pub fn from_tool(name: &str, args: &serde_json::Value, said: &str) -> Option<Intent> {
+    gate_model_call(name, args, said).ok()
 }
 
 /// `build`, for a command named outright rather than matched by a phrase.
