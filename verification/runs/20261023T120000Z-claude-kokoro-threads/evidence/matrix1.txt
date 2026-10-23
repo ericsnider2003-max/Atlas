@@ -1,0 +1,16 @@
+cpu-before=21
+{"label": "run", "threads": 1, "gap": 0.0, "load_s": 1.27, "speech_s": 3.62, "rtf_per_call": [0.86, 0.9, 0.86, 0.86, 0.86, 0.86, 0.89, 0.87, 0.87, 0.86]}
+cpu-before=19
+{"label": "run", "threads": 2, "gap": 0.0, "load_s": 1.33, "speech_s": 3.62, "rtf_per_call": [0.77, 0.77, 1.13, 1.05, 1.16, 1.0, 0.96, 1.23, 1.84, 1.78]}
+cpu-before=99
+{"label": "run", "threads": 3, "gap": 0.0, "load_s": 3.19, "speech_s": 3.61, "rtf_per_call": [1.68, 1.77, 1.77, 1.68, 1.74, 1.95, 1.6, 1.62, 1.82, 1.83]}
+cpu-before=53
+{"label": "run", "threads": 4, "gap": 0.0, "load_s": 1.72, "speech_s": 3.61, "rtf_per_call": [0.94, 0.93, 1.0, 1.06, 1.24, 0.98, 1.03, 0.95, 0.95, 0.92]}
+cpu-before=16
+{"label": "run", "threads": 6, "gap": 0.0, "load_s": 1.58, "speech_s": 3.62, "rtf_per_call": [1.01, 0.94, 0.99, 1.04, 1.04, 1.07, 1.03, 1.02, 1.02, 0.93]}
+cpu-before=16
+{"label": "run", "threads": 8, "gap": 0.0, "load_s": 1.67, "speech_s": 3.62, "rtf_per_call": [1.18, 1.2, 1.17, 1.19, 1.17, 1.19, 1.21, 1.24, 1.17, 1.2]}
+cpu-before=85
+{"label": "run", "threads": 4, "gap": 1.5, "load_s": 4.68, "speech_s": 3.61, "rtf_per_call": [2.03, 1.15, 0.84, 1.11, 1.15, 1.1, 0.89, 0.91, 0.93, 0.93]}
+cpu-before=18
+{"label": "run", "threads": 2, "gap": 1.5, "load_s": 1.55, "speech_s": 3.62, "rtf_per_call": [1.44, 1.51, 4.04, 2.41, 1.66, 1.01, 1.14, 1.82, 1.93, 1.83]}

@@ -1,0 +1,21 @@
+cpu=21
+dropped: busy before 4-thread run
+cpu=22
+dropped: busy before 4-thread run
+cpu=24
+dropped: busy before 4-thread run
+cpu=16
+dropped: busy before 4-thread run
+cpu=10
+dropped: busy before 4-thread run
+cpu=7
+dropped: busy before 4-thread run
+cpu=15
+cpu=17
+PAIR 1
+{"label": "clean", "threads": 1, "gap": 0.0, "load_s": 1.47, "speech_s": 3.62, "rtf_per_call": [1.8, 1.4, 1.41, 1.41, 1.4, 1.41, 1.38, 1.37]}
+{"label": "clean", "threads": 4, "gap": 0.0, "load_s": 1.24, "speech_s": 3.62, "rtf_per_call": [1.19, 2.04, 2.01, 2.01, 2.01, 2.03, 1.99, 2.02]}
+cpu=15
+dropped: busy before 4-thread run
+cpu=19
+dropped: busy before 4-thread run
