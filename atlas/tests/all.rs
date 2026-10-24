@@ -1093,3 +1093,5 @@ mod the_correction_log;
 mod what_this_computer_runs;
 #[path = "background_keeps_its_hands_off.rs"]
 mod background_keeps_its_hands_off;
+#[path = "what_if_is_read_only.rs"]
+mod what_if_is_read_only;

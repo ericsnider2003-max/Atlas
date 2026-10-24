@@ -159,6 +159,7 @@ pub mod meaningnative;
 pub mod needs_you;
 pub mod preflight;
 pub mod teachmode;
+pub mod whatif;
 pub mod meaningroute;
 pub mod mend;
 pub mod motion;

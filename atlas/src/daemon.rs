@@ -88,6 +88,7 @@ mod correction_log;
 mod needs_you;
 mod preflight;
 mod teach_mode;
+mod whatif;
 mod learning;
 mod making;
 mod onethread;
