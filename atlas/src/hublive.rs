@@ -588,31 +588,34 @@ fn readonly_pages_drawn(daemon: &mut Daemon) -> Vec<(Page, Reply)> {
         daemon.waiting_count(now),
         &daemon.deck(now, crate::localclock::offset_secs()),
     );
-    let mut pages = vec![
-        (Page::Dashboard, home),
-        (Page::Now, daemon.now_page_live()),
-        (Page::Outstanding, daemon.outstanding_page_live(now)),
-    ];
-    // 23 Oct 2026: the pages that only read state, so a request for one never
-    // waits for whatever the loop is doing. Left out while the live page still
-    // owes a notice (a finished job's answer, a one-time line, a file set
-    // aside): those are said by the live page, once, and a copy must not
-    // take them or hide them.
-    let owes_a_notice = !crate::store::set_aside_since(&daemon.store, now.saturating_sub(86_400))
-        .is_empty();
+    let mut pages = Vec::new();
+    // 23 Oct 2026: every page that only reads state, so a request for one
+    // never waits for whatever the loop is doing. A page is left out while
+    // the live page still owes a notice that saying consumes (a finished
+    // job's answer, a one-time line): those are said by the live page, once,
+    // and a copy must neither take them nor hide them. The notices that do
+    // not get consumed (files set aside in the last day) are put on the copy
+    // exactly as the live page puts them on.
+    let notices = daemon.set_aside_lines(now);
+    let mut home = Some(home);
     for page in crate::server::SNAPSHOT_PAGES {
-        if pages.iter().any(|(p, _)| *p == page) {
-            continue;
-        }
         let one_time = daemon.hub_jobs.has_unseen_for(page)
             || daemon
                 .flash_once
                 .iter()
                 .any(|(p, _, until)| *p == page && *until > now);
-        if owes_a_notice || one_time {
+        if one_time {
             continue;
         }
-        let html = daemon.hub_page(page);
+        let html = match page {
+            Page::Dashboard => home.take().unwrap_or_default(),
+            Page::Now => daemon.now_page_live(),
+            Page::Outstanding => daemon.outstanding_page_live(now),
+            other => daemon.hub_page(other),
+        };
+        let html = notices
+            .iter()
+            .fold(html, |html, line| hub::with_said(html, Some(line)));
         pages.push((page, html));
     }
     let catalogue = crate::palette::catalogue();
