@@ -890,9 +890,18 @@ fn tell_me_more_then_that_kind_by_voice() {
     );
     let kept: HuntState = d.store.load(hunt::FILE);
     assert!(kept.nope.values().any(|n| *n >= 2), "{:?}", kept.nope);
-    // The list stays live for the numbers left on it.
+    // The list stays live for the numbers left on it. The list had two; the
+    // second is dropped, so what is left is number 1 (and "save 2" has no
+    // second to mean any more -- a dropped one is not saved by mistake).
+    let first = list.lines().next().unwrap().trim_start_matches("1. ");
+    let first_title = first.split(" — ").next().unwrap();
     let r = d.turn("save 2", NOW + 40);
-    assert!(r.starts_with("Saved"), "still the hunter's list: {r}");
+    assert!(!r.starts_with("Saved"), "a dropped number saved something: {r}");
+    let r = d.turn("save 1", NOW + 45);
+    assert!(
+        r.starts_with("Saved") && r.contains(first_title),
+        "still the hunter's list: {r} // {list}"
+    );
 }
 
 #[test]

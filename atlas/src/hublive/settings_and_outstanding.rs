@@ -1627,7 +1627,7 @@ mod one_count_tests {
         };
         let pages = [Page::Dashboard, Page::Now, Page::Outstanding];
         // A file set aside: said by the copy, as by the live page.
-        crate::store::note_set_aside_for_tests(&store, "memory.json", "unreadable");
+        crate::store::note_set_aside(store.root(), "memory.json", "unreadable");
         for page in pages {
             let copy = copy_of(&mut d, page).expect("published");
             let live = d.hub_reply(crate::server::Action::Hub(page)).body;
