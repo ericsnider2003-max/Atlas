@@ -778,3 +778,5 @@
 {"ts":"2026-10-24T19:34:38.464Z","who":"agent","op":"add","id":"idf15","title":"North star (planning only): Atlas runs Eric's faceless-UGC workflow end to end, staged with approval gates","home":"docs/UGC_WORKFLOW_NORTH_STAR_2026-10-24.md"}
 {"ts":"2026-10-24T20:43:03.138Z","who":"claude","op":"done","id":"i018b"}
 {"ts":"2026-10-24T20:43:40.420Z","who":"claude","op":"add","id":"ie9f9","title":"whisper-helper-at-stop whisper-server outlived Atlas's stop by up to a minute on 24 Oct (stop line said 0 helpers); check it is tracked as a helper"}
+{"ts":"2026-10-24T18:03:51.075Z","who":"agent","op":"add","id":"ia9af","title":"Video plans A/E/G proof slices: what needs me, Hub slop guard, prompt budget","home":"atlas/design/hub/NOT_SLOP.md"}
+{"ts":"2026-10-24T19:21:44.492Z","who":"agent","op":"add","id":"ib65b","title":"Video plans B/C/D/F proof slices: teach a mode, what this computer runs, background hands-off guard, read-only market what-if","home":"atlas/src/whatif.rs"}

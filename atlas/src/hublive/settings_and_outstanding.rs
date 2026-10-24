@@ -147,7 +147,7 @@ impl Daemon<'_> {
     /// `one_record`, every reader (Home's lanes, its brief, the header count,
     /// Now, `live.json`) gets the same build rather than each reading the
     /// saved jobs again (23 Oct 2026, the review: seven builds per Home).
-    pub(super) fn open_work(&self, now: u64) -> hub::Open {
+    pub(crate) fn open_work(&self, now: u64) -> hub::Open {
         let cached = OPEN_ONCE.with(|c| c.borrow().as_ref().and_then(|o| o.clone()));
         if let Some(open) = cached {
             return open;

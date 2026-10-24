@@ -25,6 +25,9 @@ Dates are UTC. The card at the top of `AGENTS.md` holds the facts; this file hol
 - `completion-path` One completion path + context-before-asking: built in owned files; wiring in run_command/spoken_steps/tasks/floor/brain and the approval contract handed off — home: [docs/HANDOFF_ONE_COMPLETION_PATH_2026-10-21.md](HANDOFF_ONE_COMPLETION_PATH_2026-10-21.md) — doing since 2026-10-22 (claude-items)
 - `idf15` North star (planning only): Atlas runs Eric's faceless-UGC workflow end to end, staged with approval gates — home: [docs/UGC_WORKFLOW_NORTH_STAR_2026-10-24.md](UGC_WORKFLOW_NORTH_STAR_2026-10-24.md) — open since 2026-10-24 (agent)
 - `ie9f9` whisper-helper-at-stop whisper-server outlived Atlas's stop by up to a minute on 24 Oct (stop line said 0 helpers); check it is tracked as a helper — open since 2026-10-24 (claude)
+- `i018b` crypto-bigint-advisory RUSTSEC-2026-0387 via p256 0.13 (Apple JWT signing): owner decision on p256 0.14 major bump — open since 2026-10-24 (claude)
+- `ia9af` Video plans A/E/G proof slices: what needs me, Hub slop guard, prompt budget — home: [atlas/design/hub/NOT_SLOP.md](../atlas/design/hub/NOT_SLOP.md) — open since 2026-10-24 (agent)
+- `ib65b` Video plans B/C/D/F proof slices: teach a mode, what this computer runs, background hands-off guard, read-only market what-if — home: [atlas/src/whatif.rs](../atlas/src/whatif.rs) — open since 2026-10-24 (agent)
 
 ## Last session
 

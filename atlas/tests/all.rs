@@ -346,6 +346,8 @@ mod nothing_from_any_version_was_lost;
 mod one_way_to_do_each_small_thing;
 #[path = "other_programs_tools.rs"]
 mod other_programs_tools;
+#[path = "prompt_economy.rs"]
+mod prompt_economy;
 #[path = "q4_a_save_that_fails_is_not_a_success.rs"]
 mod q4_a_save_that_fails_is_not_a_success;
 #[path = "reading_a_module_wherever_it_lives.rs"]
@@ -358,6 +360,10 @@ mod reading_without_the_picture_reader;
 mod speculative_decoding;
 #[path = "talking_freely.rs"]
 mod talking_freely;
+#[path = "teaching_a_mode.rs"]
+mod teaching_a_mode;
+#[path = "the_hub_is_not_slop.rs"]
+mod the_hub_is_not_slop;
 #[path = "the_second_scan_holds.rs"]
 mod the_second_scan_holds;
 // Unix only: it builds tiny projects driven by shell scripts.
@@ -813,6 +819,8 @@ mod watching_a_video;
 mod what_atlas_itself_costs;
 #[path = "what_is_working_right_now.rs"]
 mod what_is_working_right_now;
+#[path = "what_needs_you.rs"]
+mod what_needs_you;
 #[path = "what_the_answer_rests_on.rs"]
 mod what_the_answer_rests_on;
 #[path = "what_the_month_says.rs"]
@@ -1081,3 +1089,9 @@ mod writing_checked;
 mod your_answers_of_the_25th;
 #[path = "the_correction_log.rs"]
 mod the_correction_log;
+#[path = "what_this_computer_runs.rs"]
+mod what_this_computer_runs;
+#[path = "background_keeps_its_hands_off.rs"]
+mod background_keeps_its_hands_off;
+#[path = "what_if_is_read_only.rs"]
+mod what_if_is_read_only;

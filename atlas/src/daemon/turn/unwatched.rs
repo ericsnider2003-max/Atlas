@@ -36,6 +36,22 @@ impl<'a> Daemon<'a> {
         if let Some(reply) = self.interview_turn(said, t) {
             return reply;
         }
+        // Teaching a mode, and the yes to its read-back (Plan B, 24 Oct 2026).
+        if let Some(reply) = self.teach_mode_turn(said, t) {
+            return reply;
+        }
+        // A market what-if over a bars file, read-only (Plan F, 24 Oct 2026).
+        if let Some(reply) = self.whatif_turn(said) {
+            return reply;
+        }
+        // What this computer can run, tier by tier (Plan C, 24 Oct 2026).
+        if let Some(reply) = self.preflight_turn(said) {
+            return reply;
+        }
+        // What needs you, and "not now" (Plan A, 24 Oct 2026).
+        if let Some(reply) = self.needs_you_turn(said, t) {
+            return reply;
+        }
         // "Ask the laptop to …" from the phone (item 24).
         if let Some(reply) = self.ask_the_laptop_turn(said, t) {
             return reply;
