@@ -30,6 +30,14 @@ ignore = [
     { id = "RUSTSEC-2024-0388", reason = "derivative: zbus 3 under accesskit_unix, eframe's Linux accessibility, which Atlas enables on Windows only" },
     { id = "RUSTSEC-2024-0370", reason = "proc-macro-error: glib-macros 0.18 under wry's Linux GTK3 backend; wry is a Windows-only dependency of Atlas" },
     { id = "RUSTSEC-2025-0057", reason = "fxhash: wry's Linux HTML handling (kuchikiki/selectors); not compiled for any Atlas target" },
+    # Added by the 24 Oct 2026 security scan (cargo-deny 0.20.2, advisories published since 6 Oct).
+    # In real builds: serde_yaml (deprecated) sits on unsafe-libyaml. Atlas parses only YAML it or
+    # the owner wrote (config, adapters); a replacement for serde_yaml is a dependency swap for the owner.
+    { id = "RUSTSEC-2024-0449", reason = "unsafe-libyaml (unmaintained), via serde_yaml: parses Atlas's own config/adapter YAML only; replacing serde_yaml is an owner decision" },
+    # In no Atlas build: zbus 3 under accesskit_unix (Linux-only), as RUSTSEC-2024-0388 above.
+    { id = "RUSTSEC-2026-0370", reason = "zvariant 3 (unmaintained): zbus 3 under accesskit_unix, Linux only; Atlas enables eframe accessibility on Windows only" },
+    { id = "RUSTSEC-2026-0371", reason = "zbus_names (unmaintained): same zbus 3 / accesskit_unix chain, Linux only" },
+    { id = "RUSTSEC-2026-0372", reason = "zvariant_derive (unmaintained): same zbus 3 / accesskit_unix chain, Linux only" },
 ]
 
 [licenses]
