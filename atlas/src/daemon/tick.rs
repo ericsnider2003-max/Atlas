@@ -1299,6 +1299,11 @@ impl<'a> Daemon<'a> {
         let online = self.connectivity.cached() == Reach::Online;
         out.extend(self.workday_tick(t, may_speak, paused, online));
         self.tick_laps.mark("workday");
+        // What needs you, said once each, at most every half hour.
+        if let Some(said) = self.needs_you_check_in(t, may_speak) {
+            out.push(said);
+        }
+        self.tick_laps.mark("what needs you");
 
         // --- Calendar reminders coming due ---
         // An event with a reminder lead-time gets spoken once as its start

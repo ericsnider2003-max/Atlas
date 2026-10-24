@@ -9,7 +9,8 @@
 //! "not now" puts those off for a few hours, and they don't come back early.
 //!
 //! This module only reads and ranks. It never sends, pays, signs, deletes or
-//! changes anything but its own snooze list -- `tests/what_needs_you.rs`
+//! changes anything but its own snooze list and (24 Oct 2026) the memory of
+//! what a timed check-in has already said -- `tests/what_needs_you.rs`
 //! holds that.
 
 use serde::{Deserialize, Serialize};
@@ -24,6 +25,15 @@ pub const SNOOZE_SECS: u64 = 4 * 60 * 60;
 /// The saved snoozes, and what was last said (what "not now" refers to).
 pub const SNOOZED_KEY: &str = "needs_you_snoozed";
 pub const LAST_KEY: &str = "needs_you_last";
+/// What a check-in has already said, with when (24 Oct 2026).
+pub const SURFACED_KEY: &str = "needs_you_surfaced";
+/// The least time between two spoken check-ins.
+pub const CHECK_IN_EVERY_SECS: u64 = 30 * 60;
+/// How long something said stays remembered: a restart, or a week, doesn't
+/// make the same item new again, but a file never grows without end.
+pub const SURFACED_KEEP_SECS: u64 = 7 * 24 * 60 * 60;
+/// Most entries kept, newest first.
+pub const SURFACED_MAX: usize = 200;
 
 /// Why something is on the list, which is also its place in the order.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -64,6 +74,48 @@ impl Snoozed {
             self.until.insert(k.clone(), now + SNOOZE_SECS);
         }
         self.until.retain(|_, t| *t > now);
+    }
+}
+
+/// The interruption filter's memory (24 Oct 2026): what a spoken check-in has
+/// already surfaced, and when the last check-in was. Kept in the store, so a
+/// restart doesn't say the same things again.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct Surfaced {
+    pub at: BTreeMap<String, u64>,
+    pub last_check_in: u64,
+}
+
+impl Surfaced {
+    /// Is a check-in allowed yet, by the clock alone?
+    pub fn due(&self, now: u64) -> bool {
+        now.saturating_sub(self.last_check_in) >= CHECK_IN_EVERY_SECS
+    }
+
+    /// What needs you and hasn't been said: best first, calendar items left
+    /// to the calendar's own reminders, never more than `CAP`.
+    pub fn fresh(&self, all: &[Need]) -> Vec<Need> {
+        all.iter()
+            .filter(|n| n.why != Why::StartsSoon && !self.at.contains_key(&n.key))
+            .take(CAP)
+            .cloned()
+            .collect()
+    }
+
+    /// These were just said.
+    pub fn mark(&mut self, said: &[Need], now: u64) {
+        for n in said {
+            self.at.insert(n.key.clone(), now);
+        }
+        self.last_check_in = now;
+        self.at
+            .retain(|_, t| now.saturating_sub(*t) < SURFACED_KEEP_SECS);
+        if self.at.len() > SURFACED_MAX {
+            let mut by_age: Vec<(String, u64)> = self.at.clone().into_iter().collect();
+            by_age.sort_by_key(|(_, t)| std::cmp::Reverse(*t));
+            by_age.truncate(SURFACED_MAX);
+            self.at = by_age.into_iter().collect();
+        }
     }
 }
 

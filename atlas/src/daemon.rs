@@ -1301,6 +1301,8 @@ pub struct Daemon<'a> {
     meaning_route_tried: bool,
     /// Where the last tick spent its time (`timing::Laps`).
     tick_laps: crate::timing::Laps,
+    /// When the check-in last looked at what needs you (`needs_you_check_in`).
+    needs_you_looked: u64,
     /// Which abilities requests have used (`used`), and when it was last saved.
     pub(crate) used: crate::used::Used,
     used_saved: u64,
@@ -2217,6 +2219,7 @@ impl<'a> Daemon<'a> {
             meaning_route: None,
             meaning_route_tried: false,
             tick_laps: crate::timing::Laps::start(),
+            needs_you_looked: 0,
             used: store_for_load.load(crate::used::KEY),
             used_saved: 0,
             meaning_route_retry: false,
