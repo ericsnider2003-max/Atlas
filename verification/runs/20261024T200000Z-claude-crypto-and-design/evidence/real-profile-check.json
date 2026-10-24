@@ -1,0 +1,43 @@
+{
+    "index_bytes_before":  13886889,
+    "port":  8787,
+    "hub_ready_s":  10.3,
+    "min_free_mb":  524,
+    "helpers":  [
+                    "whisper-server.exe 169 MB",
+                    "whisper-server.exe 208 MB"
+                ],
+    "working_set_mb":  805,
+    "private_mb":  768,
+    "child_processes":  [
+                            "tor.exe",
+                            "whisper-server.exe",
+                            "ffmpeg.exe",
+                            "ffmpeg.exe"
+                        ],
+    "stop_s":  1.2,
+    "exited":  true,
+    "index_bytes_after":  13886889,
+    "new_set_aside":  [
+
+                      ],
+    "fetching_lines":  0,
+    "camera_frames":  0,
+    "put_aside":  0,
+    "backup_failed":  0,
+    "housekeeping_failed":  0,
+    "log_tail":  [
+                     "1792874217 INFO the icon by the clock is up",
+                     "1792874217 INFO the icon by the clock\u0027s window is made; adding the icon",
+                     "1792874227 INFO the internet — never seen it work. research, anything fetched from a page, and any hosted model",
+                     "1792874227 INFO the language model — never seen it work. anything the phrase parser can\u0027t recognise on its own",
+                     "1792874277 WARN couldn\u0027t start the model server: no language model in the models folder fits this machine",
+                     "1792874366 INFO memory relief (memory is short): nothing idle to let go; private bytes 764 MB -\u003e 764 MB (freed 0 MB)",
+                     "1792874486 INFO memory relief (memory is short): nothing idle to let go; private bytes 765 MB -\u003e 765 MB (freed 0 MB)",
+                     "1792874532 INFO stopped cleanly -- 0 errand(s) called off, 0 helper(s) shut down, state written, lock released"
+                 ],
+    "download_ask":  "Atlas can fetch 8 missing pieces (about 16.2 GB): the Parakeet hearing model, the wake-word spotter, the multilingual listening model, the deep brain, its picture model, its t",
+    "atlas_left_running":  [
+                               "whisper-server 27420"
+                           ]
+}
