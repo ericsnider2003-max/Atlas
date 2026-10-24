@@ -21,6 +21,12 @@ use std::path::{Path, PathBuf};
 
 /// Where the phone shell leaves the files it was built with, under the home.
 pub const INBOX: &str = "bundled";
+/// The meaning layer's files, where `meaningnative` reads them. Kept here,
+/// not borrowed from it, so a build without the `onnx` feature still knows
+/// what the app carries (24 Oct 2026: the first phone CI build failed on
+/// exactly that).
+pub const MEANING_MODEL: &str = "models/understanding/all-MiniLM-L6-v2-fp16.onnx";
+pub const MEANING_VOCAB: &str = "models/understanding/vocab.txt";
 
 /// Where one bundled file belongs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -47,7 +53,7 @@ pub struct Piece {
 /// Everything the app carries: about 442 MB.
 pub const PIECES: [Piece; 3] = [
     Piece {
-        file: crate::meaningnative::MODEL_SMALL,
+        file: MEANING_MODEL,
         into: Into::Home,
         sha256: "2cdb5e58291813b6d6e248ed69010100246821a367fa17b1b81ae9483744533d",
         bytes: 45_297_825,
@@ -55,7 +61,7 @@ pub const PIECES: [Piece; 3] = [
         source: "https://huggingface.co/Xenova/all-MiniLM-L6-v2/resolve/751bff37182d3f1213fa05d7196b954e230abad9/onnx/model_fp16.onnx",
     },
     Piece {
-        file: crate::meaningnative::VOCAB,
+        file: MEANING_VOCAB,
         into: Into::Home,
         sha256: "07eced375cec144d27c900241f3e339478dec958f92fddbc551f295c992038a3",
         bytes: 231_508,
@@ -280,11 +286,11 @@ mod tests {
         let models = Path::new("/m");
         assert_eq!(
             place(&PIECES[0], home, models),
-            home.join(crate::meaningnative::MODEL_SMALL)
+            home.join(MEANING_MODEL)
         );
         assert_eq!(
             place(&PIECES[1], home, models),
-            home.join(crate::meaningnative::VOCAB)
+            home.join(MEANING_VOCAB)
         );
         assert_eq!(
             place(&PIECES[2], home, models),
@@ -335,6 +341,8 @@ mod the_real_bundle {
             .iter()
             .all(|(_, a)| *a == Adopted::Present));
         // And the phone's meaning layer is the bundled one, and works.
+        #[cfg(feature = "onnx")]
+        {
         let mut meaning =
             crate::meaningnative::Native::load(&home).expect("the meaning layer loads");
         let a = meaning.embed("remind me to call mum at six").expect("it means something");
@@ -342,6 +350,7 @@ mod the_real_bundle {
         let c = meaning.embed("how full is my disk").unwrap();
         let cos = |x: &[f32], y: &[f32]| x.iter().zip(y).map(|(p, q)| p * q).sum::<f32>();
         assert!(cos(&a, &b) > cos(&a, &c), "close meanings are closer");
+        }
         println!(
             "BUNDLE adopted {} files, {} bytes, checked and moved in {:?}",
             PIECES.len(),

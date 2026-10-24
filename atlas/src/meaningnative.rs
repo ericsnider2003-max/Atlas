@@ -31,7 +31,7 @@ pub const VOCAB: &str = "models/understanding/vocab.txt";
 /// nearest meaning 14 of 14. Used when it's there and the full one isn't.
 /// (The 8-bit export ran only once its shape notes were dropped,
 /// `read_model`; it was not the one chosen.)
-pub const MODEL_SMALL: &str = "models/understanding/all-MiniLM-L6-v2-fp16.onnx";
+pub const MODEL_SMALL: &str = crate::bundled::MEANING_MODEL;
 
 /// The model file to load: the full-size one if it's installed, else the
 /// 8-bit one, else none.
@@ -620,5 +620,13 @@ mod int8_why {
             Ok(_) => println!("LOOSE shaped ok"),
             Err(e) => println!("LOOSE ERROR {e:?}"),
         }
+    }
+}
+
+#[cfg(test)]
+mod the_bundle_agrees {
+    #[test]
+    fn the_app_carries_the_word_list_where_it_is_read() {
+        assert_eq!(super::VOCAB, crate::bundled::MEANING_VOCAB);
     }
 }

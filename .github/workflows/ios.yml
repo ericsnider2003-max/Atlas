@@ -127,7 +127,7 @@ jobs:
         run: |
           rustup target add aarch64-apple-ios
           # phone-llm-metal: the phone's own language model, on its GPU (P.7).
-          cargo rustc --release --lib --no-default-features --features phone-llm-metal --target aarch64-apple-ios --crate-type staticlib
+          cargo rustc --release --lib --no-default-features --features phone-llm-metal,onnx --target aarch64-apple-ios --crate-type staticlib
           mkdir -p mobile/ios/rustlib
           cp target/aarch64-apple-ios/release/libatlas.a mobile/ios/rustlib/
 

@@ -19,11 +19,12 @@ export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$TC/aarch64-linux-android$API-
 cd "$here/.."
 rustup target add aarch64-linux-android >/dev/null
 # phone-llm: the phone's own language model, llama.cpp inside the core (P.7).
+# onnx: the meaning layer the app carries (bundled-models.json, 24 Oct 2026).
 # llama.cpp's build uses CMake with the NDK's own toolchain file.
 export CMAKE_TOOLCHAIN_FILE_aarch64_linux_android="$NDK/build/cmake/android.toolchain.cmake"
 export ANDROID_ABI=arm64-v8a ANDROID_PLATFORM="android-$API"
 export CXX_aarch64_linux_android="$TC/aarch64-linux-android$API-clang++"
-cargo rustc --release --lib --no-default-features --features phone-llm --target aarch64-linux-android --crate-type staticlib
+cargo rustc --release --lib --no-default-features --features phone-llm,onnx --target aarch64-linux-android --crate-type staticlib
 target_dir="${CARGO_TARGET_DIR:-$here/../target}"
 mkdir -p "$here/android/app/src/main/rustlib/arm64-v8a"
 cp "$target_dir/aarch64-linux-android/release/libatlas.a" "$here/android/app/src/main/rustlib/arm64-v8a/"
