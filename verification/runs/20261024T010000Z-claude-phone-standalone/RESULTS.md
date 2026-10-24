@@ -104,3 +104,27 @@ Merged candidate d55bef25 (the Hub redesign, installed) into this branch; the me
 All suites run pass: sync 59, correction log 25, asking the laptop 11, files_remote 33, phone 15 + 5, hublive 61, floor 20, lib 41, and the project's own quality checks.
 
 Still to do: sync over Tailscale (transport and retry), and the Sync page plus the queued wording in the Hub. The Hub files are staged above, for Dispatch to sequence.
+
+## Pushed and built on GitHub (24 Oct 2026)
+
+- Branch `feat/phone-standalone-2026-10-23` pushed to origin with `gh`. Final commit 995bb448.
+- **Meaning layer: fp16, by Eric's choice.**
+  - File: `all-MiniLM-L6-v2-fp16.onnx`, 45,297,825 bytes. The app now carries 442,234,805 bytes in all.
+  - Compared with the full-size model on 26 texts: mean cosine 1.0000, the same nearest meaning 14 of 14, and both 13 of 14 right. It takes 12.1 ms per text against 8.3 ms on this laptop.
+  - It loads because the encoder now ignores the symbolic shape notes in these exports (`read_model`).
+- **Hub on the phone:**
+  - Laptop requests now sit in the Queued lane, or In progress, with their status line.
+  - The Sync page is shown on the phone. It opens on "Right now": last heard, what waits for the laptop, and what sync replaced, with a "Put back the most recent" button.
+  - The Offline note now says "queued until your laptop is reachable".
+- **Android: build passed.**
+  - Run: https://github.com/ericsnider2003-max/Atlas/actions/runs/40096236612
+  - Artifact `Atlas-Android-0.1.7-7-unsigned`: the APK is 504,355,464 bytes and expires on 23 Nov.
+  - The first Android build since 28 Sep to pass. Fixes on the way:
+    1. The phone build now includes the ONNX engine (`--features phone-llm,onnx`), and the bundle's paths no longer depend on it.
+    2. Gradle now has a 4 GB heap, needed to pack the model (`gradle.properties`).
+    3. Kotlin is raised from 2.0.21 to 2.2.10 to match the standard library that a dependency brings. That mismatch had broken every build since 28 Sep.
+  - The APK is unsigned: no Android signing key exists anywhere. There are no `ANDROID_*` secrets in either repository, no key file is committed, and `~/Atlas/signing` holds only `tools`.
+- **iOS: build failed at Apple signing.**
+  - Run: https://github.com/ericsnider2003-max/Atlas/actions/runs/40092372149
+  - The Rust core (with `onnx`) and the bundled models built. The archive then failed with "Your account has reached the maximum number of certificates", followed by "No profiles for 'com.ericsnider.atlas'".
+  - Eric's Apple account needs old Apple Development certificates revoked, or a distribution certificate given to the workflow (`DIST_CERT_P12` / `DIST_CERT_PASSWORD`). Neither can be done from here.
