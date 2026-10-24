@@ -156,6 +156,7 @@ pub mod mcpserve;
 pub mod meaning;
 #[cfg(feature = "onnx")]
 pub mod meaningnative;
+pub mod needs_you;
 pub mod meaningroute;
 pub mod mend;
 pub mod motion;
