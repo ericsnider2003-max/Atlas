@@ -1329,3 +1329,37 @@ fn free_form_a_reading_list_can_be_a_group_and_a_downloads_folder_cannot() {
         Intent::ChangeGroup(_)
     ));
 }
+
+/// 24 Oct 2026, from the training session's phrase-table measurement: three
+/// of the fast layer's five wrong actions were the fixed phrase table firing
+/// on long messages (a 26-word group change, a 38-word health complaint, a
+/// 25-word test-everything ask), and two on short ones ("fix the issues", a
+/// question about a charter). The 22 Oct guards already stop all five on the
+/// installed table (re-measured today on both locked sets: no phrase-table
+/// action is wrong). These are fresh paraphrases of the same shapes, so the
+/// guard is proved on the shape and not only on the sentences it was cut to.
+#[test]
+fn free_form_paraphrased_long_misfires_still_hand_off() {
+    use atlas::intent::Intent;
+    let p = parser();
+    for said in [
+        // group change read out of a paragraph
+        "Take the old copy out of the shared folder and set the folder back to online only. It is eating the space I cleared out last week.",
+        // machine health read out of a complaint
+        "The helper apps never start properly for me, they barely load and stall for minutes, and my memory looks nearly full even with everything closed, which is not how it should behave.",
+        // self-test read out of a long ask with a fallback clause
+        "Alright so test everything you are able to in a realistic setting, or write me a full handoff I can try myself in another tool if it does not work",
+        // self-repair with no object, and a self-check as a question about a document
+        "Sort out the problems",
+        "Are you following the plan and the roadmap we agreed on?",
+    ] {
+        let got = p.parse(said);
+        assert!(
+            matches!(got, Intent::Unknown(_)),
+            "{said:?} should not act, read as {got:?}"
+        );
+    }
+    // The short, clear versions still act.
+    assert_eq!(p.parse("Ok please continue"), Intent::Resume);
+    assert_eq!(p.parse("test everything"), Intent::SelfTest);
+}
