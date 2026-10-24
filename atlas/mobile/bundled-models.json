@@ -1,0 +1,39 @@
+{
+  "about": "The models the phone app carries (standalone-first, owner decision 22 Oct 2026). fetch-bundled-models.sh downloads each into bundled-cache/ and refuses any whose SHA-256 differs; the app builds copy bundled-cache/ in as 'bundled', and the core checks every file again before it uses it (src/bundled.rs). Pinned 23 Oct 2026 from the files' own listings.",
+  "files": [
+    {
+      "name": "all-MiniLM-L6-v2-int8.onnx",
+      "what": "meaning layer, int8 ONNX",
+      "bytes": 22972370,
+      "sha256": "afdb6f1a0e45b715d0bb9b11772f032c399babd23bfc31fed1c170afc848bdb1",
+      "url": "https://huggingface.co/Xenova/all-MiniLM-L6-v2/resolve/751bff37182d3f1213fa05d7196b954e230abad9/onnx/model_int8.onnx",
+      "licence": "Apache-2.0"
+    },
+    {
+      "name": "vocab.txt",
+      "what": "meaning layer word list",
+      "bytes": 231508,
+      "sha256": "07eced375cec144d27c900241f3e339478dec958f92fddbc551f295c992038a3",
+      "url": "https://huggingface.co/Xenova/all-MiniLM-L6-v2/resolve/751bff37182d3f1213fa05d7196b954e230abad9/vocab.txt",
+      "licence": "Apache-2.0"
+    },
+    {
+      "name": "Qwen3-0.6B-Q4_K_M.gguf",
+      "what": "the phone's own language model, 4-bit GGUF",
+      "bytes": 396705472,
+      "sha256": "ac2d97712095a558e31573f62f466a3f9d93990898b0ec79d7c974c1780d524a",
+      "url": "https://huggingface.co/unsloth/Qwen3-0.6B-GGUF/resolve/50968a4468ef4233ed78cd7c3de230dd1d61a56b/Qwen3-0.6B-Q4_K_M.gguf",
+      "licence": "Apache-2.0"
+    }
+  ],
+  "later": [
+    {
+      "name": "Qwen3-1.7B-Q4_K_M.gguf",
+      "what": "larger model for 8 GB+ phones, optional download, held (Dispatch 24 Oct 2026)",
+      "bytes": 1107409472,
+      "sha256": "b139949c5bd74937ad8ed8c8cf3d9ffb1e99c866c823204dc42c0d91fa181897",
+      "url": "https://huggingface.co/unsloth/Qwen3-1.7B-GGUF/resolve/d7f544eead698dbd1f15126ef60b45a1e1933222/Qwen3-1.7B-Q4_K_M.gguf",
+      "licence": "Apache-2.0"
+    }
+  ]
+}

@@ -61,6 +61,29 @@ impl Daemon<'_> {
     /// "go ahead on the laptop" for the last one it held. `None` when the
     /// words aren't either.
     pub(super) fn ask_the_laptop_turn(&mut self, said: &str, t: u64) -> Option<String> {
+        if crate::remote::asks_whats_waiting(said)
+            && self.plat.device_kind() != crate::sync::Kind::Full
+        {
+            // The phone's outbox, honestly (24 Oct 2026, standalone-first):
+            // the laptop was last heard from at its newest event this phone
+            // has; never heard from, and every open request says so.
+            let me = self.synclog.device.clone();
+            let laptop_heard = self
+                .synclog
+                .events
+                .iter()
+                .filter(|e| e.device != me)
+                .map(|e| e.at)
+                .max();
+            return Some(
+                match self.store.load_checked::<crate::remote::Queue>(MY_ASKS_KEY) {
+                    Ok(q) => crate::remote::whats_waiting(&q.unwrap_or_default(), laptop_heard, t),
+                    Err(error) => {
+                        format!("I couldn't read what's waiting for your laptop ({error}).")
+                    }
+                },
+            );
+        }
         if crate::remote::go_ahead_on_the_laptop(said) {
             let guard = match self.store.transaction() {
                 Ok(guard) => guard,

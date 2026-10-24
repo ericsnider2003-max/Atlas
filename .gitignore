@@ -61,3 +61,7 @@ atlas/scratch/*
 .filing/trash/
 .filing/manifest.tsv
 *.tmp-*
+
+# The phone app's models, fetched by atlas/mobile/fetch-bundled-models.sh:
+# 400 MB of checked downloads, never committed.
+atlas/mobile/bundled-cache/

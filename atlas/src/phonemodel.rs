@@ -40,8 +40,10 @@ pub struct PhoneModel {
 
 const GB: u64 = 1024 * 1024 * 1024;
 
-/// The phone's models, largest first.
-pub const MODELS: [PhoneModel; 2] = [
+/// The phone's models, largest first. The 4-bit 0.6B ships inside the app
+/// (`bundled`, 24 Oct 2026), so a phone has a model from the first minute
+/// with no download; the others are what a phone may already have fetched.
+pub const MODELS: [PhoneModel; 3] = [
     PhoneModel {
         name: "Qwen3 1.7B",
         file: "Qwen3-1.7B-Q8_0.gguf",
@@ -53,6 +55,14 @@ pub const MODELS: [PhoneModel; 2] = [
     },
     PhoneModel {
         name: "Qwen3 0.6B",
+        file: "Qwen3-0.6B-Q4_K_M.gguf",
+        url: "https://huggingface.co/unsloth/Qwen3-0.6B-GGUF/resolve/50968a4468ef4233ed78cd7c3de230dd1d61a56b/Qwen3-0.6B-Q4_K_M.gguf",
+        sha256: "ac2d97712095a558e31573f62f466a3f9d93990898b0ec79d7c974c1780d524a",
+        bytes: 396_705_472,
+        min_ram: 0,
+    },
+    PhoneModel {
+        name: "Qwen3 0.6B (8-bit)",
         file: "Qwen3-0.6B-Q8_0.gguf",
         url: "https://huggingface.co/Qwen/Qwen3-0.6B-GGUF/resolve/main/Qwen3-0.6B-Q8_0.gguf",
         sha256: "9465e63a22add5354d9bb4b99e90117043c7124007664907259bd16d043bb031",
@@ -837,9 +847,16 @@ mod tests {
             "Qwen3 0.6B",
             "unknown memory: the small one"
         );
+        // Qwen publishes the 0.6B only at 8 bits; the 4-bit one the app
+        // carries is unsloth's, pinned to a commit rather than `main`
+        // (24 Oct 2026).
         for m in MODELS {
             assert!(
-                m.url.starts_with("https://huggingface.co/Qwen/") && m.url.ends_with(m.file),
+                (m.url.starts_with("https://huggingface.co/Qwen/")
+                    || m.url.starts_with(
+                        "https://huggingface.co/unsloth/Qwen3-0.6B-GGUF/resolve/50968a4468ef4233ed78cd7c3de230dd1d61a56b/"
+                    ))
+                    && m.url.ends_with(m.file),
                 "{}",
                 m.url
             );

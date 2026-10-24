@@ -48,6 +48,13 @@ targets:
       - path: ../../config
         type: folder
         buildPhase: resources
+      # The models the app carries (bundled-models.json), fetched and checked
+      # by fetch-bundled-models.sh before XcodeGen runs.
+      - path: ../bundled-cache
+        name: bundled
+        type: folder
+        buildPhase: resources
+        optional: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.ericsnider.atlas

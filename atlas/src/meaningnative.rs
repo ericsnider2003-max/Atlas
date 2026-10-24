@@ -25,6 +25,19 @@ const UNK: &str = "[UNK]";
 /// Where the two files land, install-relative.
 pub const MODEL: &str = "models/understanding/all-MiniLM-L6-v2.onnx";
 pub const VOCAB: &str = "models/understanding/vocab.txt";
+/// The same model quantised to 8-bit integers: a quarter of the size, the
+/// one the phone app carries (`bundled`, 24 Oct 2026). Used when it's there
+/// and the full-size one isn't.
+pub const MODEL_INT8: &str = "models/understanding/all-MiniLM-L6-v2-int8.onnx";
+
+/// The model file to load: the full-size one if it's installed, else the
+/// 8-bit one, else none.
+pub(crate) fn model_path(root: &Path) -> Option<std::path::PathBuf> {
+    [MODEL, MODEL_INT8]
+        .iter()
+        .map(|m| root.join(m))
+        .find(|p| p.exists())
+}
 
 /// Lengths a text is padded to.
 const BUCKETS: [usize; 4] = [16, 32, 64, 128];
@@ -50,8 +63,8 @@ pub struct Native {
 impl Native {
     /// Load from an install: `None` when the files aren't there.
     pub fn load(root: &Path) -> Option<Native> {
-        let (m, v) = (root.join(MODEL), root.join(VOCAB));
-        if !m.exists() || !v.exists() {
+        let (m, v) = (model_path(root)?, root.join(VOCAB));
+        if !v.exists() {
             return None;
         }
         let file = std::fs::File::open(&v).ok()?;
@@ -72,10 +85,26 @@ impl Native {
             .map(|(i, w)| (w.to_string(), i as i64))
             .collect();
         let proto = tract_onnx::onnx().model_for_path(&m).ok()?;
+        // A model that reads but can't be compiled would answer every text
+        // with nothing (24 Oct 2026: the 8-bit export failed tract's analysis
+        // at its first Unsqueeze). Prove the smallest length compiles, or
+        // say there's no meaning layer rather than a broken one.
+        let first = shaped(proto.clone(), BUCKETS[0]);
+        if let Err(e) = &first {
+            crate::errln!(
+                "atlas: the meaning model at {} can't run here ({e}); meaning search is off",
+                m.display()
+            );
+            return None;
+        }
+        let mut compiled = HashMap::new();
+        if let Ok(run) = first {
+            compiled.insert(BUCKETS[0], run);
+        }
         Some(Native {
             vocab,
             proto,
-            compiled: HashMap::new(),
+            compiled,
             npu: HashMap::new(),
             npu_judged: Vec::new(),
             root: root.to_path_buf(),
@@ -84,7 +113,7 @@ impl Native {
 
     /// Are the files there?
     pub fn installed(root: &Path) -> bool {
-        root.join(MODEL).exists() && root.join(VOCAB).exists()
+        model_path(root).is_some() && root.join(VOCAB).exists()
     }
 
     pub fn embed(&mut self, text: &str) -> Option<Vec<f32>> {
@@ -436,5 +465,132 @@ mod tests {
     fn cls_and_sep_frame_the_ids() {
         let v = vocab_of(&["[UNK]", "hello", "[CLS]", "[SEP]"]);
         assert_eq!(tokenize("hello hello", &v), vec![2, 1, 1, 3]);
+    }
+}
+
+/// The phone's 8-bit meaning layer against the laptop's full-size one, on
+/// real files (24 Oct 2026). Run by hand: `ATLAS_INT8_SPIKE=<dir>` where
+/// `<dir>/full` and `<dir>/int8` are each an install root holding one model
+/// and the word list. Prints how close each pair of vectors is and whether
+/// the 8-bit layer picks the same nearest meaning.
+#[cfg(test)]
+mod int8_against_full {
+    use super::*;
+
+    fn cos(a: &[f32], b: &[f32]) -> f32 {
+        a.iter().zip(b).map(|(x, y)| x * y).sum()
+    }
+
+    #[test]
+    #[ignore = "needs both model files; run with ATLAS_INT8_SPIKE set"]
+    fn the_8_bit_layer_means_what_the_full_one_means() {
+        let dir =
+            std::path::PathBuf::from(std::env::var("ATLAS_INT8_SPIKE").expect("ATLAS_INT8_SPIKE"));
+        let mut full = Native::load(&dir.join("full")).expect("full model");
+        let mut int8 = Native::load(&dir.join("int8")).expect("int8 model");
+        let meanings = [
+            "set a timer",
+            "what time is it",
+            "remind me to call mum at six",
+            "back up my documents folder",
+            "how much memory is free",
+            "open the downloads folder",
+            "send this to my laptop",
+            "what's on my calendar today",
+            "turn the volume down",
+            "find the photo of the beach",
+            "read me the last message",
+            "pause everything",
+        ];
+        let asked = [
+            ("start a ten minute timer", 0),
+            ("tell me the time", 1),
+            ("ping mum at 6pm", 2),
+            ("copy my docs somewhere safe", 3),
+            ("am I running out of ram", 4),
+            ("show me what I downloaded", 5),
+            ("do this on the computer instead", 6),
+            ("anything on today", 7),
+            ("quieter please", 8),
+            ("where is that beach picture", 9),
+            ("what did they just send me", 10),
+            ("stop what you're doing", 11),
+            ("wake me at seven tomorrow", 2),
+            ("how full is my disk", 4),
+        ];
+        let mut sims = Vec::new();
+        let (mut same, mut full_right, mut int8_right) = (0, 0, 0);
+        let fm: Vec<Vec<f32>> = meanings.iter().map(|m| full.embed(m).unwrap()).collect();
+        let im: Vec<Vec<f32>> = meanings.iter().map(|m| int8.embed(m).unwrap()).collect();
+        for (i, m) in meanings.iter().enumerate() {
+            let _ = m;
+            sims.push(cos(&fm[i], &im[i]));
+        }
+        for (q, want) in asked {
+            let (f, n) = (full.embed(q).unwrap(), int8.embed(q).unwrap());
+            sims.push(cos(&f, &n));
+            let best = |v: &Vec<f32>, set: &Vec<Vec<f32>>| {
+                (0..set.len())
+                    .max_by(|a, b| cos(v, &set[*a]).total_cmp(&cos(v, &set[*b])))
+                    .unwrap()
+            };
+            let (bf, bi) = (best(&f, &fm), best(&n, &im));
+            same += (bf == bi) as usize;
+            full_right += (bf == want) as usize;
+            int8_right += (bi == want) as usize;
+        }
+        let min = sims.iter().cloned().fold(f32::MAX, f32::min);
+        let mean = sims.iter().sum::<f32>() / sims.len() as f32;
+        let t = std::time::Instant::now();
+        for _ in 0..20 {
+            int8.embed("remind me to call mum at six").unwrap();
+        }
+        let int8_ms = t.elapsed().as_secs_f64() * 1000.0 / 20.0;
+        let t = std::time::Instant::now();
+        for _ in 0..20 {
+            full.embed("remind me to call mum at six").unwrap();
+        }
+        let full_ms = t.elapsed().as_secs_f64() * 1000.0 / 20.0;
+        println!(
+            "SPIKE cosine full-vs-int8 mean {mean:.4} min {min:.4} over {} texts; same nearest {same}/{}; right full {full_right}/{n} int8 {int8_right}/{n}; ms/embed full {full_ms:.1} int8 {int8_ms:.1}",
+            sims.len(),
+            asked.len(),
+            n = asked.len()
+        );
+        assert!(min > 0.95, "the 8-bit layer drifts: min cosine {min}");
+        assert!(
+            int8_right >= full_right.saturating_sub(1),
+            "the 8-bit layer picks worse"
+        );
+    }
+}
+
+#[cfg(test)]
+mod int8_why {
+    #[test]
+    #[ignore = "diagnostic; needs ATLAS_INT8_SPIKE"]
+    fn why_the_8_bit_model_does_not_run() {
+        let dir = std::path::PathBuf::from(std::env::var("ATLAS_INT8_SPIKE").unwrap());
+        let m = dir.join("int8").join(super::MODEL_INT8);
+        let proto =
+            tract_onnx::prelude::Framework::model_for_path(&tract_onnx::onnx(), &m).unwrap();
+        for (label, f) in [
+            ("int8", m.clone()),
+            ("full", dir.join("full").join(super::MODEL)),
+        ] {
+            let g =
+                tract_onnx::prelude::Framework::model_for_path(&tract_onnx::onnx(), &f).unwrap();
+            let names: Vec<String> = g
+                .input_outlets()
+                .unwrap()
+                .iter()
+                .map(|o| g.node(o.node).name.clone())
+                .collect();
+            println!("INPUTS {label}: {names:?}");
+        }
+        match super::shaped(proto, 16) {
+            Ok(_) => println!("INT8 shaped ok"),
+            Err(e) => println!("INT8 ERROR {e:?}"),
+        }
     }
 }

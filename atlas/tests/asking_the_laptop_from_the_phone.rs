@@ -111,8 +111,9 @@ fn a_reading_runs_on_the_laptop_and_the_answer_comes_back_to_the_phone() {
     pp.be_a_phone_for_test();
     let mut phone = daemon(&pc, &pp, &ps);
     let said = phone.turn("ask the laptop to check what time it is", T);
+    // Queued on the phone until the laptop takes it, said so (24 Oct 2026).
     assert!(
-        said.starts_with("Sent \"check what time it is\" to your laptop"),
+        said.starts_with("\"check what time it is\" is queued for your laptop"),
         "{said}"
     );
 
@@ -520,4 +521,69 @@ fn nothing_private_travels_and_a_stranger_gets_none_of_it() {
         "an unsealed bundle's thread was taken"
     );
     assert!(!mine.facts.facts.iter().any(|f| f.body.contains("fish")));
+}
+
+/// Standalone-first (Eric, 22 Oct 2026): with the laptop switched off and no
+/// internet, the phone still answers what it can by itself, keeps what needs
+/// the laptop in its outbox saying so honestly, and the laptop runs it the
+/// moment it is back, with the answer reaching the phone.
+#[test]
+fn with_the_laptop_off_the_phone_answers_queues_honestly_and_it_runs_when_the_laptop_is_back() {
+    let (lc, pc, ls, ps, _) = pair("outbox");
+    let (lp, pp) = (plat(), plat());
+    pp.be_a_phone_for_test();
+    // No model, no laptop, no internet: only the phone's own plain code.
+    let mut phone = daemon(&pc, &pp, &ps);
+    let time = phone.turn("what time is it", T);
+    assert!(
+        time.chars().any(|c| c.is_ascii_digit()) && !time.to_lowercase().contains("couldn't"),
+        "the phone could not tell the time by itself: {time}"
+    );
+
+    let said = phone.turn("ask the laptop to check what time it is", T + 5);
+    assert!(said.contains("is queued for your laptop"), "{said}");
+    let q: atlas::remote::Queue = ps.load("asked_of_the_laptop");
+    assert_eq!(q.requests.len(), 1);
+    assert_eq!(q.requests[0].state, atlas::remote::State::Waiting);
+    assert_eq!(
+        atlas::remote::queue_status(&q.requests[0], None, T + 5),
+        "Queued until your laptop is reachable (not seen yet)."
+    );
+    let waiting = phone.turn("what's waiting for my laptop?", T + 10);
+    assert_eq!(
+        waiting,
+        "\"check what time it is\": Queued until your laptop is reachable (not seen yet)."
+    );
+    // The phone keeps syncing into the void: nothing is lost or doubled.
+    phone.turn("sync", T + 60);
+    phone.turn("sync", T + 120);
+    let q: atlas::remote::Queue = ps.load("asked_of_the_laptop");
+    assert_eq!(q.requests.len(), 1, "the outbox doubled a request: {q:?}");
+    assert_eq!(q.requests[0].state, atlas::remote::State::Waiting);
+
+    // The laptop comes back.
+    let mut laptop = daemon(&lc, &lp, &ls);
+    laptop.turn("sync", T + 600);
+    laptop.tick(T + 610);
+    let taken: Vec<serde_json::Value> = ls.load("asked_by_your_phone");
+    assert_eq!(taken.len(), 1, "the laptop never took the queued request");
+    assert_eq!(taken[0]["phase"], "finished", "{taken:?}");
+    laptop.turn("sync", T + 620);
+
+    let back = phone.turn("sync", T + 630);
+    assert!(
+        back.contains("From your laptop, on \"check what time it is\""),
+        "the answer never reached the phone: {back}"
+    );
+    let q: atlas::remote::Queue = ps.load("asked_of_the_laptop");
+    assert_eq!(q.requests.len(), 1);
+    assert_eq!(q.requests[0].state, atlas::remote::State::Done);
+    assert_eq!(
+        atlas::remote::queue_status(&q.requests[0], Some(T + 620), T + 630),
+        "Done on your laptop."
+    );
+    assert_eq!(
+        phone.turn("anything queued for the laptop", T + 640),
+        "Nothing is waiting for your laptop."
+    );
 }

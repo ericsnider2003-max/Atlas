@@ -28,6 +28,9 @@ target_dir="${CARGO_TARGET_DIR:-$here/../target}"
 mkdir -p "$here/android/app/src/main/rustlib/arm64-v8a"
 cp "$target_dir/aarch64-linux-android/release/libatlas.a" "$here/android/app/src/main/rustlib/arm64-v8a/"
 
+# The models the app carries, fetched and fingerprint-checked (24 Oct 2026).
+"$here/fetch-bundled-models.sh"
+
 cd "$here/android"
 # The project's own pinned Gradle (gradle/wrapper), never whichever Gradle the
 # machine happens to have (28 Sep 2026).
