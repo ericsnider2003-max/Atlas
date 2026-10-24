@@ -207,16 +207,9 @@ fn is_secret_command(name: &str) -> bool {
             | "accept_pairing"
             | "hand_over"
             | "take_it_back"
-    ) || [
-        "vault",
-        "signing",
-        "passphrase",
-        "credential",
-        "link_account",
-        "sign_up",
-    ]
-    .iter()
-    .any(|w| name.contains(w))
+    ) || ["vault", "signing", "passphrase", "credential", "link_account", "sign_up"]
+        .iter()
+        .any(|w| name.contains(w))
 }
 
 fn clip(s: &str, chars: usize) -> String {
@@ -248,33 +241,9 @@ const SECRET_WORDS: &[&str] = &[
 /// "my key is abc", not "open the code editor".
 const SECRET_IF_VALUE: &[&str] = &["code", "codes", "key", "keys"];
 const NOT_A_VALUE: &[&str] = &[
-    "manager",
-    "reset",
-    "field",
-    "page",
-    "box",
-    "for",
-    "on",
-    "in",
-    "vault",
-    "screen",
-    "prompt",
-    "entry",
-    "change",
-    "to",
-    "and",
-    "or",
-    "with",
-    "from",
-    "again",
-    "protected",
-    "hint",
-    "editor",
-    "board",
-    "chain",
-    "frame",
-    "light",
-    "lock",
+    "manager", "reset", "field", "page", "box", "for", "on", "in", "vault", "screen", "prompt",
+    "entry", "change", "to", "and", "or", "with", "from", "again", "protected", "hint", "editor",
+    "board", "chain", "frame", "light", "lock",
 ];
 const LINKING: &[&str] = &["is", "was", "are", "=", ":", "its", "it's", "equals", "be"];
 const SPOKEN_DIGITS: &[&str] = &[
@@ -332,8 +301,7 @@ pub fn mask_secret_words(text: &str) -> (String, u32) {
         let mut end = i + 1;
         while end < words.len() {
             let cur = words[end];
-            let next_is_then =
-                bare(cur) == "and" && words.get(end + 1).is_some_and(|x| bare(x) == "then");
+            let next_is_then = bare(cur) == "and" && words.get(end + 1).is_some_and(|x| bare(x) == "then");
             if next_is_then {
                 break;
             }
@@ -343,9 +311,7 @@ pub fn mask_secret_words(text: &str) -> (String, u32) {
             }
         }
         let rest = &words[i + 1..end];
-        let linked = rest
-            .first()
-            .is_some_and(|f| LINKING.contains(&bare(f).as_str()));
+        let linked = rest.first().is_some_and(|f| LINKING.contains(&bare(f).as_str()));
         let digits = rest.iter().any(|r| has_digit(r));
         let first = rest.first().map(|f| bare(f)).unwrap_or_default();
         // "my password manager": nothing said to hide, unless a value
@@ -379,19 +345,8 @@ fn redact_text(text: &str, chars: usize) -> (String, u32) {
 /// Words that mean a secret is being talked about, wherever they stand
 /// ("Hunter2 is the password" has the value first).
 const STRONG_WORDS: &[&str] = &[
-    "password",
-    "passwords",
-    "passwd",
-    "passcode",
-    "passphrase",
-    "pin",
-    "otp",
-    "2fa",
-    "token",
-    "tokens",
-    "secret",
-    "secrets",
-    "pwd",
+    "password", "passwords", "passwd", "passcode", "passphrase", "pin", "otp", "2fa", "token",
+    "tokens", "secret", "secrets", "pwd",
 ];
 /// Two-word forms: a "code" or "key" that is a secret by what is said of it.
 const STRONG_PAIRS: &[(&str, &str)] = &[
@@ -435,10 +390,7 @@ fn random_id() -> String {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_nanos() as u64)
         .unwrap_or(0);
-    let mut x = nanos
-        ^ (std::process::id() as u64).rotate_left(32)
-        ^ N.fetch_add(1, Ordering::Relaxed)
-            .wrapping_mul(0x9E37_79B9_7F4A_7C15);
+    let mut x = nanos ^ (std::process::id() as u64).rotate_left(32) ^ N.fetch_add(1, Ordering::Relaxed).wrapping_mul(0x9E37_79B9_7F4A_7C15);
     // splitmix64, twice: 16 hex characters.
     x = x.wrapping_add(0x9E37_79B9_7F4A_7C15);
     let mut z = x;
@@ -497,11 +449,7 @@ pub fn build(f: &Facts) -> Option<Record> {
     let prev_said = text(&f.prev.said, SAID_CHARS);
     // Someone else's words (a mail, a page) can be in what Atlas said back,
     // in what it did to what, and in what it asked: only yours are kept.
-    let prev_reply = if f.outside {
-        String::new()
-    } else {
-        text(&f.prev.reply, REPLY_CHARS)
-    };
+    let prev_reply = if f.outside { String::new() } else { text(&f.prev.reply, REPLY_CHARS) };
     let ask = match (&f.ask, f.outside) {
         (Some((q, opts)), false) => Some(Ask {
             question: text(q, REPLY_CHARS),
@@ -532,26 +480,11 @@ pub fn build(f: &Facts) -> Option<Record> {
         },
         context: Context {
             app,
-            recent: f
-                .context
-                .recent
-                .iter()
-                .rev()
-                .take(3)
-                .rev()
-                .cloned()
-                .collect(),
+            recent: f.context.recent.iter().rev().take(3).rev().cloned().collect(),
             source: f.context.source.clone(),
         },
-        did: Did {
-            intent: f.did_intent.clone(),
-            detail: did_detail,
-        },
-        right: Right {
-            intent: f.right_intent.clone(),
-            detail: right_detail,
-            from: f.from,
-        },
+        did: Did { intent: f.did_intent.clone(), detail: did_detail },
+        right: Right { intent: f.right_intent.clone(), detail: right_detail, from: f.from },
         ask,
         redacted: n + m,
     };
@@ -568,10 +501,7 @@ fn fit(mut r: Record) -> Record {
         cut(&mut r.said);
         cut(&mut r.prev.said);
         cut(&mut r.prev.reply);
-        for d in [&mut r.did.detail, &mut r.right.detail]
-            .into_iter()
-            .flatten()
-        {
+        for d in [&mut r.did.detail, &mut r.right.detail].into_iter().flatten() {
             cut(d);
         }
         if let Some(a) = r.ask.as_mut() {
@@ -868,9 +798,7 @@ impl Keeper {
         if !on {
             self.held = None;
         }
-        store
-            .save(SWITCH, &Switch { on })
-            .map_err(std::io::Error::other)
+        store.save(SWITCH, &Switch { on }).map_err(std::io::Error::other)
     }
 
     /// Write `rec`. `Some(why)` the first time a write fails: the caller logs
@@ -1111,14 +1039,8 @@ mod tests {
             let v = serde_json::to_value(&r).unwrap();
             assert_eq!(v["v"], 1);
             assert_eq!(v["id"].as_str().unwrap().len(), 16);
-            assert!(v["id"]
-                .as_str()
-                .unwrap()
-                .chars()
-                .all(|c| c.is_ascii_hexdigit()));
-            for k in [
-                "ts", "kind", "said", "prev", "context", "did", "right", "ask", "redacted",
-            ] {
+            assert!(v["id"].as_str().unwrap().chars().all(|c| c.is_ascii_hexdigit()));
+            for k in ["ts", "kind", "said", "prev", "context", "did", "right", "ask", "redacted"] {
                 assert!(v.get(k).is_some(), "{kind:?} lacks {k}");
             }
             let want = match kind {
@@ -1129,16 +1051,13 @@ mod tests {
                 Kind::Clarified => "clarified",
             };
             assert_eq!(v["kind"], want);
-            assert_eq!(
-                v["right"]["from"],
-                match from {
-                    From::OwnerSaid => "owner_said",
-                    From::OwnerAnswer => "owner_answer",
-                    From::Undo => "undo",
-                    From::Approval => "approval",
-                    From::Rejection => "rejection",
-                }
-            );
+            assert_eq!(v["right"]["from"], match from {
+                From::OwnerSaid => "owner_said",
+                From::OwnerAnswer => "owner_answer",
+                From::Undo => "undo",
+                From::Approval => "approval",
+                From::Rejection => "rejection",
+            });
             assert_eq!(v["ask"].is_null(), kind != Kind::Clarified);
             assert_eq!(r.context.recent, vec!["clock", "open_app"]);
         }
@@ -1146,8 +1065,7 @@ mod tests {
 
     #[test]
     fn a_password_and_a_code_never_appear() {
-        let (m, n) =
-            mask_secret_words("my password is hunter2 and the verification code is 482913");
+        let (m, n) = mask_secret_words("my password is hunter2 and the verification code is 482913");
         assert!(!m.contains("hunter2") && !m.contains("482913"), "{m}");
         assert!(n >= 1);
         // Every way of saying it, to the end of the clause.
@@ -1199,11 +1117,7 @@ mod tests {
             assert!(build(&f).is_none(), "{said:?} in a question was written");
         }
         // A weak word alone still logs.
-        for said in [
-            "open the code folder",
-            "press the enter key",
-            "write the code for a timer",
-        ] {
+        for said in ["open the code folder", "press the enter key", "write the code for a timer"] {
             let mut f = facts(Kind::Correction);
             f.said = said.into();
             assert!(build(&f).is_some(), "{said:?} was dropped");
@@ -1220,10 +1134,7 @@ mod tests {
         f.prev.reply = "Sent AKIAIOSFODNN7EXAMPLE and mailed sam@example.com".into();
         let r = build(&f).unwrap();
         let line = serde_json::to_string(&r).unwrap();
-        assert!(
-            !line.contains("AKIAIOSFODNN7EXAMPLE") && !line.contains("sam@example.com"),
-            "{line}"
-        );
+        assert!(!line.contains("AKIAIOSFODNN7EXAMPLE") && !line.contains("sam@example.com"), "{line}");
         assert!(r.redacted >= 2, "{}", r.redacted);
     }
 
@@ -1233,15 +1144,7 @@ mod tests {
         assert!(build(&facts(Kind::Approval)).is_none());
         let dir = tmp("masked");
         let mut log = Log::at(&dir);
-        let mut k = Keeper {
-            log: Log::at(&dir),
-            on: true,
-            chain: vec![],
-            chain_at: 0,
-            held: None,
-            unsure: Default::default(),
-            warned: false,
-        };
+        let mut k = Keeper { log: Log::at(&dir), on: true, chain: vec![], chain_at: 0, held: None, unsure: Default::default(), warned: false };
         drop(_g);
         let rec = build(&facts(Kind::Approval)).unwrap();
         let _g = crate::typed::MaskedGuard::enter();
@@ -1252,16 +1155,7 @@ mod tests {
 
     #[test]
     fn a_turn_that_handled_a_secret_leaves_nothing() {
-        for name in [
-            "sign_in",
-            "create_account",
-            "type_code",
-            "two_factor",
-            "set_key",
-            "unlock",
-            "pair",
-            "hand_over",
-        ] {
+        for name in ["sign_in", "create_account", "type_code", "two_factor", "set_key", "unlock", "pair", "hand_over"] {
             let mut f = facts(Kind::Approval);
             f.did_intent = Some(name.into());
             assert!(build(&f).is_none(), "{name} was kept");
@@ -1295,10 +1189,7 @@ mod tests {
         f.prev.said = "x".repeat(9000);
         f.prev.reply = "y".repeat(9000);
         f.did_detail = Some("z".repeat(9000));
-        f.ask = Some((
-            "q".repeat(9000),
-            (0..40).map(|i| format!("{i}{}", "o".repeat(500))).collect(),
-        ));
+        f.ask = Some(("q".repeat(9000), (0..40).map(|i| format!("{i}{}", "o".repeat(500))).collect()));
         let r = build(&f).unwrap();
         let line = serde_json::to_string(&r).unwrap();
         assert!(line.len() <= MAX_LINE_BYTES, "{}", line.len());
@@ -1347,24 +1238,14 @@ mod tests {
         let dir = tmp("cap");
         let mut log = Log::at(&dir);
         for i in 0..(MAX_LINES + 5) {
-            log.append(&rec(&format!("line number {i}"), 1_000 + i as u64))
-                .unwrap();
+            log.append(&rec(&format!("line number {i}"), 1_000 + i as u64)).unwrap();
         }
         let all = log.read();
         assert!(all.len() <= MAX_LINES, "{}", all.len());
         // A line is about 350 bytes, so the byte bound is the one reached first.
-        assert!(
-            all.len() < MAX_LINES + 5,
-            "the oldest lines should have gone"
-        );
-        assert_eq!(
-            all.last().unwrap().said,
-            format!("line number {}", MAX_LINES + 4)
-        );
-        assert!(
-            all[0].said != "line number 0",
-            "the oldest should have gone"
-        );
+        assert!(all.len() < MAX_LINES + 5, "the oldest lines should have gone");
+        assert_eq!(all.last().unwrap().said, format!("line number {}", MAX_LINES + 4));
+        assert!(all[0].said != "line number 0", "the oldest should have gone");
         let bytes = std::fs::metadata(log.path()).unwrap().len();
         assert!(bytes <= MAX_BYTES);
     }
@@ -1391,11 +1272,7 @@ mod tests {
         assert!(bytes <= MAX_BYTES, "{bytes}");
         let all = log.read();
         assert!(all.len() < n);
-        assert!(all
-            .last()
-            .unwrap()
-            .said
-            .starts_with(&format!("n{} ", n - 1)));
+        assert!(all.last().unwrap().said.starts_with(&format!("n{} ", n - 1)));
         assert!(!all[0].said.starts_with("n0 "));
     }
 
@@ -1404,10 +1281,7 @@ mod tests {
         let dir = tmp("forget");
         let store = crate::store::Store::new(dir.join("s"));
         let mut k = Keeper::open(&store);
-        for (i, s) in ["call Sam about lunch", "open notepad", "read the tax file"]
-            .iter()
-            .enumerate()
-        {
+        for (i, s) in ["call Sam about lunch", "open notepad", "read the tax file"].iter().enumerate() {
             assert!(k.write(&rec(s, 1_000 + i as u64 * 1000)).is_none());
         }
         // The chain is the lines written close together: only the last.
@@ -1435,21 +1309,9 @@ mod tests {
         let dir = tmp("chainkeep");
         // A file where the folder should be: every rewrite fails.
         std::fs::write(dir.join("learning"), "in the way").unwrap();
-        let mut k = Keeper {
-            log: Log::at(&dir),
-            on: true,
-            chain: vec!["abc".into()],
-            chain_at: 10,
-            held: None,
-            unsure: Default::default(),
-            warned: false,
-        };
+        let mut k = Keeper { log: Log::at(&dir), on: true, chain: vec!["abc".into()], chain_at: 10, held: None, unsure: Default::default(), warned: false };
         assert!(k.forget_that().is_err());
-        assert_eq!(
-            k.chain,
-            vec!["abc".to_string()],
-            "the chain was let go before the rewrite worked"
-        );
+        assert_eq!(k.chain, vec!["abc".to_string()], "the chain was let go before the rewrite worked");
     }
 
     #[test]
@@ -1462,8 +1324,7 @@ mod tests {
                     // Each its own Log, as two processes would have.
                     let mut log = Log::at(&dir);
                     for i in 0..40 {
-                        log.append(&rec(&format!("w{w} line {i}"), 1_000 + i))
-                            .unwrap();
+                        log.append(&rec(&format!("w{w} line {i}"), 1_000 + i)).unwrap();
                     }
                 })
             })
@@ -1473,10 +1334,7 @@ mod tests {
         }
         let log = Log::at(&dir);
         assert_eq!(log.read().len(), 6 * 40);
-        assert!(
-            !log.path().with_extension("jsonl.lock").exists(),
-            "the lock was left behind"
-        );
+        assert!(!log.path().with_extension("jsonl.lock").exists(), "the lock was left behind");
     }
 
     #[test]
@@ -1514,15 +1372,7 @@ mod tests {
         let dir = tmp("fail");
         // A file where the folder should be.
         std::fs::write(dir.join("learning"), "in the way").unwrap();
-        let mut k = Keeper {
-            log: Log::at(&dir),
-            on: true,
-            chain: vec![],
-            chain_at: 0,
-            held: None,
-            unsure: Default::default(),
-            warned: false,
-        };
+        let mut k = Keeper { log: Log::at(&dir), on: true, chain: vec![], chain_at: 0, held: None, unsure: Default::default(), warned: false };
         assert!(k.write(&rec("a", 1)).is_some());
         assert!(k.write(&rec("b", 2)).is_none());
     }
@@ -1531,18 +1381,9 @@ mod tests {
     fn the_asks_are_narrow() {
         assert_eq!(asked_of_the_log("Forget that."), Some(Asked::Last));
         assert_eq!(asked_of_the_log("forget the last thing"), Some(Asked::Last));
-        assert_eq!(
-            asked_of_the_log("forget what I said about Sam"),
-            Some(Asked::About("sam".into()))
-        );
-        assert_eq!(
-            asked_of_the_log("Forget everything"),
-            Some(Asked::Everything)
-        );
-        assert_eq!(
-            asked_of_the_log("clear what you've learned"),
-            Some(Asked::Everything)
-        );
+        assert_eq!(asked_of_the_log("forget what I said about Sam"), Some(Asked::About("sam".into())));
+        assert_eq!(asked_of_the_log("Forget everything"), Some(Asked::Everything));
+        assert_eq!(asked_of_the_log("clear what you've learned"), Some(Asked::Everything));
         assert_eq!(asked_of_the_log("stop learning from me"), Some(Asked::Stop));
         assert_eq!(asked_of_the_log("start learning again"), Some(Asked::Start));
         assert_eq!(asked_of_the_log("forget that phrase"), None);
