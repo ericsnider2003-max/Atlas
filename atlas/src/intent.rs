@@ -2244,14 +2244,14 @@ static REJECTED_NAMES: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec
 
 /// The names turned away since the last call, each once.
 pub fn take_rejected_names() -> Vec<String> {
-    match REJECTED_NAMES.lock() {
+    match REJECTED_NAMES.lock().or_else(crate::crash::unpoison) {
         Ok(mut v) => std::mem::take(&mut *v),
         Err(_) => Vec::new(),
     }
 }
 
 fn note_rejected(name: &str) {
-    if let Ok(mut v) = REJECTED_NAMES.lock() {
+    if let Ok(mut v) = REJECTED_NAMES.lock().or_else(crate::crash::unpoison) {
         let name: String = name.chars().take(40).collect();
         if v.len() < 16 && !v.contains(&name) {
             v.push(name);
