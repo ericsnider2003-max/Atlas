@@ -148,8 +148,99 @@ impl<'a> Daemon<'a> {
         let Some(rec) = crate::corrlog::build(&f) else {
             return;
         };
+        let before = self.corr.ids().len();
         if let Some(why) = self.corr.write(&rec) {
             self.log.warn(&why);
+        } else if self.corr.ids().len() > before {
+            self.share_correction(&rec);
+        }
+    }
+
+    /// Whether correction lines may travel: sync on, and its bundles sealed
+    /// with your household key -- your own devices only (24 Oct 2026).
+    fn corrections_travel(&self) -> bool {
+        let sync = &self.tools_cfg().sync;
+        sync.enabled && sync.encrypt_bundles
+    }
+
+    /// One correction line, to your other devices.
+    fn share_correction(&mut self, rec: &crate::corrlog::Record) {
+        let Ok(line) = serde_json::to_string(rec) else {
+            return;
+        };
+        let id = format!("{}{}", crate::corrlog::SYNC_PREFIX, rec.id);
+        self.share_corr_event(id, crate::corrlog::SYNC_LINE, line, rec.ts);
+    }
+
+    /// What a forget took out of the log, to your other devices: each line
+    /// by its id, or everything at once.
+    pub(super) fn share_forgotten(&mut self, before: &[String], everything: bool) {
+        let t = crate::store::now();
+        if everything {
+            if !before.is_empty() {
+                let id = format!("{}*", crate::corrlog::SYNC_PREFIX);
+                self.share_corr_event(id, crate::corrlog::SYNC_FORGOTTEN, String::new(), t);
+            }
+            return;
+        }
+        let after = self.corr.ids();
+        for gone in before.iter().filter(|i| !after.contains(i)) {
+            let id = format!("{}{gone}", crate::corrlog::SYNC_PREFIX);
+            self.share_corr_event(id, crate::corrlog::SYNC_FORGOTTEN, String::new(), t);
+        }
+    }
+
+    fn share_corr_event(&mut self, id: String, field: &str, to: String, t: u64) {
+        if !self.corrections_travel() {
+            return;
+        }
+        let previous = self.synclog.clone();
+        self.synclog.append(
+            crate::sync::What::Changed {
+                id,
+                field: field.to_string(),
+                to,
+            },
+            t,
+        );
+        if let Err(e) = self.store.save("synclog", &Some(self.synclog.clone())) {
+            self.synclog = previous;
+            self.log.warn(&format!(
+                "a correction couldn't be queued for your other devices: {e}"
+            ));
+        }
+    }
+
+    /// A correction line or a forget from your other device, from sync.
+    /// Taken only from a sealed bundle: your own devices, never anyone
+    /// else's.
+    pub(super) fn take_a_correction(
+        &mut self,
+        id: &str,
+        field: &str,
+        to: &str,
+        sealed: bool,
+    ) -> std::result::Result<(), String> {
+        if !sealed {
+            return Ok(());
+        }
+        let Some(which) = id.strip_prefix(crate::corrlog::SYNC_PREFIX) else {
+            return Ok(());
+        };
+        let done = match field {
+            crate::corrlog::SYNC_LINE => self.corr.take_synced(to).map(|_| ()),
+            crate::corrlog::SYNC_FORGOTTEN => self.corr.forget_synced(which).map(|_| ()),
+            _ => Ok(()),
+        };
+        match done {
+            // A refused line is kept off this device and the rest of the
+            // batch goes on; only a disk that won't write waits for a retry.
+            Err(e) if e.kind() == std::io::ErrorKind::InvalidData => {
+                self.log
+                    .warn(&format!("a correction from your other device: {e}"));
+                Ok(())
+            }
+            other => other.map_err(|e| e.to_string()),
         }
     }
 
@@ -363,7 +454,10 @@ impl<'a> Daemon<'a> {
     /// all of it.
     pub(super) fn scrub_memory(&mut self, needle: Option<&str>) {
         let n = needle.map(|n| n.trim().to_lowercase());
-        let has = |s: &str| n.as_ref().is_none_or(|n| s.to_lowercase().contains(n.as_str()));
+        let has = |s: &str| {
+            n.as_ref()
+                .is_none_or(|n| s.to_lowercase().contains(n.as_str()))
+        };
         if self
             .last_outcome
             .as_ref()
@@ -381,7 +475,11 @@ impl<'a> Daemon<'a> {
         {
             *self.corr.unsure.borrow_mut() = None;
         }
-        if self.pronoun_offer.as_ref().is_some_and(|(s, q, _)| has(s) || has(q)) {
+        if self
+            .pronoun_offer
+            .as_ref()
+            .is_some_and(|(s, q, _)| has(s) || has(q))
+        {
             self.pronoun_offer = None;
         }
         if n.is_none() {
@@ -403,19 +501,41 @@ impl<'a> Daemon<'a> {
         };
         let failed = |e: std::io::Error| format!("I couldn't change the corrections log ({e}).");
         match a {
-            Asked::Last => match self.corr.forget_that() {
-                Ok(n) => said(n, "from just now"),
-                Err(e) => failed(e),
-            },
-            Asked::About(x) => match self.corr.forget_about(&x) {
-                Ok(n) => said(n, &format!("about \"{x}\"")),
-                Err(e) => failed(e),
-            },
-            Asked::Everything => match self.corr.forget_everything() {
-                Ok(0) => "The corrections log was already empty.".into(),
-                Ok(n) => format!("Done -- I've emptied the corrections log ({n} lines)."),
-                Err(e) => failed(e),
-            },
+            // Each forget is told to your other devices too (24 Oct 2026).
+            Asked::Last => {
+                let before = self.corr.ids();
+                match self.corr.forget_that() {
+                    Ok(n) => {
+                        self.share_forgotten(&before, false);
+                        said(n, "from just now")
+                    }
+                    Err(e) => failed(e),
+                }
+            }
+            Asked::About(x) => {
+                let before = self.corr.ids();
+                match self.corr.forget_about(&x) {
+                    Ok(n) => {
+                        self.share_forgotten(&before, false);
+                        said(n, &format!("about \"{x}\""))
+                    }
+                    Err(e) => failed(e),
+                }
+            }
+            Asked::Everything => {
+                let before = self.corr.ids();
+                match self.corr.forget_everything() {
+                    Ok(n) => {
+                        self.share_forgotten(&before, true);
+                        if n == 0 {
+                            "The corrections log was already empty.".into()
+                        } else {
+                            format!("Done -- I've emptied the corrections log ({n} lines).")
+                        }
+                    }
+                    Err(e) => failed(e),
+                }
+            }
             Asked::Stop => match self.corr.set_on(&self.store, false) {
                 Ok(()) => "Alright -- I've stopped keeping the log of your corrections. What's in it stays until you say \"forget everything\"; \"start learning again\" turns it back on.".into(),
                 Err(e) => format!("I've stopped it for now, but couldn't save that ({e}), so it may come back after a restart."),

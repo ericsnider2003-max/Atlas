@@ -297,7 +297,9 @@ fn forgetting_everything_about_how_you_talk_forgets_the_lines_too() {
 /// The two shapes a model's answer takes: a tool call, and the JSON action.
 fn model_says(name: &str) -> [String; 2] {
     [
-        format!("<tool_call>{{\"name\":\"{name}\",\"arguments\":{{\"arg\":\"notepad\"}}}}</tool_call>"),
+        format!(
+            "<tool_call>{{\"name\":\"{name}\",\"arguments\":{{\"arg\":\"notepad\"}}}}</tool_call>"
+        ),
         format!("{{\"action\":\"{name}\",\"arg\":\"notepad\",\"say\":\"on it\"}}"),
     ]
 }
@@ -330,7 +332,10 @@ fn a_command_a_model_invents_is_not_run_and_is_handed_on() {
             let (r, log) = ask_the_model(&c, &p, "invented", reply.clone());
             assert!(p.actions().is_empty(), "{invented}: ran {:?}", p.actions());
             assert!(!r.contains("Notepad is up"), "{invented}: {r}");
-            assert!(log.is_empty(), "a rejected name is not for the correction log");
+            assert!(
+                log.is_empty(),
+                "a rejected name is not for the correction log"
+            );
         }
     }
     // A real name still works through the same two paths, in any case.
@@ -341,7 +346,9 @@ fn a_command_a_model_invents_is_not_run_and_is_handed_on() {
         let p = plat();
         let (r, _) = ask_the_model(&c, &p, "real", reply.clone());
         assert!(
-            p.actions().iter().any(|a| format!("{a:?}").contains("notepad")),
+            p.actions()
+                .iter()
+                .any(|a| format!("{a:?}").contains("notepad")),
             "{reply}: {r} {:?}",
             p.actions()
         );
@@ -421,7 +428,7 @@ fn the_gate_turns_away_names_and_shapes_and_keeps_real_ones() {
 // ============ it never leaves the laptop ============
 
 #[test]
-fn the_log_is_not_in_a_backup_or_a_sync() {
+fn the_log_file_is_in_no_backup_and_no_carrier() {
     let root = Path::new("src");
     let safety = std::fs::read_to_string(root.join("safety.rs")).unwrap();
     assert!(
@@ -433,6 +440,10 @@ fn the_log_is_not_in_a_backup_or_a_sync() {
         !log.path().starts_with(Path::new("data").join("state")),
         "inside the state folder"
     );
+    // 24 Oct 2026: lines now travel between your own devices, as events in
+    // the sealed sync log (`corrlog::SYNC_PREFIX`), never as the file. The
+    // file is still in no carrier, and the door to other people's Atlas
+    // (`kin`, the signal door) never reaches it at all.
     for f in [
         "sync.rs",
         "cloudsync.rs",
@@ -440,6 +451,8 @@ fn the_log_is_not_in_a_backup_or_a_sync() {
         "meshio.rs",
         "backed.rs",
         "elsewhere.rs",
+        "kin.rs",
+        "server/signal_door.rs",
     ] {
         if let Ok(t) = std::fs::read_to_string(root.join(f)) {
             assert!(
@@ -471,10 +484,24 @@ fn a_yes_to_the_one_thing_it_offered_does_it_through_the_usual_questions() {
     let l = lines(&d);
     assert_eq!(l.len(), 1, "{}", file_text(&d));
     assert_eq!(l[0].kind, Kind::Clarified);
-    assert!(l[0].ask.as_ref().unwrap().question.contains("Did you mean Notepad"));
-    assert!(l[0].ask.as_ref().unwrap().options.iter().any(|o| o.contains("Notepad")));
+    assert!(l[0]
+        .ask
+        .as_ref()
+        .unwrap()
+        .question
+        .contains("Did you mean Notepad"));
+    assert!(l[0]
+        .ask
+        .as_ref()
+        .unwrap()
+        .options
+        .iter()
+        .any(|o| o.contains("Notepad")));
     assert_eq!(l[0].right.intent.as_deref(), Some("close_app"));
-    assert_eq!(l[0].right.detail.as_deref().map(str::to_lowercase), Some("notepad".to_string()));
+    assert_eq!(
+        l[0].right.detail.as_deref().map(str::to_lowercase),
+        Some("notepad".to_string())
+    );
     assert_eq!(l[0].said, "yes");
     // The second yes closes it, and is an approval of its own.
     d.turn("yes", T + 20);
@@ -621,7 +648,11 @@ fn a_held_correction_is_forgotten_and_settles_under_the_same_rules() {
     d.turn("open spotify", T + 10);
     let l = lines(&d);
     assert_eq!(l.len(), 1, "{}", file_text(&d));
-    assert!(l[0].did.detail.is_none() && l[0].right.detail.is_none(), "{:?}", l[0]);
+    assert!(
+        l[0].did.detail.is_none() && l[0].right.detail.is_none(),
+        "{:?}",
+        l[0]
+    );
     assert_eq!(l[0].prev.reply, "");
 }
 
@@ -634,6 +665,159 @@ fn a_value_said_before_the_secret_word_leaves_nothing() {
     d.turn("undo", T + 20);
     d.turn("no", T + 25);
     // The undo line is about "open spotify"; nothing carries the secret word.
-    assert!(!file_text(&d).to_lowercase().contains("hunter2"), "{}", file_text(&d));
-    assert!(!file_text(&d).to_lowercase().contains("password"), "{}", file_text(&d));
+    assert!(
+        !file_text(&d).to_lowercase().contains("hunter2"),
+        "{}",
+        file_text(&d)
+    );
+    assert!(
+        !file_text(&d).to_lowercase().contains("password"),
+        "{}",
+        file_text(&d)
+    );
+}
+
+// ============ your own devices (24 Oct 2026) ============
+
+/// A laptop and a phone sharing a sync folder, sealed with one household
+/// key unless `sealed` is false.
+fn own_devices(tag: &str, sealed: bool) -> (Config, Config, Store, Store) {
+    let r = tmp(tag);
+    let folder = r.join("carrier");
+    std::fs::create_dir_all(&folder).unwrap();
+    let phrase = atlas::sync::new_key_phrase();
+    let make = |name: &str| {
+        let mut c = cfg();
+        let t = c.tools.as_mut().unwrap();
+        t.sync.enabled = true;
+        t.sync.name = name.into();
+        t.sync.encrypt_bundles = sealed;
+        t.sync.folder = folder.to_string_lossy().into_owned();
+        c
+    };
+    let (ls, ps) = (Store::new(r.join("laptop")), Store::new(r.join("phone")));
+    if sealed {
+        for s in [&ls, &ps] {
+            s.save(
+                atlas::sync::KEY_FILE,
+                &atlas::sync::KeptKey::keeping(&phrase, 1_700_000_000),
+            )
+            .unwrap();
+        }
+    }
+    (make("laptop"), make("phone"), ls, ps)
+}
+
+fn on<'a>(c: &'a Config, p: &'a MockPlatform, s: &Store) -> Daemon<'a> {
+    Daemon::new(
+        c,
+        p,
+        None,
+        s.clone(),
+        Proactive::new(ProactiveConfig::default()),
+    )
+}
+
+#[test]
+fn a_correction_on_the_phone_reaches_the_laptop_and_a_forget_follows_it() {
+    let (lc, pc, ls, ps) = own_devices("own-devices", true);
+    let (lp, pp) = (plat(), plat());
+    pp.be_a_phone_for_test();
+    let mut phone = on(&pc, &pp, &ps);
+    phone.turn("open notepad", T);
+    phone.turn("no, I meant open spotify", T + 10);
+    let mine = lines(&phone);
+    assert_eq!(mine.len(), 1, "{}", file_text(&phone));
+    phone.turn("sync", T + 20);
+
+    let mut laptop = on(&lc, &lp, &ls);
+    laptop.turn("sync", T + 30);
+    let theirs = lines(&laptop);
+    assert_eq!(theirs.len(), 1, "the line never reached the laptop");
+    assert_eq!(theirs[0].id, mine[0].id);
+    assert_eq!(theirs[0].said, "no, I meant open spotify");
+    // A second sync does not double it.
+    laptop.turn("sync", T + 40);
+    assert_eq!(lines(&laptop).len(), 1);
+
+    // Forgotten on the phone, forgotten on the laptop.
+    let r = phone.turn("forget what I said about spotify", T + 50);
+    assert!(r.contains("1 line"), "{r}");
+    phone.turn("sync", T + 60);
+    laptop.turn("sync", T + 70);
+    assert!(
+        lines(&laptop).is_empty(),
+        "the forget never reached the laptop"
+    );
+}
+
+#[test]
+fn forgetting_everything_on_one_device_empties_the_other() {
+    let (lc, pc, ls, ps) = own_devices("forget-all", true);
+    let (lp, pp) = (plat(), plat());
+    pp.be_a_phone_for_test();
+    let mut laptop = on(&lc, &lp, &ls);
+    laptop.turn("open notepad", T);
+    laptop.turn("no, I meant open spotify", T + 20);
+    assert_eq!(lines(&laptop).len(), 1, "{}", file_text(&laptop));
+    laptop.turn("sync", T + 30);
+    let mut phone = on(&pc, &pp, &ps);
+    phone.turn("sync", T + 40);
+    assert_eq!(lines(&phone).len(), 1);
+    let r = laptop.turn("clear what you've learned", T + 50);
+    assert!(r.contains("emptied"), "{r}");
+    laptop.turn("sync", T + 60);
+    phone.turn("sync", T + 70);
+    assert!(
+        lines(&phone).is_empty(),
+        "forget everything stopped at the laptop"
+    );
+}
+
+#[test]
+fn unsealed_sync_carries_no_corrections_at_all() {
+    // Without the household key a bundle is not provably your own devices':
+    // nothing of the log goes, and nothing would be taken.
+    let (lc, pc, ls, ps) = own_devices("unsealed", false);
+    let (lp, pp) = (plat(), plat());
+    pp.be_a_phone_for_test();
+    let mut phone = on(&pc, &pp, &ps);
+    phone.turn("open notepad", T);
+    phone.turn("no, I meant open spotify", T + 10);
+    assert_eq!(lines(&phone).len(), 1);
+    let log: Option<atlas::sync::Log> = ps.load("synclog");
+    let carried = log
+        .map(|l| {
+            l.events.iter().any(|e| {
+                e.what
+                    .subject()
+                    .is_some_and(|s| s.starts_with(atlas::corrlog::SYNC_PREFIX))
+            })
+        })
+        .unwrap_or(false);
+    assert!(!carried, "a correction went into an unsealed sync log");
+    phone.turn("sync", T + 20);
+    let mut laptop = on(&lc, &lp, &ls);
+    laptop.turn("sync", T + 30);
+    assert!(lines(&laptop).is_empty());
+}
+
+#[test]
+fn a_device_that_stopped_learning_takes_nothing_from_the_other() {
+    let (lc, pc, ls, ps) = own_devices("stopped", true);
+    let (lp, pp) = (plat(), plat());
+    pp.be_a_phone_for_test();
+    let mut laptop = on(&lc, &lp, &ls);
+    let r = laptop.turn("stop learning from me", T);
+    assert!(r.contains("stopped"), "{r}");
+    let mut phone = on(&pc, &pp, &ps);
+    phone.turn("open notepad", T + 10);
+    phone.turn("no, I meant open spotify", T + 20);
+    assert_eq!(lines(&phone).len(), 1);
+    phone.turn("sync", T + 30);
+    laptop.turn("sync", T + 40);
+    assert!(
+        lines(&laptop).is_empty(),
+        "kept while you said stop learning here"
+    );
 }

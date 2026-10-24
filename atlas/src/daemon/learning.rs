@@ -152,7 +152,8 @@ impl<'a> Daemon<'a> {
         // The correction log (`corrlog`): a correction left waiting is
         // written as it was unless this turn is the answer to it; then what
         // this turn settled.
-        let outside = self.session.tainted_by_outside || self.session.outside_reads > w.before.reads;
+        let outside =
+            self.session.tainted_by_outside || self.session.outside_reads > w.before.reads;
         if !w.correcting {
             self.flush_held_correction();
         }
@@ -330,7 +331,9 @@ impl<'a> Daemon<'a> {
                 crate::phrasebook::Asked::List => self.phrasebook.listing(8),
                 crate::phrasebook::Asked::ForgetLatest => {
                     self.scrub_memory(None);
+                    let before = self.corr.ids();
                     let gone = self.corr.forget_that().unwrap_or(0);
+                    self.share_forgotten(&before, false);
                     let r = match self.phrasebook.latest_wording() {
                         Some(w) => self.forget_phrase_said(&w),
                         None => "There's nothing learned to forget.".into(),
@@ -339,13 +342,17 @@ impl<'a> Daemon<'a> {
                 }
                 crate::phrasebook::Asked::Forget(w) => {
                     self.scrub_memory(Some(&w));
+                    let before = self.corr.ids();
                     let gone = self.corr.forget_about(&w).unwrap_or(0);
+                    self.share_forgotten(&before, false);
                     let r = self.forget_phrase_said(&w);
                     with_log_note(r, gone)
                 }
                 crate::phrasebook::Asked::ForgetAll => {
                     self.scrub_memory(None);
+                    let before = self.corr.ids();
                     let gone = self.corr.forget_everything().unwrap_or(0);
+                    self.share_forgotten(&before, true);
                     let n = self.phrasebook.phrases.len();
                     let r = self.forget_all_phrases(n);
                     with_log_note(r, gone)
@@ -380,7 +387,13 @@ impl<'a> Daemon<'a> {
     /// words that missed mean that from now on. `None` when there's nothing
     /// recent to correct, or X reads as a fact about your world ("I meant my
     /// car is a Toyota" is the fact book's).
-    fn meant_this_instead(&mut self, said: &str, meant: &str, t: u64, how: Arrival) -> Option<String> {
+    fn meant_this_instead(
+        &mut self,
+        said: &str,
+        meant: &str,
+        t: u64,
+        how: Arrival,
+    ) -> Option<String> {
         if self.handover().stance.handed_over() {
             return None;
         }

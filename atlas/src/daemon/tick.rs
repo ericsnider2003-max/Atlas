@@ -2796,6 +2796,16 @@ impl<'a> Daemon<'a> {
                         self.log.info(&s);
                     }
                 }
+                // The correction log, between your own devices only
+                // (24 Oct 2026): taken from a sealed bundle, never otherwise.
+                crate::sync::What::Changed { id, field, to }
+                    if id.starts_with(crate::corrlog::SYNC_PREFIX) =>
+                {
+                    self.take_a_correction(id, field, to, sealed)
+                        .map_err(|error| {
+                            format!("A correction from {from} was not kept: {error}")
+                        })?;
+                }
                 crate::sync::What::Changed { id, field, to }
                     if id.starts_with(crate::plugins::SYNC_PREFIX) =>
                 {
