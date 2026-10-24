@@ -268,7 +268,11 @@ fn a_hidden_part_of_a_hub_page_stays_hidden() {
     // window: the "What do you want to do?" palette was open over the page on
     // arrival. `.palette{display:flex}` outranked the browser's own rule for
     // the `hidden` attribute, so it never hid — on the phone too.
-    let page = atlas::hub::shell("Test", "<p>body</p>");
+    // 23 Oct 2026: the stylesheet is no longer inline; the page links it
+    // (cached for a year) and the rules live in `hub::STYLE`.
+    let html = atlas::hub::shell("Test", "<p>body</p>");
+    assert!(html.contains(".css"), "the page must link its stylesheet");
+    let page = atlas::hub::STYLE;
     assert!(
         page.contains("[hidden]{display:none!important}"),
         "`hidden` can be overruled by a display rule"

@@ -321,4 +321,11 @@ fn a_businesss_tabs_keep_the_business() {
     ] {
         assert!(tabs.contains(href), "{href} missing from {tabs}");
     }
+    // 23 Oct 2026: and none of them drops the business (a tab without `?b=`
+    // would quietly show the first business instead).
+    assert_eq!(
+        tabs.matches("href=").count(),
+        tabs.matches("?b=Acme").count(),
+        "a tab lost the business: {tabs}"
+    );
 }
