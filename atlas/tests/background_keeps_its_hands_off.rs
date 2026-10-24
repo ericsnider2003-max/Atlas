@@ -216,3 +216,38 @@ fn the_scan_would_see_a_call_if_one_were_there() {
         .lines()
         .any(|l| l.split("//").next().unwrap_or("").contains(".type_text(")));
 }
+
+/// 24 Oct 2026 (Plan D hand-off): the guard is wired under the platform, not
+/// just checked in the source. A scheduled job or queued task that reaches
+/// for focus or a launch is refused and logged; the same words, from your own
+/// turn, go through.
+#[test]
+fn a_background_job_that_reaches_for_your_screen_is_refused_and_you_are_not() {
+    let c = Config::load(Path::new("config")).unwrap();
+    let mon = || vec![Monitor { id: 1, x: 0, y: 0, width: 1920, height: 1040, primary: true }];
+    let root = std::env::temp_dir().join(format!("atlas-hands-guard-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    let p = MockPlatform::new(mon());
+    p.focus_on("winword.exe", "Quarterly report.docx");
+    let mut d = Daemon::new(&c, &p, None, Store::new(&root), Proactive::new(ProactiveConfig::default()));
+    let touched = |p: &MockPlatform| -> usize { p.log.borrow().iter().filter(|a| hands_on(a)).count() };
+
+    // A scheduled job you approved, due now.
+    let id = d.scheduler.at("switch to claude", 1);
+    d.scheduler.approve(id);
+    // A queued task.
+    d.queue.push("switch to claude", atlas::lanes::Lane::Background);
+    d.tick(10);
+    assert_eq!(touched(&p), 0, "background work touched the screen: {:?}", p.log.borrow());
+    let still = p.active.borrow().clone().expect("a window in front");
+    assert_eq!(still.process, "winword.exe", "your window lost the front");
+    // Not vacuous: both ran, and each says why it did nothing.
+    let said = d.scheduler.jobs[0].last_result.clone().unwrap_or_default();
+    assert!(said.contains("kept my hands off"), "the scheduled job's result: {said:?}");
+    let queued = d.queue.tasks[0].result.clone().unwrap_or_default();
+    assert!(queued.contains("kept my hands off"), "the queued task's result: {queued:?}");
+
+    // The same words from your own turn proceed: it brings the app up.
+    d.turn("switch to claude", 20);
+    assert!(touched(&p) > 0, "your own request was refused too: {:?}", p.log.borrow());
+}

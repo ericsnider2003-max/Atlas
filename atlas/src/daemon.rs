@@ -540,6 +540,9 @@ struct CrewLink {
 pub struct Daemon<'a> {
     pub cfg: &'a Config,
     pub plat: &'a dyn Platform,
+    /// Whether the work running now is unattended (`backends::HandsGuard`):
+    /// `plat` is the guarded platform, which refuses input while it is.
+    pub hands_guard: crate::backends::HandsGuard,
     pub llm: Option<std::sync::Arc<dyn Llm>>,
     pub parser: Parser,
     pub session: Session,
@@ -1764,6 +1767,12 @@ impl<'a> Daemon<'a> {
         store: Store,
         proactive: Proactive,
     ) -> crate::error::Result<Self> {
+        // The focus guard (24 Oct 2026): every input the daemon sends goes
+        // through a platform that refuses it while background work runs. The
+        // wrapper is a few bytes and lives as long as the program does.
+        let hands_guard = crate::backends::HandsGuard::default();
+        let plat: &'a dyn Platform =
+            Box::leak(Box::new(crate::backends::Guarded::new(plat, hands_guard.clone())));
         let state_access = crate::store::begin_state_command(store.root(), false)?;
         let notes: std::path::PathBuf = cfg
             .tools
@@ -1872,6 +1881,7 @@ impl<'a> Daemon<'a> {
             parser: Parser::new(&cfg.commands),
             cfg,
             plat,
+            hands_guard,
             llm,
             session: Session::holding(retention.session_turns),
             memory,

@@ -392,3 +392,247 @@ const COST_INFLUENCE: f32 = 0.25;
 fn cost(s: &Spec) -> u64 {
     s.memory_mb + s.startup_ms / 100
 }
+
+// ---- The focus guard (Plan D hand-off, 24 Oct 2026) --------------------
+//
+// The table above says which backends steal focus, and `Request::may_steal_focus`
+// says whether a caller can afford one -- but nothing asked, so work Atlas
+// runs on its own (a scheduled job, a queued task, an add-on's schedule)
+// could still type, click or bring a window forward over whatever you were
+// doing. The guard sits under the platform itself, where every input
+// reaches the screen, so no path can forget to ask: while a background scope
+// is open, anything that would move focus, the mouse or the keyboard is
+// refused with a plain reason and written down; the same call from your own
+// turn goes through untouched. Refused, not deferred: a job that needs your
+// screen says so and waits to be asked by you.
+
+/// Shared between the daemon (which opens and closes background scopes) and
+/// the guarded platform (which checks).
+#[derive(Clone, Default)]
+pub struct HandsGuard {
+    depth: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+    refused: std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+}
+
+/// While this lives, work is unattended. Dropping it ends the scope, also on
+/// a panic.
+pub struct Background(HandsGuard);
+
+impl Drop for Background {
+    fn drop(&mut self) {
+        self.0.depth.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
+    }
+}
+
+impl HandsGuard {
+    /// Begin unattended work.
+    pub fn background(&self) -> Background {
+        self.depth.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        Background(self.clone())
+    }
+
+    pub fn is_background(&self) -> bool {
+        self.depth.load(std::sync::atomic::Ordering::SeqCst) > 0
+    }
+
+    /// What was refused since last asked, oldest first.
+    pub fn take_refusals(&self) -> Vec<String> {
+        match self.refused.lock() {
+            Ok(mut r) => std::mem::take(&mut *r),
+            Err(p) => std::mem::take(&mut *p.into_inner()),
+        }
+    }
+
+    fn check(&self, what: &str) -> crate::error::Result<()> {
+        if !self.is_background() {
+            return Ok(());
+        }
+        let line = format!(
+            "kept my hands off your screen: background work asked to {what}, which only you can ask for"
+        );
+        let mut r = self.refused.lock().unwrap_or_else(|p| p.into_inner());
+        if r.len() < 50 {
+            r.push(line.clone());
+        }
+        Err(crate::error::AtlasError::Platform(line))
+    }
+}
+
+/// A platform that refuses input while the guard says work is unattended.
+/// Everything else is passed straight through -- reading the screen, the
+/// clock and the clipboard never take anything from you.
+pub struct Guarded<'a> {
+    inner: &'a dyn crate::platform::Platform,
+    guard: HandsGuard,
+}
+
+impl<'a> Guarded<'a> {
+    pub fn new(inner: &'a dyn crate::platform::Platform, guard: HandsGuard) -> Self {
+        Guarded { inner, guard }
+    }
+}
+
+impl crate::platform::Platform for Guarded<'_> {
+    fn cloud_folder(&self) -> Option<std::path::PathBuf> {
+        self.inner.cloud_folder()
+    }
+    fn crew_room(&self) -> fn() -> crate::crew::Room {
+        self.inner.crew_room()
+    }
+    fn device_kind(&self) -> crate::sync::Kind {
+        self.inner.device_kind()
+    }
+    fn find_program(&self, name: &str) -> Option<String> {
+        self.inner.find_program(name)
+    }
+    fn readings(&self) -> crate::health::Readings {
+        self.inner.readings()
+    }
+    fn active_window(&self) -> crate::error::Result<Option<crate::platform::ActiveWindow>> {
+        self.inner.active_window()
+    }
+    fn active_window_id(&self) -> crate::error::Result<Option<crate::platform::WindowId>> {
+        self.inner.active_window_id()
+    }
+    fn input_idle_secs(&self) -> Option<u64> {
+        self.inner.input_idle_secs()
+    }
+    fn quiet_state(&self) -> Option<crate::platform::OsQuiet> {
+        self.inner.quiet_state()
+    }
+    fn monitors(&self) -> crate::error::Result<Vec<crate::platform::Monitor>> {
+        self.inner.monitors()
+    }
+    fn built_in_screen_on(&self) -> Option<bool> {
+        self.inner.built_in_screen_on()
+    }
+    fn launch(&self, spec: &crate::config::AppSpec) -> crate::error::Result<()> {
+        self.guard.check("open an app")?;
+        self.inner.launch(spec)
+    }
+    fn find_window(&self, spec: &crate::config::AppSpec) -> crate::error::Result<Option<crate::platform::WindowId>> {
+        self.inner.find_window(spec)
+    }
+    fn place(&self, win: crate::platform::WindowId, rect: crate::platform::PixelRect) -> crate::error::Result<()> {
+        self.guard.check("move a window")?;
+        self.inner.place(win, rect)
+    }
+    fn focus(&self, win: crate::platform::WindowId) -> crate::error::Result<()> {
+        self.guard.check("bring a window forward")?;
+        self.inner.focus(win)
+    }
+    fn close(&self, spec: &crate::config::AppSpec) -> crate::error::Result<()> {
+        self.guard.check("close an app")?;
+        self.inner.close(spec)
+    }
+    fn sleep_ms(&self, ms: u64) {
+        self.inner.sleep_ms(ms)
+    }
+    fn click(&self, x: i32, y: i32, button: crate::platform::Button) -> crate::error::Result<()> {
+        self.guard.check("click")?;
+        self.inner.click(x, y, button)
+    }
+    fn scroll(&self, dx: i32, dy: i32) -> crate::error::Result<()> {
+        self.guard.check("scroll")?;
+        self.inner.scroll(dx, dy)
+    }
+    fn type_text(&self, text: &str) -> crate::error::Result<()> {
+        self.guard.check("type")?;
+        self.inner.type_text(text)
+    }
+    fn press(&self, combo: &str) -> crate::error::Result<()> {
+        self.guard.check("press a key")?;
+        self.inner.press(combo)
+    }
+    fn replace_typed(&self, delete: usize, text: &str) -> crate::error::Result<()> {
+        self.guard.check("type")?;
+        self.inner.replace_typed(delete, text)
+    }
+    fn pointer_handle(&self) -> Option<Box<dyn crate::handloop::Pointer>> {
+        self.inner.pointer_handle()
+    }
+    fn read_window(&self, win: crate::platform::WindowId) -> crate::error::Result<Option<crate::uia::Node>> {
+        self.inner.read_window(win)
+    }
+    fn press_named(&self, win: crate::platform::WindowId, name: &str) -> crate::error::Result<bool> {
+        self.guard.check("press a button")?;
+        self.inner.press_named(win, name)
+    }
+    fn act_on(
+        &self,
+        win: crate::platform::WindowId,
+        path: &[usize],
+        act: &crate::uia::UiAct,
+    ) -> crate::error::Result<bool> {
+        self.guard.check("work a control")?;
+        self.inner.act_on(win, path, act)
+    }
+    fn recognise_lines(&self, grab: &crate::platform::Grab) -> crate::error::Result<Vec<(String, crate::platform::PixelRect)>> {
+        self.inner.recognise_lines(grab)
+    }
+    fn focused_text(&self) -> crate::error::Result<Option<String>> {
+        self.inner.focused_text()
+    }
+    fn focused_is_editable(&self) -> crate::error::Result<Option<bool>> {
+        self.inner.focused_is_editable()
+    }
+    fn session_locked(&self) -> Option<bool> {
+        self.inner.session_locked()
+    }
+    fn draw_overlay(&self, elements: &[crate::overlay::Element]) -> crate::error::Result<()> {
+        self.inner.draw_overlay(elements)
+    }
+    fn move_cursor(&self, x: i32, y: i32) -> crate::error::Result<()> {
+        self.guard.check("move the pointer")?;
+        self.inner.move_cursor(x, y)
+    }
+    fn window_at(&self, x: i32, y: i32) -> crate::error::Result<Option<crate::platform::WindowId>> {
+        self.inner.window_at(x, y)
+    }
+    fn rect_of(&self, win: crate::platform::WindowId) -> crate::error::Result<crate::platform::PixelRect> {
+        self.inner.rect_of(win)
+    }
+    fn cursor(&self) -> crate::error::Result<(i32, i32)> {
+        self.inner.cursor()
+    }
+    fn clipboard_change(&self) -> Option<u32> {
+        self.inner.clipboard_change()
+    }
+    fn clipboard_copy(&self) -> Option<crate::platform::ClipCopy> {
+        self.inner.clipboard_copy()
+    }
+    fn grab_window(&self) -> crate::error::Result<Option<crate::platform::Grab>> {
+        self.inner.grab_window()
+    }
+    fn grab_screen(&self, monitor: u32) -> crate::error::Result<Option<crate::platform::Grab>> {
+        self.inner.grab_screen(monitor)
+    }
+    fn monitor_bounds(&self, monitor: u32) -> Option<crate::platform::PixelRect> {
+        self.inner.monitor_bounds(monitor)
+    }
+    fn grab_all_screens(&self) -> crate::error::Result<Option<crate::platform::Grab>> {
+        self.inner.grab_all_screens()
+    }
+    fn active_monitor(&self) -> Option<u32> {
+        self.inner.active_monitor()
+    }
+    fn built_in_monitor(&self) -> Option<u32> {
+        self.inner.built_in_monitor()
+    }
+    fn recognise_text(&self, grab: &crate::platform::Grab) -> crate::error::Result<Option<String>> {
+        self.inner.recognise_text(grab)
+    }
+    fn recognise_image_file(&self, path: &str) -> crate::error::Result<Option<String>> {
+        self.inner.recognise_image_file(path)
+    }
+    fn open_path(&self, path: &str) -> crate::error::Result<()> {
+        self.guard.check("open a file in its app")?;
+        self.inner.open_path(path)
+    }
+    fn read_clipboard(&self) -> crate::error::Result<Option<String>> {
+        self.inner.read_clipboard()
+    }
+    fn write_clipboard(&self, text: &str) -> crate::error::Result<()> {
+        self.inner.write_clipboard(text)
+    }
+}

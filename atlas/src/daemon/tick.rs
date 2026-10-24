@@ -139,6 +139,25 @@ impl<'a> Daemon<'a> {
 
     // ---------- background ----------
 
+    /// Run something nobody is watching -- a scheduled job, a queued task, an
+    /// add-on's schedule -- with the focus guard up: anything in it that
+    /// would type, click or bring a window forward is refused, and each
+    /// refusal is written to the log (24 Oct 2026, Plan D). Your own turns
+    /// never come through here.
+    pub(super) fn unattended<R>(&mut self, f: impl FnOnce(&mut Self) -> R) -> R {
+        let scope = self.hands_guard.background();
+        let r = f(self);
+        drop(scope);
+        for line in self.hands_guard.take_refusals() {
+            self.log.warn(&line);
+        }
+        r
+    }
+
+    pub(super) fn execute_unattended(&mut self, intent: &Intent) -> String {
+        self.unattended(|d| d.execute(intent))
+    }
+
     /// Work Atlas does without being asked. Returns anything worth saying.
     pub fn tick(&mut self, t: u64) -> Vec<String> {
         self.apply_fast_hub_pause();
@@ -563,7 +582,7 @@ impl<'a> Daemon<'a> {
             }
             self.last_crew_handoff = None;
             let files_before = self.active_file_move_id();
-            let result = self.execute(&intent);
+            let result = self.execute_unattended(&intent);
             if let Some(files) = self
                 .active_file_move_id()
                 .filter(|id| Some(*id) != files_before)
@@ -727,7 +746,10 @@ impl<'a> Daemon<'a> {
                 })();
             match reserved {
                 Ok(Some((id, flow, token))) => {
-                    out.push(self.start_scheduled_flow(flow, id, token, t))
+                    {
+                        let line = self.unattended(|d| d.start_scheduled_flow(flow, id, token, t));
+                        out.push(line)
+                    }
                 }
                 Ok(None) => {}
                 Err(crate::error::AtlasError::Io(error))
@@ -861,7 +883,14 @@ impl<'a> Daemon<'a> {
             }
             self.last_crew_handoff = None;
             let files_before = self.active_file_move_id();
-            let result = self.execute(&intent);
+            // The Background lane's promise is that it never touches your
+            // screen; the guard keeps it. The Foreground lane waits for a gap
+            // in your typing by design (`lanes`) and may drive the screen.
+            let result = if task.lane == crate::lanes::Lane::Background {
+                self.execute_unattended(&intent)
+            } else {
+                self.execute(&intent)
+            };
             if let Some(files) = self
                 .active_file_move_id()
                 .filter(|id| Some(*id) != files_before)
