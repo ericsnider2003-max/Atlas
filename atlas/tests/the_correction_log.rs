@@ -624,3 +624,16 @@ fn a_held_correction_is_forgotten_and_settles_under_the_same_rules() {
     assert!(l[0].did.detail.is_none() && l[0].right.detail.is_none(), "{:?}", l[0]);
     assert_eq!(l[0].prev.reply, "");
 }
+
+#[test]
+fn a_value_said_before_the_secret_word_leaves_nothing() {
+    let (c, p) = (cfg(), plat());
+    let mut d = daemon(&c, &p, "value-first");
+    d.turn("open notepad", T);
+    d.turn("no, Hunter2 is the password, I meant open spotify", T + 10);
+    d.turn("undo", T + 20);
+    d.turn("no", T + 25);
+    // The undo line is about "open spotify"; nothing carries the secret word.
+    assert!(!file_text(&d).to_lowercase().contains("hunter2"), "{}", file_text(&d));
+    assert!(!file_text(&d).to_lowercase().contains("password"), "{}", file_text(&d));
+}

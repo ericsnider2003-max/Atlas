@@ -322,9 +322,45 @@ fn redact_text(text: &str, chars: usize) -> (String, u32) {
     (clip(&scrubbed, chars), a + b)
 }
 
-/// Do these words carry a secret?
+/// Words that mean a secret is being talked about, wherever they stand
+/// ("Hunter2 is the password" has the value first).
+const STRONG_WORDS: &[&str] = &[
+    "password", "passwords", "passwd", "passcode", "passphrase", "pin", "otp", "2fa", "token",
+    "tokens", "secret", "secrets", "pwd",
+];
+/// Two-word forms: a "code" or "key" that is a secret by what is said of it.
+const STRONG_PAIRS: &[(&str, &str)] = &[
+    ("verification", "code"),
+    ("security", "code"),
+    ("recovery", "code"),
+    ("two-factor", "code"),
+    ("two", "factor"),
+    ("one-time", "code"),
+    ("onetime", "code"),
+    ("api", "key"),
+    ("seed", "phrase"),
+    ("secret", "key"),
+    ("private", "key"),
+];
+
+/// Does any word say a strong secret word, anywhere in the text?
+fn has_a_strong_secret_word(text: &str) -> bool {
+    let words: Vec<String> = text
+        .to_lowercase()
+        .split(|c: char| !c.is_alphanumeric() && c != '-')
+        .filter(|w| !w.is_empty())
+        .map(str::to_string)
+        .collect();
+    words.iter().any(|w| STRONG_WORDS.contains(&w.as_str()))
+        || words
+            .windows(2)
+            .any(|p| STRONG_PAIRS.iter().any(|(a, b)| p[0] == *a && p[1] == *b))
+}
+
+/// Do these words carry a secret? A strong secret word anywhere, or a
+/// value after a weak one ("the code is 4829").
 fn says_a_secret(text: &str) -> bool {
-    mask_secret_words(text).1 > 0
+    has_a_strong_secret_word(text) || mask_secret_words(text).1 > 0
 }
 
 fn random_id() -> String {
@@ -996,6 +1032,32 @@ mod tests {
         let (m, _) = mask_secret_words("my pin is 1234. open notepad");
         assert!(m.contains("open notepad") && !m.contains("1234"), "{m}");
         assert_eq!(mask_secret_words("press the enter key").1, 0);
+        // The value before the word, and the word anywhere at all.
+        for said in [
+            "Hunter2 is the password",
+            "my pin's 1234 by the way",
+            "the verification code was 482913",
+            "here is my API key",
+            "that was my seed phrase",
+            "use the two-factor code from my phone",
+            "a secret",
+        ] {
+            let mut f = facts(Kind::Correction);
+            f.said = said.into();
+            assert!(build(&f).is_none(), "{said:?} was written");
+            let mut f = facts(Kind::Correction);
+            f.prev.said = said.into();
+            assert!(build(&f).is_none(), "{said:?} as prev.said was written");
+            let mut f = facts(Kind::Clarified);
+            f.ask = Some((said.into(), vec![]));
+            assert!(build(&f).is_none(), "{said:?} in a question was written");
+        }
+        // A weak word alone still logs.
+        for said in ["open the code folder", "press the enter key", "write the code for a timer"] {
+            let mut f = facts(Kind::Correction);
+            f.said = said.into();
+            assert!(build(&f).is_some(), "{said:?} was dropped");
+        }
         assert_eq!(mask_secret_words("open the code editor").1, 0);
         assert_eq!(mask_secret_words("write the code for a timer").1, 0);
         assert_eq!(mask_secret_words("open my password manager").1, 0);
