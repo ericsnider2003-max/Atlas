@@ -86,6 +86,7 @@ mod calendar_delivery;
 mod execute;
 mod correction_log;
 mod needs_you;
+mod teach_mode;
 mod learning;
 mod making;
 mod onethread;

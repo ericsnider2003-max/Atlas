@@ -360,6 +360,8 @@ mod reading_without_the_picture_reader;
 mod speculative_decoding;
 #[path = "talking_freely.rs"]
 mod talking_freely;
+#[path = "teaching_a_mode.rs"]
+mod teaching_a_mode;
 #[path = "the_hub_is_not_slop.rs"]
 mod the_hub_is_not_slop;
 #[path = "the_second_scan_holds.rs"]

@@ -36,6 +36,10 @@ impl<'a> Daemon<'a> {
         if let Some(reply) = self.interview_turn(said, t) {
             return reply;
         }
+        // Teaching a mode, and the yes to its read-back (Plan B, 24 Oct 2026).
+        if let Some(reply) = self.teach_mode_turn(said, t) {
+            return reply;
+        }
         // What needs you, and "not now" (Plan A, 24 Oct 2026).
         if let Some(reply) = self.needs_you_turn(said, t) {
             return reply;
