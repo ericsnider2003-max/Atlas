@@ -24,6 +24,7 @@ Dates are UTC. The card at the top of `AGENTS.md` holds the facts; this file hol
 - `model-training` Train Atlas's own model: data from Eric's own messages, clean open datasets, REA/Replica/Atlas repo; stages, cost, first 3 steps — home: [docs/ATLAS_MODEL_TRAINING_PLAN_2026-10-21.md](ATLAS_MODEL_TRAINING_PLAN_2026-10-21.md) — open since 2026-10-21 (claude)
 - `completion-path` One completion path + context-before-asking: built in owned files; wiring in run_command/spoken_steps/tasks/floor/brain and the approval contract handed off — home: [docs/HANDOFF_ONE_COMPLETION_PATH_2026-10-21.md](HANDOFF_ONE_COMPLETION_PATH_2026-10-21.md) — doing since 2026-10-22 (claude-items)
 - `i018b` crypto-bigint-advisory RUSTSEC-2026-0387 via p256 0.13 (Apple JWT signing): owner decision on p256 0.14 major bump — open since 2026-10-24 (claude)
+- `idf15` North star (planning only): Atlas runs Eric's faceless-UGC workflow end to end, staged with approval gates — home: [docs/UGC_WORKFLOW_NORTH_STAR_2026-10-24.md](UGC_WORKFLOW_NORTH_STAR_2026-10-24.md) — open since 2026-10-24 (agent)
 
 ## Last session
 
@@ -142,5 +143,6 @@ One line per doc. "Last true" is the date the doc declares (`Last updated: YYYY-
 | [docs/START_HERE.md](START_HERE.md) | Atlas — current starting point | 2026-10-20 |
 | [docs/STATUS.md](STATUS.md) | Status | 2026-10-21 |
 | [docs/TEST_COUNT_RECONCILIATION_2026-10-18.md](TEST_COUNT_RECONCILIATION_2026-10-18.md) | Test-count reconciliation — 2026-10-18 | — |
+| [docs/UGC_WORKFLOW_NORTH_STAR_2026-10-24.md](UGC_WORKFLOW_NORTH_STAR_2026-10-24.md) | North star: Atlas runs the faceless-UGC workflow, end to end (24 Oct 2026) | — |
 | [docs/VERIFICATION_CAMPAIGN_2026-10-18.md](VERIFICATION_CAMPAIGN_2026-10-18.md) | Verification campaign — 2026-10-18 | — |
 | [docs/WORK_ITEMS_1_7_STATUS_2026-10-18.md](WORK_ITEMS_1_7_STATUS_2026-10-18.md) | Work Items 1–7 status — 2026-10-18 | — |
