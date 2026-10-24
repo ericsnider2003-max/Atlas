@@ -1,0 +1,17 @@
+# Learning from daily use: correction log, ask-answers as labels, real command names only (2026-10-23, Claude, usage-max routed)
+
+Branch `feat/learning-log-2026-10-23` (fb8e2dc7..6eae736c) on candidate `177600e7`. Format for the training session: `docs/LEARNING_LOG_FORMAT_2026-10-23.md` (written from the implementation).
+
+| Item | Result | Proof |
+|---|---|---|
+| 2. Correction log `data/learning/corrections.jsonl` | Records corrections ("no, I meant", "that's wrong"), undo, every yes/no to a confirm, and clarified answers. Fields: message, previous turn, foreground app name, last 3 commands, what Atlas did, what was right. Laptop only: not in backup folders, sync or bundles (source-checked). 5 MB / 20,000-line cap, oldest dropped, 4 KB per line; lock file against a second Atlas process. "forget that / what I said about X / everything" rewrite the file and clear in-memory turns. "stop learning from me" / "start learning again". | `tests/the_correction_log.rs` (real `d.turn` conversations); `corrlog::` unit tests; six concurrent writers lose no lines |
+| Privacy | Every text field redacted. A strong secret word anywhere (password, passcode, pin, otp, 2fa, token, secret, verification/security/recovery/two-factor/one-time code, api key, seed phrase, private key) drops the whole record, even when the value comes first ("Hunter2 is the password"). Secret commands (sign-in, type code, account, vault) drop the record, including when they settle a held correction. Outside text (SEC2) keeps only the owner's words. | `a_password_and_a_code_never_appear` and the drop/keep cases |
+| 3. Ask-when-unsure answers as labels | `clarified` records with the question, offered options and the resolved command. Fixed an existing bug where "Did you mean Notepad … yes" answered "Nothing to confirm": yes now runs the offer through the normal path (a close still confirms), no drops it, and a named alternative resolves. | d.turn tests for yes / no / alternative |
+| 7. Model output → real command names only | One gate (`intent::gate_model_call`) on every model tool-call / JSON action path. Invented names, near-misses ("openn_app") and wrong argument shapes are rejected and handed off, never run. Exact names in any case ("OPEN_APP") are accepted. There is no separate fast classifier in the tree yet. | gate tests on both shapes |
+
+Review: usage-max reviewer, privacy-focused. Found 4 secret leaks / forget gaps, one gate over-strictness, a cross-process race. All fixed.
+
+Checks: full `--all-targets` on the final code: 9,347 passed, 3 failed (ffmpeg absent: `atlas_looks_when_you_ask` x2, `audio_enumeration`), 27 ignored. `the_phone_thinks_for_itself` needs the phone-llm feature (not built). Installed `487512C3...`, rollback `atlas-0.1.0-dev.previous` = `CF72FAEA...`. Verifier 14/14 on the second run (first: the known `daemon_start_liveness` lock-timing flake). Real profile start/stop: Hub 9.8 s, min free 2.6 GB, clean stop 1.9 s, nothing left running; no learning file created while idle.
+
+Not verified: a real correction typed on the real profile (deliberately not done, so no fake records land in Eric's training data); the lock across separate processes (threads only); yes/no offers other than confirms, "Undo X?" and the context offer are not logged; `context.source` is best-effort and never "fast".
+Trade-off: lines such as "open my password manager" or "pin the window" are dropped from the log by the strong-word rule.
