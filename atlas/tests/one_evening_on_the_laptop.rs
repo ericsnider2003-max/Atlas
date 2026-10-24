@@ -904,7 +904,7 @@ fn the_character_answers_first_briefly_and_without_closers() {
         ch.contains("Answer the latest thing they said first"),
         "{ch}"
     );
-    assert!(ch.contains("one to three short"), "{ch}");
+    assert!(ch.contains("normally one to three"), "{ch}");
     assert!(ch.contains("One question at most"), "{ch}");
     assert!(
         ch.contains("What's your next move?"),
@@ -912,7 +912,8 @@ fn the_character_answers_first_briefly_and_without_closers() {
     );
     let turn = p.for_this_turn_on(Register::Chatting, 3, "what do you think", false);
     assert!(!turn.contains("tangent"), "{turn}");
-    assert!(turn.contains("One to 3 short sentences"), "{turn}");
+    // The length is said once, in the character, not again here.
+    assert!(!turn.contains("sentences"), "{turn}");
     // Dry is subtle, not a bit.
     let dry = atlas::persona::Persona {
         wit: atlas::wit::Wit::Dry,

@@ -121,11 +121,15 @@ fn the_prompts_never_hold_two_length_rules() {
         texts.push(("the first request".into(), all.join("\n")));
     }
     // The prompts built for each register, and the per-turn line.
-    let persona = Persona::default();
-    for r in [Register::Working, Register::Chatting, Register::AboutAtlas, Register::Rough] {
-        let both = format!("{}\n{}", persona.prompt_for(r), persona.for_this_turn_on(r, 3, "why is the sky blue?", false));
-        texts.push((format!("{r:?} prompt plus turn line"), both));
+    // The standard persona and the shipped one (config: eight).
+    for max in [3usize, 8] {
+        let persona = Persona { max_spoken_sentences: max, ..Persona::default() };
+        for r in [Register::Working, Register::Chatting, Register::AboutAtlas, Register::Rough] {
+            let both = format!("{}\n{}", persona.prompt_for(r), persona.for_this_turn_on(r, 3, "why is the sky blue?", false));
+            texts.push((format!("{r:?} prompt plus turn line at {max}"), both));
+        }
     }
+    let persona = Persona::default();
     for (what, t) in &texts {
         assert!(t.matches(LENGTH_RULE).count() <= 1, "{what}: the length rule is said more than once");
         let rest = t.replace(LENGTH_RULE, "");

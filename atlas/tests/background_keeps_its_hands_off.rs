@@ -230,7 +230,12 @@ fn a_background_job_that_reaches_for_your_screen_is_refused_and_you_are_not() {
     let p = MockPlatform::new(mon());
     p.focus_on("winword.exe", "Quarterly report.docx");
     let mut d = Daemon::new(&c, &p, None, Store::new(&root), Proactive::new(ProactiveConfig::default()));
-    let touched = |p: &MockPlatform| -> usize { p.log.borrow().iter().filter(|a| hands_on(a)).count() };
+    // The app is already open (you opened it), so "switch to" is a focus.
+    atlas::platform::Platform::launch(&p, c.apps.get("claude").unwrap()).unwrap();
+    let opened = p.log.borrow().len();
+    let touched = |p: &MockPlatform| -> usize {
+        p.log.borrow().iter().skip(opened).filter(|a| hands_on(a)).count()
+    };
 
     // A scheduled job you approved, due now.
     let id = d.scheduler.at("switch to claude", 1);

@@ -405,6 +405,15 @@ fn cost(s: &Spec) -> u64 {
 // refused with a plain reason and written down; the same call from your own
 // turn goes through untouched. Refused, not deferred: a job that needs your
 // screen says so and waits to be asked by you.
+//
+// What is guarded is what takes your pointer, keyboard or the front window:
+// focus, click, scroll, type, press, a named button or control, the pointer.
+// Opening, closing and arranging apps (`launch`, `close`, `place`,
+// `open_path`) is not, because a scheduled "boot workspace" or an approved
+// "shut down workspace" is that and nothing else, and refusing it broke the
+// jobs that were built to run unattended (`tests/daemon.rs`). A launched
+// window can still come to the front; that limit is why those jobs wait for
+// the owner's approval.
 
 /// Shared between the daemon (which opens and closes background scopes) and
 /// the guarded platform (which checks).
@@ -507,14 +516,12 @@ impl crate::platform::Platform for Guarded<'_> {
         self.inner.built_in_screen_on()
     }
     fn launch(&self, spec: &crate::config::AppSpec) -> crate::error::Result<()> {
-        self.guard.check("open an app")?;
         self.inner.launch(spec)
     }
     fn find_window(&self, spec: &crate::config::AppSpec) -> crate::error::Result<Option<crate::platform::WindowId>> {
         self.inner.find_window(spec)
     }
     fn place(&self, win: crate::platform::WindowId, rect: crate::platform::PixelRect) -> crate::error::Result<()> {
-        self.guard.check("move a window")?;
         self.inner.place(win, rect)
     }
     fn focus(&self, win: crate::platform::WindowId) -> crate::error::Result<()> {
@@ -522,7 +529,6 @@ impl crate::platform::Platform for Guarded<'_> {
         self.inner.focus(win)
     }
     fn close(&self, spec: &crate::config::AppSpec) -> crate::error::Result<()> {
-        self.guard.check("close an app")?;
         self.inner.close(spec)
     }
     fn sleep_ms(&self, ms: u64) {
@@ -626,7 +632,6 @@ impl crate::platform::Platform for Guarded<'_> {
         self.inner.recognise_image_file(path)
     }
     fn open_path(&self, path: &str) -> crate::error::Result<()> {
-        self.guard.check("open a file in its app")?;
         self.inner.open_path(path)
     }
     fn read_clipboard(&self) -> crate::error::Result<Option<String>> {

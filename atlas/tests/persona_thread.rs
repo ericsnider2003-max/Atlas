@@ -70,7 +70,7 @@ fn the_character_rules_are_actually_in_the_prompt() {
         "No greeting",
         "Disagree",
         "state limits",
-        "3 sentences",
+        "as few sentences as the question needs",
     ] {
         assert!(
             prompt.to_lowercase().contains(&expected.to_lowercase()),
