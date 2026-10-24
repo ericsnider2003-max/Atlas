@@ -227,9 +227,11 @@ impl Page {
         !(crate::phonemode::on()
             && matches!(
                 self,
+                // Sync is on the phone (24 Oct 2026, standalone-first): it
+                // is where the phone says what waits for the laptop and what
+                // newest-wins replaced.
                 Page::Phone
                     | Page::Updates
-                    | Page::Sync
                     | Page::Offline
                     | Page::Gestures
                     | Page::AddOns
@@ -394,7 +396,7 @@ impl Page {
             Page::Trusted => "People Atlas may send to without asking each time. Personal things still ask.",
             Page::Give => "A link, a photo, words, or any file, any size. It stays on your machine.",
             Page::Social => "Your accounts' numbers over time, and what's working for the people you watch.",
-            Page::Offline => "What still works with no connection, and what's queued to go when it's back.",
+            Page::Offline => "What still works with no connection, and what's queued until your laptop is reachable.",
             Page::Talk => "Say it or type it. Atlas does the in-between and shows you what it did.",
             Page::Help => "How to use Atlas with a screen reader, keyboard, voice or larger text — and how to tell me when something's in the way.",
             Page::Updates => "Which Atlas this is, what's new, putting it in, and going back if you'd rather.",
@@ -979,6 +981,19 @@ pub struct SyncView {
     pub house: HouseView,
     /// A folder to offer when none is set (`sync::best_folder`).
     pub suggested_folder: Option<String>,
+    /// Where things stand, first on the page (24 Oct 2026).
+    pub status: Option<SyncStatus>,
+}
+
+/// The top of the Sync page: when your other devices were last heard from,
+/// what waits for the laptop, and what newest-wins replaced.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct SyncStatus {
+    /// "14:05", or `None` when never.
+    pub last_heard: Option<String>,
+    /// (what, its status line, `remote::queue_status`).
+    pub waiting: Vec<(String, String)>,
+    pub replaced: Vec<crate::sync::Replaced>,
 }
 
 /// What the Status page's "Free up space" shows.

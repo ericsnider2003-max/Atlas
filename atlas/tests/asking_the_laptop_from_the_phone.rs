@@ -554,6 +554,14 @@ fn with_the_laptop_off_the_phone_answers_queues_honestly_and_it_runs_when_the_la
         waiting,
         "\"check what time it is\": Queued until your laptop is reachable (not seen yet)."
     );
+    // The same line on the phone's Hub: the Queued lane and the Sync page.
+    let outstanding = atlas::hublive::reply(&mut phone, atlas::server::Action::Hub(atlas::hub::Page::Outstanding)).body;
+    let lane = &outstanding[outstanding.find("id=lane-queued>").expect("the Queued lane")..];
+    let lane = &lane[..lane.find("</section>").unwrap()];
+    assert!(lane.contains("Check what time it is.") && lane.contains("Queued until your laptop is reachable"), "{lane}");
+    let sync = atlas::hublive::reply(&mut phone, atlas::server::Action::Hub(atlas::hub::Page::Sync)).body;
+    assert!(sync.contains("Waiting for your laptop (1)"), "the Sync page doesn't show the outbox");
+    assert!(sync.contains("Queued until your laptop is reachable"), "the Sync page's line differs");
     // The phone keeps syncing into the void: nothing is lost or doubled.
     phone.turn("sync", T + 60);
     phone.turn("sync", T + 120);
@@ -624,6 +632,8 @@ fn the_same_thing_changed_on_both_devices_keeps_the_newer_and_the_other_can_be_p
     let what = laptop.turn("what did sync replace?", now + 230);
     assert!(what.contains("kept \"parked\"") && what.contains("replaced \"done\""), "{what}");
 
+    let page = atlas::hublive::reply(&mut laptop, atlas::server::Action::Hub(atlas::hub::Page::Sync)).body;
+    assert!(page.contains("Replaced by sync (1)") && page.contains("Put back the most recent"), "the Sync page doesn't show what was replaced");
     let back = laptop.turn("put back what sync replaced", now + 300);
     assert!(back.starts_with("Put back the VPS audit"), "{back}");
     let replaced: Vec<atlas::sync::Replaced> = ls.load(atlas::sync::REPLACED_KEY);

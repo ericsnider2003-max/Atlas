@@ -2,11 +2,11 @@
   "about": "The models the phone app carries (standalone-first, owner decision 22 Oct 2026). fetch-bundled-models.sh downloads each into bundled-cache/ and refuses any whose SHA-256 differs; the app builds copy bundled-cache/ in as 'bundled', and the core checks every file again before it uses it (src/bundled.rs). Pinned 23 Oct 2026 from the files' own listings.",
   "files": [
     {
-      "name": "all-MiniLM-L6-v2-int8.onnx",
-      "what": "meaning layer, int8 ONNX",
-      "bytes": 22972370,
-      "sha256": "afdb6f1a0e45b715d0bb9b11772f032c399babd23bfc31fed1c170afc848bdb1",
-      "url": "https://huggingface.co/Xenova/all-MiniLM-L6-v2/resolve/751bff37182d3f1213fa05d7196b954e230abad9/onnx/model_int8.onnx",
+      "name": "all-MiniLM-L6-v2-fp16.onnx",
+      "what": "meaning layer, half-precision ONNX (Eric's choice, 24 Oct 2026)",
+      "bytes": 45297825,
+      "sha256": "2cdb5e58291813b6d6e248ed69010100246821a367fa17b1b81ae9483744533d",
+      "url": "https://huggingface.co/Xenova/all-MiniLM-L6-v2/resolve/751bff37182d3f1213fa05d7196b954e230abad9/onnx/model_fp16.onnx",
       "licence": "Apache-2.0"
     },
     {

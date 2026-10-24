@@ -529,6 +529,26 @@ impl Daemon<'_> {
         // Done, newest first, a handful: it is a receipt for today, not a log.
         done.sort_by_key(|d| std::cmp::Reverse(d.at));
         done.truncate(DONE_SHOWN);
+        // What this phone has asked of the laptop (24 Oct 2026): queued,
+        // with the honest status line every surface uses, or running there.
+        if self.plat.device_kind() != crate::sync::Kind::Full {
+            if let Ok((q, heard)) = self.phone_outbox() {
+                for r in &q.requests {
+                    let line = crate::remote::queue_status(r, heard, clock);
+                    match r.state {
+                        crate::remote::State::Waiting => {
+                            queued.push((sentence(&r.what), line));
+                            drops.queued.push(None);
+                        }
+                        crate::remote::State::Running => {
+                            in_progress.push((sentence(&r.what), line));
+                            drops.in_progress.push(None);
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
         // What Atlas is thinking through for you (`mind`), when no other
         // source already shows it: until 22 Oct 2026 only the Now page read
         // this, so Home and Outstanding could say nothing was underway while

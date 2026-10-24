@@ -57,6 +57,53 @@ pub(crate) const ASKED_KEY: &str = "asked_by_your_phone";
 const MY_ASKS_KEY: &str = "asked_of_the_laptop";
 
 impl Daemon<'_> {
+    /// The phone's outbox, and when your other devices were last heard from:
+    /// the newest event of theirs this device holds (24 Oct 2026).
+    pub(crate) fn phone_outbox(
+        &self,
+    ) -> crate::error::Result<(crate::remote::Queue, Option<u64>)> {
+        let q = self
+            .store
+            .load_checked::<crate::remote::Queue>(MY_ASKS_KEY)?
+            .unwrap_or_default();
+        Ok((q, self.others_last_heard()))
+    }
+
+    fn others_last_heard(&self) -> Option<u64> {
+        let me = &self.synclog.device;
+        self.synclog
+            .events
+            .iter()
+            .filter(|e| e.device != *me)
+            .map(|e| e.at)
+            .max()
+    }
+
+    /// The top of the Sync page (`hub::SyncStatus`).
+    pub(crate) fn sync_status_now(&self) -> crate::hub::SyncStatus {
+        let now = crate::store::now();
+        let heard = self.others_last_heard();
+        let waiting = self
+            .phone_outbox()
+            .map(|(q, _)| q)
+            .unwrap_or_default()
+            .requests
+            .into_iter()
+            .filter(|r| {
+                matches!(r.state, crate::remote::State::Waiting | crate::remote::State::Running)
+            })
+            .map(|r| {
+                let s = crate::remote::queue_status(&r, heard, now);
+                (r.what, s)
+            })
+            .collect();
+        crate::hub::SyncStatus {
+            last_heard: heard.map(crate::localclock::hhmm_here),
+            waiting,
+            replaced: self.store.load(crate::sync::REPLACED_KEY),
+        }
+    }
+
     /// The phone's half: a request for the laptop, queued and carried. And
     /// "go ahead on the laptop" for the last one it held. `None` when the
     /// words aren't either.
@@ -70,22 +117,10 @@ impl Daemon<'_> {
             // The phone's outbox, honestly (24 Oct 2026, standalone-first):
             // the laptop was last heard from at its newest event this phone
             // has; never heard from, and every open request says so.
-            let me = self.synclog.device.clone();
-            let laptop_heard = self
-                .synclog
-                .events
-                .iter()
-                .filter(|e| e.device != me)
-                .map(|e| e.at)
-                .max();
-            return Some(
-                match self.store.load_checked::<crate::remote::Queue>(MY_ASKS_KEY) {
-                    Ok(q) => crate::remote::whats_waiting(&q.unwrap_or_default(), laptop_heard, t),
-                    Err(error) => {
-                        format!("I couldn't read what's waiting for your laptop ({error}).")
-                    }
-                },
-            );
+            return Some(match self.phone_outbox() {
+                Ok((q, laptop_heard)) => crate::remote::whats_waiting(&q, laptop_heard, t),
+                Err(error) => format!("I couldn't read what's waiting for your laptop ({error})."),
+            });
         }
         if crate::remote::go_ahead_on_the_laptop(said) {
             let guard = match self.store.transaction() {

@@ -4,7 +4,7 @@
 //! standalone system then connect when it can." Until now the phone had no
 //! model until it downloaded one (`phonemodel::fetch`), so a phone with no
 //! signal on its first day could only answer what the command floor knows.
-//! Now the app carries a small model and the fast meaning layer, and the
+//! Now the app carries a small model and the meaning layer, and the
 //! phone works with no laptop and no internet from the first minute.
 //!
 //! The phone shell (`AtlasCore.kt`, `AtlasCore.swift`) copies the files it
@@ -44,15 +44,15 @@ pub struct Piece {
     pub source: &'static str,
 }
 
-/// Everything the app carries: about 420 MB.
+/// Everything the app carries: about 442 MB.
 pub const PIECES: [Piece; 3] = [
     Piece {
-        file: crate::meaningnative::MODEL_INT8,
+        file: crate::meaningnative::MODEL_SMALL,
         into: Into::Home,
-        sha256: "afdb6f1a0e45b715d0bb9b11772f032c399babd23bfc31fed1c170afc848bdb1",
-        bytes: 22_972_370,
-        what: "the meaning layer (all-MiniLM-L6-v2, int8)",
-        source: "https://huggingface.co/Xenova/all-MiniLM-L6-v2/resolve/751bff37182d3f1213fa05d7196b954e230abad9/onnx/model_int8.onnx",
+        sha256: "2cdb5e58291813b6d6e248ed69010100246821a367fa17b1b81ae9483744533d",
+        bytes: 45_297_825,
+        what: "the meaning layer (all-MiniLM-L6-v2, half precision)",
+        source: "https://huggingface.co/Xenova/all-MiniLM-L6-v2/resolve/751bff37182d3f1213fa05d7196b954e230abad9/onnx/model_fp16.onnx",
     },
     Piece {
         file: crate::meaningnative::VOCAB,
@@ -280,7 +280,7 @@ mod tests {
         let models = Path::new("/m");
         assert_eq!(
             place(&PIECES[0], home, models),
-            home.join(crate::meaningnative::MODEL_INT8)
+            home.join(crate::meaningnative::MODEL_SMALL)
         );
         assert_eq!(
             place(&PIECES[1], home, models),
@@ -295,7 +295,7 @@ mod tests {
     #[test]
     fn the_bundle_is_the_size_the_plan_says() {
         let total: u64 = PIECES.iter().map(|p| p.bytes).sum();
-        assert_eq!(total, 419_909_350, "about 420 MB inside the app");
+        assert_eq!(total, 442_234_805, "about 442 MB inside the app");
         assert!(PIECES.iter().all(|p| p.sha256.len() == 64));
     }
 }
@@ -334,6 +334,14 @@ mod the_real_bundle {
         assert!(adopt(&home, &models)
             .iter()
             .all(|(_, a)| *a == Adopted::Present));
+        // And the phone's meaning layer is the bundled one, and works.
+        let mut meaning =
+            crate::meaningnative::Native::load(&home).expect("the meaning layer loads");
+        let a = meaning.embed("remind me to call mum at six").expect("it means something");
+        let b = meaning.embed("ping mum at 6pm").unwrap();
+        let c = meaning.embed("how full is my disk").unwrap();
+        let cos = |x: &[f32], y: &[f32]| x.iter().zip(y).map(|(p, q)| p * q).sum::<f32>();
+        assert!(cos(&a, &b) > cos(&a, &c), "close meanings are closer");
         println!(
             "BUNDLE adopted {} files, {} bytes, checked and moved in {:?}",
             PIECES.len(),
