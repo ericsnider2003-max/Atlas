@@ -9,7 +9,7 @@
 
 use atlas::webpush::{self, b64url_decode, Devices, Outcome};
 use p256::ecdsa::signature::Verifier;
-use p256::elliptic_curve::sec1::ToEncodedPoint;
+use p256::elliptic_curve::sec1::ToSec1Point;
 
 fn unb64(s: &str) -> Vec<u8> {
     b64url_decode(s).expect("base64url")
@@ -65,7 +65,7 @@ fn open_as_the_phone(body: &[u8], ua_secret: &p256::SecretKey, auth: &[u8]) -> O
     let idlen = body[20] as usize;
     let as_public = &body[21..21 + idlen];
     let sealed = &body[21 + idlen..];
-    let ua_public = ua_secret.public_key().to_encoded_point(false);
+    let ua_public = ua_secret.public_key().to_sec1_point(false);
     let shared = p256::ecdh::diffie_hellman(
         ua_secret.to_nonzero_scalar(),
         p256::PublicKey::from_sec1_bytes(as_public)
