@@ -144,3 +144,15 @@ fn the_prompts_never_hold_two_length_rules() {
     assert!(persona.system_prompt().contains(LENGTH_RULE));
     assert!(persona.character().contains(LENGTH_RULE));
 }
+
+/// The length rule as a persona has it: the standard wording at the usual
+/// three and the shipped eight, the owner's cap when it is something else.
+#[test]
+fn a_persona_tells_the_model_the_length_it_is_cut_at() {
+    use atlas::persona::{Persona, LENGTH_RULE};
+    let with = |n: usize| Persona { max_spoken_sentences: n, ..Persona::default() }.length_rule();
+    assert_eq!(with(3), LENGTH_RULE);
+    assert_eq!(with(8), LENGTH_RULE);
+    assert!(with(2).contains("at most 2 sentences"), "{}", with(2));
+    assert!(with(1).contains("one sentence"), "{}", with(1));
+}

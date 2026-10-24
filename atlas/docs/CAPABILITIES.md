@@ -204,7 +204,7 @@ There is one build of Atlas, and it is the Windows one. Every other column is wh
 | remember what you'd want to about the people you deal with, who you meant to keep in touch with, and their birthdays | built, never run for real | `people` | ready | ready | ready | catch | would | catch |
 | flashcards that come back just before you'd forget them (FSRS) | built, never run for real | `srs` | ready | ready | ready | catch | would | catch |
 | use tools from other programs you connect -- your folders, a separate browser, Windows apps -- found by what you ask, and asked about before each use; and `atlas mcp` lets your other AI tools see what Atlas is doing and ask it things, never approve | built, never run for real | `mcp` `mcpserve` | ready | would | would | catch | would | **no** |
-| think on the phone itself: a small language model inside the phone app (the right size for the phone's memory), fetched when you ask, with nothing you say leaving the phone | built, never run for real | `phonemodel` | ready | ready | ready | catch | would | catch |
+| think on the phone itself: a small language model inside the phone app (the right size for the phone's memory), carried in the app from the first minute or fetched when you ask, with nothing you say leaving the phone | built, never run for real | `phonemodel` `bundled` | ready | ready | ready | catch | would | catch |
 | turn a correction you give it into a change to what it keeps, so you don't have to make it twice | working | `revise` | ready | ready | ready | catch | would | catch |
 | read code for the hollow kind -- compiles, passes, does nothing -- and for dependencies that don't exist | working | `hollowcode` | ready | ready | ready | catch | would | catch |
 | earn the right to act on its own, one kind of work at a time, business and personal kept apart | working | `earned` | ready | ready | ready | ready | ready | ready |
@@ -372,4 +372,4 @@ There is one build of Atlas, and it is the Windows one. Every other column is wh
 
 ---
 
-253 things, across 446 of 507 source files. The other 61 are plumbing — config, storage, the platform layer — each named in `capability::PLUMBING` with the reason it is not a capability. `tests/catalogue.rs` fails for a module that is neither, so nothing built can go unlisted here.
+253 things, across 447 of 508 source files. The other 61 are plumbing — config, storage, the platform layer — each named in `capability::PLUMBING` with the reason it is not a capability. `tests/catalogue.rs` fails for a module that is neither, so nothing built can go unlisted here.

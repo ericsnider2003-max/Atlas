@@ -103,7 +103,7 @@ pub(crate) fn place(p: &Piece, home: &Path, models_dir: &Path) -> PathBuf {
 /// against its pin and move it into place. Safe to call on every start: a
 /// piece already in place is left alone, and an empty inbox is the usual case
 /// after the first.
-pub(crate) fn adopt(home: &Path, models_dir: &Path) -> Vec<(&'static Piece, Adopted)> {
+pub fn adopt(home: &Path, models_dir: &Path) -> Vec<(&'static Piece, Adopted)> {
     adopt_from(&home.join(INBOX), home, models_dir)
 }
 
@@ -176,7 +176,7 @@ fn file_name(path: &str) -> &str {
 }
 
 /// Lines worth saying about what [`adopt`] found: only trouble, in words.
-pub(crate) fn said(outcome: &[(&'static Piece, Adopted)]) -> Vec<String> {
+pub fn said(outcome: &[(&'static Piece, Adopted)]) -> Vec<String> {
     outcome
         .iter()
         .filter_map(|(_, a)| match a {
