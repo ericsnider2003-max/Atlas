@@ -243,7 +243,7 @@ h2{
 .brief{display:flex;gap:14px;background:var(--side);border:1px solid var(--edge);border-radius:9px;
   padding:16px 18px;margin:16px 0 24px}
 .brief>svg{width:20px;height:20px;flex:none;margin-top:2px}
-.brief p{margin:0;font-size:15px;line-height:1.6;color:var(--ink)}
+.brief p{margin:0;font-size:var(--t-body);line-height:1.6;color:var(--ink)}
 .brief ul.asks{margin:10px 0 0;padding:0 0 0 18px;font-size:14.5px;line-height:1.6}
 .brief ul.asks a{color:var(--cool);text-decoration:none}
 .brief ul.asks a:hover{text-decoration:underline}
@@ -294,7 +294,7 @@ ol.firststeps b{font-size:14.5px}
 ol.firststeps span{grid-column:2;font-size:13px;color:var(--ink-dim)}
 ol.firststeps .btn{grid-column:3;grid-row:1 / span 2}
 .sub{margin:2px 0 22px;color:var(--ink-faint);font-size:14px}
-.kbd{font:11.5px var(--mono);border:1px solid var(--edge);border-bottom-width:2px;
+.kbd{font:12px var(--mono);border:1px solid var(--edge);border-bottom-width:2px;
   border-radius:6px;padding:2px 6px;color:var(--ink-dim)}
 .dashtop{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:30px 0 12px}
 .dashtop .sub{margin:0;flex:1 1 auto}
@@ -437,7 +437,7 @@ ul.tight li{
 ul.tight li:before{content:'';position:absolute;left:0;top:17px;width:6px;height:6px;border-radius:99px;background:var(--ink-faint)}
 ul.tight li:first-child{border-top:0;padding-top:2px}
 ul.tight li:first-child:before{top:9px}
-.said{margin:0;font-size:15px;color:var(--ink)}
+.said{margin:0;font-size:var(--t-body);color:var(--ink)}
 .nothing{margin:0;color:var(--ink-faint);font-size:14px}
 a.more{
   display:inline-block;margin-top:14px;font-size:13px;color:var(--accent-tx);
@@ -528,7 +528,7 @@ kbd{font:inherit;font-size:12px;padding:1px 5px;border-radius:5px;
 .spacename{margin:14px 0 6px;font-size:var(--t-meta);font-weight:650;
   color:var(--ink-dim)}
 .spacename:first-child{margin-top:0}
-.cardnote{margin:-6px 0 12px;color:var(--ink-faint);font-size:12.5px}
+.cardnote{margin:-6px 0 12px;color:var(--ink-faint);font-size:var(--t-meta)}
 .pagenote{margin:-14px 0 22px;color:var(--ink-faint);font-size:14px;max-width:62ch}
 .groupnote{margin:-4px 0 12px;color:var(--ink-faint);font-size:13.5px;max-width:62ch}
 h2[id]{scroll-margin-top:74px}
@@ -545,7 +545,7 @@ h2[id]{scroll-margin-top:74px}
 .row{padding:13px 0;border-bottom:1px solid var(--edge)}
 .name{font-weight:600}
 .what{color:var(--ink-dim);font-size:14px}
-.cost{color:var(--warm);font-size:13px;margin-top:3px}
+.cost{color:var(--warm);font-size:var(--t-meta);margin-top:3px}
 .note{color:var(--ink-dim);font-size:14px}
 table.access{width:100%;border-collapse:collapse}
 table.access td{padding:12px 0;border-bottom:1px solid var(--edge);vertical-align:top}
@@ -562,7 +562,7 @@ a.entry .what{display:block;margin-top:2px}
 
 /* --- the board -------------------------------------------------------- */
 .board-top{display:flex;gap:24px;margin:0 0 20px;flex-wrap:wrap}
-.stat{color:var(--ink-faint);font-size:13px}
+.stat{color:var(--ink-faint);font-size:var(--t-meta)}
 .stat b{color:var(--ink);font-size:23px;margin-right:6px;font-variant-numeric:tabular-nums}
 nav.views{display:flex;gap:18px;margin:0 0 20px;flex-wrap:wrap}
 a.view{color:var(--ink-faint);text-decoration:none;font-size:14px;padding-bottom:4px;
@@ -713,7 +713,7 @@ ul.plainlist li{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:
 ul.plainlist li:first-child{border-top:0}
 ul.plainlist .meta{margin-left:auto;font-size:12.5px;color:var(--ink-faint)}
 .area{display:inline-block;font-size:12px;font-weight:600;padding:1px 8px;border-radius:99px;background:var(--cool-dim);color:var(--cool)}
-.count{font:600 11px var(--mono);border-radius:99px;padding:0 7px;background:var(--warm-dim);color:var(--warm)}
+.count{font:600 12px var(--mono);border-radius:99px;padding:0 7px;background:var(--warm-dim);color:var(--warm)}
 .tablewrap{overflow-x:auto;border:1px solid var(--edge);border-radius:8px}
 table.data{width:100%;border-collapse:collapse;background:var(--raise)}
 table.data th,table.data td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--edge-soft);font-size:13.5px;vertical-align:top}
@@ -800,14 +800,14 @@ a.setcard span{font-size:12.5px;color:var(--ink-dim);line-height:1.45}
 .weekwrap{margin:0 0 26px}
 .week{display:grid;grid-template-columns:52px repeat(7,minmax(0,1fr));gap:0;border:1px solid var(--edge);border-radius:10px;overflow:hidden;background:var(--raise)}
 .hours{position:relative;margin-top:34px;border-right:1px solid var(--edge-soft)}
-.hours span{position:absolute;right:6px;font:11px var(--mono);color:var(--ink-faint)}
+.hours span{position:absolute;right:6px;font:12px var(--mono);color:var(--ink-faint)}
 .wday{border-left:1px solid var(--edge-soft);min-width:0}
 .wday.today{background:var(--accent-dim)}
 .wdh{margin:0;padding:8px 6px;font-size:12px;font-weight:600;border-bottom:1px solid var(--edge-soft);height:34px;box-sizing:border-box;letter-spacing:0;text-transform:none;color:var(--ink)}
 ol.wevents{position:relative;list-style:none;margin:0;padding:0;background:repeating-linear-gradient(180deg,transparent 0 39px,var(--edge-soft) 39px 40px)}
 .wev{position:absolute;left:3px;right:3px;overflow:hidden;border-radius:6px;padding:3px 5px;font-size:12px;line-height:1.3;
   background:var(--cool-dim);color:var(--ink);border:1px solid color-mix(in srgb,var(--cool) 40%,transparent)}
-.wev time{font:11px var(--mono);color:var(--ink-dim)}
+.wev time{font:12px var(--mono);color:var(--ink-dim)}
 .wev .area{display:block;margin-top:2px;font-size:12px;padding:0 5px}
 .wev.block{background:repeating-linear-gradient(45deg,var(--warm-dim) 0 6px,var(--raise) 6px 12px);border-color:color-mix(in srgb,var(--warm) 45%,transparent)}
 @media (max-width:760px){.week{grid-template-columns:40px repeat(7,minmax(64px,1fr));overflow-x:auto}}
@@ -858,8 +858,8 @@ header .allpages summary::-webkit-details-marker{display:none}
 header .allpages .side{position:absolute;right:0;top:calc(100% + 8px);width:min(300px,88vw);max-height:72vh;overflow-y:auto;
   background:var(--raise);border:1px solid var(--edge);border-radius:12px;padding:10px;box-shadow:0 18px 50px rgba(0,0,0,.25);z-index:50}
 header .allpages .side a{display:flex;align-items:center;min-height:44px;padding:0 10px}
-.tabs .badge{position:absolute;top:3px;left:calc(50% + 5px);min-width:18px;height:18px;padding:0 5px;border-radius:9px;
-  background:var(--accent-fill);color:var(--on-accent);font:700 11px/18px var(--font);text-align:center}
+.tabs .badge{position:absolute;top:3px;left:calc(50% + 5px);min-width:20px;height:20px;padding:0 5px;border-radius:10px;
+  background:var(--accent-fill);color:var(--on-accent);font:700 12px/20px var(--font);text-align:center}
 
 /* Touch: fingers, not a pointer. 44px targets (WCAG 2.5.8 asks 24; Apple and
    Android both ask 44/48), and no 'Ctrl K' on a screen with no keyboard. */

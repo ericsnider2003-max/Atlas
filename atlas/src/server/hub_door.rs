@@ -1329,6 +1329,25 @@ mod icon_tests {
         let body = String::from_utf8_lossy(busy.body.as_ref()).to_string();
         assert!(body.contains("rel=icon"), "503 busy page has no icon");
 
+        // The pages the request layer serves, checked as served: the icon
+        // must be inside <head>.
+        let served = [
+            ("busy", Reply::busy(true)),
+            ("cookie_then", Reply::cookie_then("/hub", "tok-1234")),
+            ("denied_page", Reply::denied_page()),
+            ("not_found_page", Reply::not_found_page("/hub/nope")),
+            ("failed_page", Reply::failed_page()),
+            ("too_big_page", Reply::too_big_page("/hub/upload")),
+        ];
+        for (name, reply) in served {
+            let html = String::from_utf8_lossy(reply.body.as_ref()).to_string();
+            let end = html.find("</head>").unwrap_or_else(|| panic!("{name}: no </head>"));
+            assert!(
+                html[..end].contains("<link rel=icon href=data:,>"),
+                "{name}: head declares no icon"
+            );
+        }
+
         let sources = [
             ("hub_door.rs", include_str!("hub_door.rs")),
             ("requests.rs", include_str!("requests.rs")),
