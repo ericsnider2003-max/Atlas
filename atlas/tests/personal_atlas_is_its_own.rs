@@ -34,6 +34,7 @@ fn walk(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
         ) || name.starts_with("target_")
             || name.starts_with("wt-")
             || name == ".claude"
+            || is_a_cargo_build_folder(&p)
         {
             continue;
         }
@@ -904,6 +905,7 @@ fn everything() -> Vec<std::path::PathBuf> {
                 )
                 || name.starts_with("target_")
                 || name.starts_with("wt-")
+                || is_a_cargo_build_folder(&p)
             {
                 continue;
             }
@@ -1027,4 +1029,15 @@ fn the_fingerprint_scan_finds_a_phrase_however_it_is_written() {
         "the table has only {} rows",
         FINGERPRINTS.len()
     );
+}
+
+/// A build folder under any name (`target-p256`, `target-release`, ..) is
+/// known by the tag cargo writes at its top, so a renamed build folder is
+/// skipped while a source folder that merely starts with "target" is still
+/// read. Found 24 Oct 2026: a test's temp file inside `target-p256` was
+/// reported as part of the tree.
+fn is_a_cargo_build_folder(p: &std::path::Path) -> bool {
+    std::fs::read(p.join("CACHEDIR.TAG"))
+        .map(|b| b.starts_with(b"Signature: 8a477f597d28d172789f06886806bc55"))
+        .unwrap_or(false)
 }
