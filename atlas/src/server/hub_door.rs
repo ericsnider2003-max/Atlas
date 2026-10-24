@@ -529,7 +529,7 @@ impl Reply {
         if page {
             Reply {
                 status: 503,
-                body: "<!doctype html><html lang=en><head><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'><meta http-equiv=refresh content=5>\
+                body: "<!doctype html><html lang=en><head><meta charset=utf-8><link rel=icon href=data:,><meta name=viewport content='width=device-width,initial-scale=1'><meta http-equiv=refresh content=5>\
                        <title>Atlas</title><style>body{font:17px/1.5 system-ui,sans-serif;max-width:32em;margin:3em auto;padding:0 1em}</style></head>\
                        <body><h1>Atlas is busy for a moment</h1><p>It's in the middle of something and didn't get to this page. \
                        This page tries again by itself in a few seconds.</p><p><a href='/hub'>Back to Atlas</a></p></body></html>"
@@ -921,7 +921,7 @@ fn fast_pause(cache: &ReadOnlySnapshots, on: bool) -> Option<Reply> {
     } else {
         ("Resume requested", "pause", "Pause")
     };
-    Some(Reply { status: 202, ..Reply::html(format!("<!doctype html><html><head><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'><title>{title} — Atlas</title><style>body{{font:16px system-ui,sans-serif;max-width:32em;margin:3em auto;padding:0 1em}}button{{font:inherit;min-height:44px;padding:.5em 1em}}</style></head><body><h1>{title}</h1><p role=status>{notice}</p><form method=post action='/hub/pause'><input type=hidden name=what value={next}><button type=submit>{button}</button></form><p><a href='/hub/now'>Back to Now</a></p></body></html>")) })
+    Some(Reply { status: 202, ..Reply::html(format!("<!doctype html><html><head><meta charset=utf-8><link rel=icon href=data:,><meta name=viewport content='width=device-width,initial-scale=1'><title>{title} — Atlas</title><style>body{{font:16px system-ui,sans-serif;max-width:32em;margin:3em auto;padding:0 1em}}button{{font:inherit;min-height:44px;padding:.5em 1em}}</style></head><body><h1>{title}</h1><p role=status>{notice}</p><form method=post action='/hub/pause'><input type=hidden name=what value={next}><button type=submit>{button}</button></form><p><a href='/hub/now'>Back to Now</a></p></body></html>")) })
 }
 
 fn fast_cancel(cache: &ReadOnlySnapshots, key: &str) -> Option<Reply> {
@@ -1314,4 +1314,47 @@ pub fn atlas_hub_port(state_dir: &std::path::Path) -> Option<u16> {
 /// answers (`atlas_hub_port`), else the configured one.
 pub fn hub_port(state_dir: &std::path::Path, configured: u16) -> u16 {
     atlas_hub_port(state_dir).unwrap_or(configured)
+}
+
+#[cfg(test)]
+mod icon_tests {
+    use super::*;
+
+    /// Every hand-written HTML page the Hub door can serve builds its own
+    /// <head>; each must declare an icon so the browser never asks for
+    /// /favicon.ico (a 404 in the console).
+    #[test]
+    fn every_page_declares_an_icon() {
+        let busy = Reply::busy(true);
+        let body = String::from_utf8_lossy(busy.body.as_ref()).to_string();
+        assert!(body.contains("rel=icon"), "503 busy page has no icon");
+
+        let sources = [
+            ("hub_door.rs", include_str!("hub_door.rs")),
+            ("requests.rs", include_str!("requests.rs")),
+            ("phoneadd.rs", include_str!("../phoneadd.rs")),
+            ("hub.rs", include_str!("../hub.rs")),
+            ("ota.rs", include_str!("../ota.rs")),
+        ];
+        let mut pages = 0;
+        for (name, src) in sources {
+            // Only the code before the tests; the tests quote pages.
+            let code = src.split("#[cfg(test)]").next().unwrap();
+            let lower = code.to_ascii_lowercase();
+            let mut from = 0;
+            while let Some(i) = lower[from..].find("<!doctype html") {
+                let at = from + i;
+                let tail = &lower[at..];
+                let head_end = tail.find("</head>").or_else(|| tail.find("<style>")).unwrap_or(900);
+                let head = &tail[..head_end.min(tail.len())];
+                assert!(
+                    head.contains("rel=icon") || head.contains("rel=\"icon\""),
+                    "{name}: page at byte {at} declares no icon"
+                );
+                pages += 1;
+                from = at + 10;
+            }
+        }
+        assert!(pages >= 10, "expected to inspect the hand-written pages, saw {pages}");
+    }
 }

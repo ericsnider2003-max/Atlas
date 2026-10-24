@@ -200,7 +200,7 @@ pub fn device_from_reply(body: &[u8], challenge: &str) -> Option<Device> {
 /// The page the phone lands on first, and the one after the profile.
 fn phone_page(title: &str, body: &str) -> String {
     format!(
-        "<!doctype html><html lang=en><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'>\
+        "<!doctype html><html lang=en><meta charset=utf-8><link rel=icon href=data:,><meta name=viewport content='width=device-width,initial-scale=1'>\
          <title>{title}</title><style>body{{font:17px/1.5 -apple-system,system-ui,sans-serif;margin:0;padding:28px 22px;\
          background:#fbfaf7;color:#37352f}}h1{{font-size:24px}}a.b{{display:block;text-align:center;background:#d9730d;color:#fff;\
          padding:15px;border-radius:12px;text-decoration:none;font-weight:600;margin:20px 0}}ol li{{margin:8px 0}}</style>\
