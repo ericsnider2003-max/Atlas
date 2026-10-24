@@ -23,13 +23,11 @@ Dates are UTC. The card at the top of `AGENTS.md` holds the facts; this file hol
 - `efficiency` Atlas-wide efficiency and device adaptation: tiers T0-T3, processing, memory, storage, learning budgets, acting ahead with guardrails, any-device platform record — home: [docs/ATLAS_EFFICIENCY_AND_ADAPTATION_DESIGN_2026-10-20.md](ATLAS_EFFICIENCY_AND_ADAPTATION_DESIGN_2026-10-20.md) — open since 2026-10-21 (claude)
 - `model-training` Train Atlas's own model: data from Eric's own messages, clean open datasets, REA/Replica/Atlas repo; stages, cost, first 3 steps — home: [docs/ATLAS_MODEL_TRAINING_PLAN_2026-10-21.md](ATLAS_MODEL_TRAINING_PLAN_2026-10-21.md) — open since 2026-10-21 (claude)
 - `completion-path` One completion path + context-before-asking: built in owned files; wiring in run_command/spoken_steps/tasks/floor/brain and the approval contract handed off — home: [docs/HANDOFF_ONE_COMPLETION_PATH_2026-10-21.md](HANDOFF_ONE_COMPLETION_PATH_2026-10-21.md) — doing since 2026-10-22 (claude-items)
-- `idf15` North star (planning only): Atlas runs Eric's faceless-UGC workflow end to end, staged with approval gates — home: [docs/UGC_WORKFLOW_NORTH_STAR_2026-10-24.md](UGC_WORKFLOW_NORTH_STAR_2026-10-24.md) — open since 2026-10-24 (agent)
-- `ie9f9` whisper-helper-at-stop whisper-server outlived Atlas's stop by up to a minute on 24 Oct (stop line said 0 helpers); check it is tracked as a helper — open since 2026-10-24 (claude)
-- `i018b` crypto-bigint-advisory RUSTSEC-2026-0387 via p256 0.13 (Apple JWT signing): owner decision on p256 0.14 major bump — open since 2026-10-24 (claude)
+- `i122d` Phone standalone-first: bundled models, honest outbox, Tailscale sync — home: [verification/runs/20261024T010000Z-claude-phone-standalone/RESULTS.md](../verification/runs/20261024T010000Z-claude-phone-standalone/RESULTS.md) — open since 2026-10-24 (agent)
 - `ia9af` Video plans A/E/G proof slices: what needs me, Hub slop guard, prompt budget — home: [atlas/design/hub/NOT_SLOP.md](../atlas/design/hub/NOT_SLOP.md) — open since 2026-10-24 (agent)
 - `ib65b` Video plans B/C/D/F proof slices: teach a mode, what this computer runs, background hands-off guard, read-only market what-if — home: [atlas/src/whatif.rs](../atlas/src/whatif.rs) — open since 2026-10-24 (agent)
-- `iff9c` kokoro-per-call-slowdown Kokoro: back-to-back synth calls slow to ~2x real time; profile threads/power before chunking (branch fix/kokoro-first-clause-2026-10-22 unmerged) — open since 2026-10-23 (claude)
-- `i122d` Phone standalone-first: bundled models, honest outbox, Tailscale sync — home: [verification/runs/20261024T010000Z-claude-phone-standalone/RESULTS.md](../verification/runs/20261024T010000Z-claude-phone-standalone/RESULTS.md) — open since 2026-10-24 (agent)
+- `idf15` North star (planning only): Atlas runs Eric's faceless-UGC workflow end to end, staged with approval gates — home: [docs/UGC_WORKFLOW_NORTH_STAR_2026-10-24.md](UGC_WORKFLOW_NORTH_STAR_2026-10-24.md) — open since 2026-10-24 (agent)
+- `ie9f9` whisper-helper-at-stop whisper-server outlived Atlas's stop by up to a minute on 24 Oct (stop line said 0 helpers); check it is tracked as a helper — open since 2026-10-24 (claude)
 
 ## Last session
 
@@ -44,17 +42,12 @@ Dates are UTC. The card at the top of `AGENTS.md` holds the facts; this file hol
 - `i095f` Phone Atlas standalone-first (owner decision 22 Oct 2026) (2026-10-23)
 - `ie83e` Hub redesign: one work record, six sections, phone-first, Jarvis/EDITH/Donna bar (2026-10-23)
 - `iff9c` kokoro-per-call-slowdown Kokoro: back-to-back synth calls slow to ~2x real time; profile threads/power before chunking (branch fix/kokoro-first-clause-2026-10-22 unmerged) (2026-10-23)
-- `owner-after-e2e1020` Owner decisions after e2e fixes: approve 16.2 GB pieces, program-copy cleanup (2.27 GB), self-audit act-without-asking runs cargo, panel outlives Atlas, owner desktop re-run (2026-10-22)
 - `cleanup-1022` C: drive cleanup approved by Eric: ~529 GB freed, unmerged work pushed to backup/* branches, unique files archived (2026-10-22)
+- `owner-after-e2e1020` Owner decisions after e2e fixes: approve 16.2 GB pieces, program-copy cleanup (2.27 GB), self-audit act-without-asking runs cargo, panel outlives Atlas, owner desktop re-run (2026-10-22)
 - `ui-leftovers-1021` Hub wording leftovers from the 20 Oct run (kept notes, updates page, sidebar, subtitle, internet health) (2026-10-22)
 - `quiet-failures` Quiet failures made visible: full disk, file index, clock jumps, unreadable settings (2026-10-22)
 - `backup-e2e-1021` Backup and restore proved end to end (folder copy hash-checked, state backup, real restore); backup list shows real size and age (2026-10-22)
 - `current-state` Current-state consolidation doc (build, tests, readiness, vault, models, parked, historical) (2026-10-21)
-- `desktop-e2e-1020` Desktop E2E acceptance run 2026-10-20: fix false progress claims, Hub failed/done states, restart reconciliation, backup, mic (2026-10-21)
-- `sec4-dns-q25` SEC4 residual: keyless peer name lookups moved off the tick to a background cache; Q25: Daemon::set_auto_backup switch for tests (2026-10-21)
-- `gpu1-health` GPU1: a model server whose log shows Vulkan device loss is not trusted even when /health says OK; checked before each request (2026-10-21)
-- `tune-trash` PC tidy-up moves old temp files to Atlas's trash (restorable, 30 days) instead of deleting them (2026-10-21)
-- `selftest-scratch` SELFTEST1: self-test scratch cleanup removes junction links only, guarded to temp atlas-selftest-* folders, failures reported (2026-10-21)
 
 ## Docs
 
