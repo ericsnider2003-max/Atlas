@@ -1,0 +1,9 @@
+{
+    "/hub":  "3.9 / 6.0 / 23.7 ms  (codes 200)",
+    "/hub/now":  "4.1 / 5.4 / 14.6 ms  (codes 200)",
+    "/hub/outstanding":  "2.9 / 4.2 / 4.6 ms  (codes 200)",
+    "/hub/settings":  "9.8 / 24.9 / 25.2 ms  (codes 200)",
+    "/hub/live.json":  "2.3 / 3.6 / 4.4 ms  (codes 200)",
+    "/hub/sound":  "5.7 / 8.5 / 25.9 ms  (codes 200)",
+    "exited":  true
+}

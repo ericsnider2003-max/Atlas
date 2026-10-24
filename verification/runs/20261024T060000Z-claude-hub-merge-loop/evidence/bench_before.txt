@@ -1,0 +1,24 @@
+== idle
+/hub                 p50     3.7 p95    18.9 max    26.0 ms  n=60 codes=['200'] bytes=8616
+/hub/now             p50     3.5 p95    24.3 max    25.2 ms  n=60 codes=['200'] bytes=8149
+/hub/outstanding     p50     3.0 p95    15.5 max    16.4 ms  n=60 codes=['200'] bytes=7679
+/hub/settings        p50    12.5 p95    39.4 max    64.0 ms  n=60 codes=['200'] bytes=21294
+/hub/sound           p50     7.6 p95    30.4 max    62.0 ms  n=60 codes=['200'] bytes=8295
+/hub/help            p50     4.0 p95    16.9 max    25.2 ms  n=60 codes=['200'] bytes=8681
+/hub/messages        p50     4.3 p95    24.4 max    28.8 ms  n=60 codes=['200'] bytes=6944
+/hub/permissions     p50     5.9 p95    24.1 max    58.8 ms  n=60 codes=['200'] bytes=12347
+/hub/trusted         p50     4.1 p95    17.4 max    58.2 ms  n=60 codes=['200'] bytes=6979
+/hub/live.json       p50     3.0 p95    23.4 max    59.2 ms  n=60 codes=['200'] bytes=548
+/hub/changed.json?p=home p50     2.8 p95    24.7 max    56.8 ms  n=60 codes=['200'] bytes=41
+== busy (12 threads hammering /hub/sound, /hub/messages, /hub/connections, /hub/updates through the loop)
+/hub                 p50    26.6 p95    49.7 max    53.8 ms  n=60 codes=['200'] bytes=8616
+/hub/now             p50    28.3 p95    51.9 max    54.1 ms  n=60 codes=['200'] bytes=8149
+/hub/outstanding     p50    28.3 p95    46.9 max    48.6 ms  n=60 codes=['200'] bytes=7679
+/hub/settings        p50    33.8 p95    53.2 max    56.8 ms  n=60 codes=['200'] bytes=21294
+/hub/sound           p50    28.0 p95    48.7 max    49.4 ms  n=60 codes=['200'] bytes=8295
+/hub/help            p50    26.6 p95    49.6 max    54.7 ms  n=60 codes=['200'] bytes=8681
+/hub/messages        p50    25.3 p95    49.9 max    67.6 ms  n=60 codes=['200'] bytes=6944
+/hub/permissions     p50    28.5 p95    49.9 max    61.9 ms  n=60 codes=['200'] bytes=12347
+/hub/trusted         p50    28.8 p95    48.5 max    50.6 ms  n=60 codes=['200'] bytes=6979
+/hub/live.json       p50    25.0 p95    45.5 max    73.8 ms  n=60 codes=['200'] bytes=548
+/hub/changed.json?p=home p50    25.4 p95    43.9 max    45.5 ms  n=60 codes=['200'] bytes=41
