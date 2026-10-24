@@ -138,7 +138,7 @@ impl<'a> Daemon<'a> {
             routed_by,
         };
         self.utterance_count = self.utterance_count.saturating_add(1);
-        if handed_over || said.trim().is_empty() {
+        if handed_over || said.trim().is_empty() || std::mem::take(&mut self.forgot_just_now) {
             self.last_outcome = None;
             return reply;
         }
@@ -156,11 +156,13 @@ impl<'a> Daemon<'a> {
         if !w.correcting {
             self.flush_held_correction();
         }
+        let accepted = self.offer_accepted.take();
+        let for_the_log = intent.clone().or(accepted);
         self.log_the_turn(
             &w.before,
             said,
             &action,
-            intent.as_ref(),
+            for_the_log.as_ref(),
             asked_now,
             missed.is_some(),
             prev.as_ref(),
@@ -314,6 +316,7 @@ impl<'a> Daemon<'a> {
             if self.handover().stance.handed_over() {
                 return Some("That's the owner's to see, not mine to share.".into());
             }
+            self.forgot_just_now = true;
             let reply = self.the_log_asked(asked);
             self.thread.append(said, &reply, None, t);
             return Some(reply);
@@ -322,9 +325,11 @@ impl<'a> Daemon<'a> {
             if self.handover().stance.handed_over() {
                 return Some("That's the owner's to see, not mine to share.".into());
             }
+            self.forgot_just_now = !matches!(asked, crate::phrasebook::Asked::List);
             let reply = match asked {
                 crate::phrasebook::Asked::List => self.phrasebook.listing(8),
                 crate::phrasebook::Asked::ForgetLatest => {
+                    self.scrub_memory(None);
                     let gone = self.corr.forget_that().unwrap_or(0);
                     let r = match self.phrasebook.latest_wording() {
                         Some(w) => self.forget_phrase_said(&w),
@@ -333,11 +338,13 @@ impl<'a> Daemon<'a> {
                     with_log_note(r, gone)
                 }
                 crate::phrasebook::Asked::Forget(w) => {
+                    self.scrub_memory(Some(&w));
                     let gone = self.corr.forget_about(&w).unwrap_or(0);
                     let r = self.forget_phrase_said(&w);
                     with_log_note(r, gone)
                 }
                 crate::phrasebook::Asked::ForgetAll => {
+                    self.scrub_memory(None);
                     let gone = self.corr.forget_everything().unwrap_or(0);
                     let n = self.phrasebook.phrases.len();
                     let r = self.forget_all_phrases(n);

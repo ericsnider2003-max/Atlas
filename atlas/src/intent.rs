@@ -2291,6 +2291,14 @@ pub fn gate_model_call(
         note_rejected(name);
         Err(why)
     };
+    // An exact name in another case is the same name; nothing is matched
+    // more loosely than that.
+    let lowered = name.to_ascii_lowercase();
+    let name = if name.starts_with(crate::mcp::PREFIX) {
+        name
+    } else {
+        lowered.as_str()
+    };
     // Another program's tool (`mcp`): carried as it came, to be placed,
     // asked about and run by the daemon, which refuses one no connected
     // program has (`use_mcp_tool`). No command has this prefix.

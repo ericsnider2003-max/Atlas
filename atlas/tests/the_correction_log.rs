@@ -322,7 +322,6 @@ fn a_command_a_model_invents_is_not_run_and_is_handed_on() {
         "delete_everything",
         "openn_app",
         "open_app_now",
-        "OPEN_APP",
         "open app",
         "../open_app",
     ] {
@@ -334,8 +333,11 @@ fn a_command_a_model_invents_is_not_run_and_is_handed_on() {
             assert!(log.is_empty(), "a rejected name is not for the correction log");
         }
     }
-    // A real name still works through the same two paths.
-    for reply in model_says("open_app") {
+    // A real name still works through the same two paths, in any case.
+    for reply in model_says("open_app")
+        .into_iter()
+        .chain(model_says("OPEN_APP"))
+    {
         let p = plat();
         let (r, _) = ask_the_model(&c, &p, "real", reply.clone());
         assert!(
@@ -356,7 +358,6 @@ fn the_gate_turns_away_names_and_shapes_and_keeps_real_ones() {
         "delete_everything",
         "openn_app",
         "open_apps",
-        "Open_App",
         " ",
         "",
         "open app",
@@ -389,6 +390,11 @@ fn the_gate_turns_away_names_and_shapes_and_keeps_real_ones() {
             "{bad}"
         );
     }
+    // The same name in another case is the same name, not a guess.
+    assert_eq!(
+        gate_model_call("Open_App", &json!("notepad"), "x"),
+        Ok(Intent::OpenApp("notepad".into()))
+    );
     // Real names, in every shape the models use.
     for ok in [
         json!("notepad"),
@@ -442,4 +448,179 @@ fn the_log_is_not_in_a_backup_or_a_sync() {
             );
         }
     }
+}
+
+// ============ "Did you mean Notepad? Say yes, or name another." ============
+
+#[test]
+fn a_yes_to_the_one_thing_it_offered_does_it_through_the_usual_questions() {
+    let (c, p) = (cfg(), plat());
+    p.focus_on("notepad.exe", "Draft - Notepad");
+    let mut d = daemon(&c, &p, "offer-yes");
+    let q = d.turn("close it", T);
+    assert!(q.contains("Did you mean Notepad"), "{q}");
+    // Closing can lose unsaved work: the yes to the offer still gets asked.
+    let r = d.turn("yes", T + 10);
+    assert!(r.contains("Go ahead?"), "{r}");
+    assert!(
+        !p.actions()
+            .iter()
+            .any(|a| matches!(a, atlas::platform::mock::Action::Close(_))),
+        "closed on the first yes"
+    );
+    let l = lines(&d);
+    assert_eq!(l.len(), 1, "{}", file_text(&d));
+    assert_eq!(l[0].kind, Kind::Clarified);
+    assert!(l[0].ask.as_ref().unwrap().question.contains("Did you mean Notepad"));
+    assert!(l[0].ask.as_ref().unwrap().options.iter().any(|o| o.contains("Notepad")));
+    assert_eq!(l[0].right.intent.as_deref(), Some("close_app"));
+    assert_eq!(l[0].right.detail.as_deref().map(str::to_lowercase), Some("notepad".to_string()));
+    assert_eq!(l[0].said, "yes");
+    // The second yes closes it, and is an approval of its own.
+    d.turn("yes", T + 20);
+    let l = lines(&d);
+    assert_eq!(l.last().unwrap().kind, Kind::Approval, "{}", file_text(&d));
+}
+
+#[test]
+fn a_no_to_the_offer_drops_it_and_a_named_alternative_is_the_answer() {
+    let (c, p) = (cfg(), plat());
+    p.focus_on("notepad.exe", "Draft - Notepad");
+    let mut d = daemon(&c, &p, "offer-no");
+    d.turn("close it", T);
+    let r = d.turn("no", T + 10);
+    assert!(r.contains("leave it"), "{r}");
+    assert!(p.actions().is_empty(), "{:?}", p.actions());
+    // Nothing is left waiting: a stray yes is not taken as an answer.
+    assert_eq!(d.turn("yes", T + 20), "Nothing to confirm.");
+    assert!(lines(&d).is_empty(), "{}", file_text(&d));
+
+    let mut d = daemon(&c, &p, "offer-name");
+    d.turn("close it", T);
+    d.turn("open spotify", T + 10);
+    let l = lines(&d);
+    assert_eq!(l.len(), 1, "{}", file_text(&d));
+    assert_eq!(l[0].kind, Kind::Clarified);
+    assert_eq!(l[0].right.intent.as_deref(), Some("open_app"));
+    assert_eq!(l[0].right.detail.as_deref(), Some("spotify"));
+}
+
+#[test]
+fn say_in_any_case_is_still_say_and_a_near_miss_is_still_not() {
+    let c = cfg();
+    let p = plat();
+    let (r, _) = ask_the_model(
+        &c,
+        &p,
+        "say-case",
+        "{\"action\":\"Say\",\"arg\":null,\"say\":\"Notepad is a fine editor.\"}".into(),
+    );
+    assert!(r.contains("fine editor"), "{r}");
+    let (r, _) = ask_the_model(
+        &c,
+        &p,
+        "say-near",
+        "{\"action\":\"sayy\",\"arg\":null,\"say\":\"Notepad is a fine editor.\"}".into(),
+    );
+    assert!(!r.contains("fine editor"), "{r}");
+    assert!(p.actions().is_empty());
+}
+
+// ============ what a model may never choose on its own ============
+
+#[test]
+fn sign_in_and_the_like_always_ask_and_the_handover_pair_is_not_a_models_to_choose() {
+    use atlas::intent::{gate_model_call, Intent, Rejected};
+    use atlas::policy::{classify, is_hard_to_undo, Decision};
+    use serde_json::json;
+    // Chosen by a model, each of these is asked about, and a standing "always"
+    // never learns it away (`is_hard_to_undo`).
+    for i in [
+        Intent::SignIn("github".into()),
+        Intent::CreateAccount("github".into()),
+        Intent::AcceptPairing("123456".into()),
+    ] {
+        assert_eq!(classify(&i), Decision::RequireApproval, "{i:?}");
+        assert!(is_hard_to_undo(&i), "{i:?}");
+    }
+    // Vault, keys and codes are never a model's to choose.
+    for name in ["unlock", "set_key", "type_code"] {
+        assert_eq!(
+            gate_model_call(name, &json!({"arg": "x"}), "x"),
+            Err(Rejected::NotForTheModel),
+            "{name}"
+        );
+    }
+    // `hand_over` and `take_it_back` classify as auto-proceed for the owner's
+    // own words, but a model that chooses either is asked first: every
+    // command a model picks on its own is held for a yes (`talking_freely`
+    // proves it for hand_over). Nothing is handed over by the choice alone.
+    let c = cfg();
+    for name in ["hand_over", "take_it_back"] {
+        for reply in model_says(name) {
+            let p = plat();
+            let llm: std::sync::Arc<dyn atlas::brain::Llm> = std::sync::Arc::new(Says(reply));
+            let mut d = Daemon::new(
+                &c,
+                &p,
+                Some(llm),
+                Store::new(tmp("handover")),
+                Proactive::new(ProactiveConfig::default()),
+            );
+            let r = d.turn("my sister wants to borrow the laptop for a bit", T);
+            if name == "hand_over" {
+                assert!(r.contains('?'), "{name}: not asked before: {r}");
+            }
+            assert!(
+                !r.to_lowercase().contains("handed over to"),
+                "{name}: done on the model's say-so: {r}"
+            );
+        }
+    }
+}
+
+// ============ forgetting reaches what is held in memory ============
+
+#[test]
+fn forgotten_words_are_not_written_back_by_the_next_correction() {
+    let (c, p) = (cfg(), plat());
+    let mut d = daemon(&c, &p, "scrub");
+    d.turn("call Sam about lunch", T);
+    d.turn("forget what I said about Sam", T + 5);
+    d.turn("no, I meant open notepad", T + 10);
+    assert!(!file_text(&d).contains("Sam"), "{}", file_text(&d));
+    // "forget that" drops the turn it is about as well.
+    let mut d = daemon(&c, &p, "scrub2");
+    d.turn("open notepad", T);
+    d.turn("forget that", T + 5);
+    d.turn("no, I meant open spotify", T + 10);
+    assert!(lines(&d).is_empty(), "{}", file_text(&d));
+    // So does "forget everything".
+    let mut d = daemon(&c, &p, "scrub3");
+    d.turn("open notepad", T);
+    d.turn("forget everything", T + 5);
+    d.turn("no, I meant open spotify", T + 10);
+    assert!(lines(&d).is_empty(), "{}", file_text(&d));
+}
+
+#[test]
+fn a_held_correction_is_forgotten_and_settles_under_the_same_rules() {
+    let (c, p) = (cfg(), plat());
+    // Forgotten while held: nothing is written when the answer comes.
+    let mut d = daemon(&c, &p, "held-forget");
+    d.turn("open notepad", T);
+    d.turn("that's not what I asked", T + 5);
+    d.turn("forget what I said about notepad", T + 6);
+    d.turn("open spotify", T + 10);
+    assert!(!file_text(&d).contains("notepad"), "{}", file_text(&d));
+    // Settled by a turn that read outside text: only the owner's words.
+    let mut d = daemon(&c, &p, "held-outside");
+    d.turn("open notepad", T);
+    d.turn("that's not what I asked", T + 5);
+    d.session.tainted_by_outside = true;
+    d.turn("open spotify", T + 10);
+    let l = lines(&d);
+    assert_eq!(l.len(), 1, "{}", file_text(&d));
+    assert!(l[0].did.detail.is_none() && l[0].right.detail.is_none(), "{:?}", l[0]);
+    assert_eq!(l[0].prev.reply, "");
 }

@@ -72,15 +72,18 @@ skipped, and unknown fields should be ignored (a later schema adds fields, never
 ## What is never in it
 
 - Every text field is redacted (`redact::Scrubber`: private keys, AWS/GitHub/Slack/API keys, JWTs,
-  high-entropy strings, card numbers, IBANs, SSNs, email addresses, phone numbers become `⟦TAG_n⟧`)
-  and what follows "password", "passcode", "passphrase", "pin", "otp", "secret", "token", "pwd" (or
-  a digit string after "code") becomes `⟦secret⟧`.
+  high-entropy strings, card numbers, IBANs, SSNs, email addresses, phone numbers become `⟦TAG_n⟧`).
+- After a word like "password", "passcode", "passphrase", "pin", "otp", "secret", "token", "pwd",
+  "2fa" (and "code" or "key" when a digit, a spoken digit or "is ..." follows), everything to the end
+  of that clause (a full stop, semicolon, `!`, `?` or "and then") is a secret ("the password for
+  gmail is hunter2", "pin number is 1234", "code is 4 8 2 9"). A line with a secret in any text it
+  would keep (`said`, `prev.said`, `prev.reply`, the details, the question and options) is **not
+  written at all**; it is not edited. Only words after the keyword are caught ("Hunter2 is the
+  password" is not).
 - A turn that handled a secret writes **nothing**: commands `sign_in`, `create_account`,
   `type_code`, `two_factor`, `set_key`, `unlock`, `pair`, `accept_pairing`, `hand_over`,
   `take_it_back`, or any name containing vault/signing/passphrase/credential/link_account/sign_up,
-  whether as the turn's command, the previous turn's, the proposed one or among `recent`. A line
-  whose own words (`said` or `prev.said`) say a password/code/pin is dropped whole, not edited.
-- Nothing is written while a masked read (`typed::ask_quietly`) is open (`typed::masked_read_active`).
+  whether as the turn's command, the previous turn's, the proposed one or among `recent`. - Nothing is written while a masked read (`typed::ask_quietly`) is open (`typed::masked_read_active`).
   Those reads also never reach a turn.
 - A turn that rested on text someone else wrote (SEC2: `tainted_by_outside`, or an outside read
   during the turn) keeps only the owner's words: `prev.reply` is empty, `did.detail`,
@@ -96,7 +99,9 @@ bound is reached first). Over either, the oldest lines are dropped and the file 
 atomically (`store::write_whole`) down to 90% of both bounds. One line is at most 4,096 bytes (not
 counting the newline): fields are cut, longest first, until it fits; a line that still would not is
 not written. Appending is one small write; a failed write is logged once in `atlas.log` and never
-shown as a turn failure.
+shown as a turn failure. Append, trim and every rewrite hold a lock file
+(`corrections.jsonl.lock`, exclusive create, waits up to 5 s, one older than 30 s is a crashed
+holder's) so two Atlas processes cannot lose each other's lines.
 
 ## Forgetting, and turning it off
 
@@ -108,6 +113,9 @@ By voice or typing (handled before anything else reads the words, in `how_you_ta
 - "forget what I said about X" / "forget everything I said about X": removes every line with X (any
   case) in any text field.
 - "forget everything", "clear what you've learned": empties the file.
+- Every forget also clears what Atlas holds in memory about the words (the last turn a correction
+  would be about, a held "that's wrong", a pending question), so the next "no, I meant ..." cannot
+  write them back.
 - The phrasebook's existing commands do the same on top of their own: "forget that phrase" and
   "unlearn that" also drop this chain's lines, "forget the phrase X" drops lines mentioning X, and
   "forget everything you learned about how I talk" / "clear my phrasebook" empties the file.

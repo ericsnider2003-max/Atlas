@@ -170,12 +170,8 @@ impl<'a> Daemon<'a> {
     /// A correction that wasn't settled by the turn after it is written as
     /// it was: nothing known to be right.
     pub(super) fn flush_held_correction(&mut self) {
-        if let Some(h) = self.corr.held.take() {
-            if self.corr.on {
-                if let Some(why) = self.corr.write(&h) {
-                    self.log.warn(&why);
-                }
-            }
+        if let Some(f) = self.corr.held.take() {
+            self.write_log(f);
         }
     }
 
@@ -205,24 +201,24 @@ impl<'a> Daemon<'a> {
             outside,
         };
         if self.corr.on {
-            self.corr.held = crate::corrlog::build(&f);
+            self.corr.held = Some(f);
         }
     }
 
     /// The held correction, with what turned out to be right.
     pub(super) fn settle_held_correction(&mut self, right: &Intent) {
-        let Some(mut h) = self.corr.held.take() else {
+        let Some(mut f) = self.corr.held.take() else {
             return;
         };
         let (n, d) = Self::name_and_detail(right);
-        h.right.intent = Some(n);
-        h.right.detail = d.map(|d| crate::corrlog::redact_text(&d, 80).0);
-        h.right.from = From::OwnerAnswer;
-        if self.corr.on {
-            if let Some(why) = self.corr.write(&h) {
-                self.log.warn(&why);
-            }
-        }
+        f.right_intent = Some(n);
+        f.right_detail = d;
+        f.from = From::OwnerAnswer;
+        // The same checks as any line: a secret command on this turn drops
+        // it, outside text on this turn keeps only your words, and the
+        // detail is redacted by `build`.
+        f.outside |= self.session.tainted_by_outside;
+        self.write_log(f);
     }
 
     /// "No, I meant X": what was done, and what X did.
@@ -362,8 +358,44 @@ impl<'a> Daemon<'a> {
         }
     }
 
+    /// What is remembered of the words just forgotten, gone from memory too:
+    /// otherwise the next "no, I meant ..." writes them back. `None` clears
+    /// all of it.
+    pub(super) fn scrub_memory(&mut self, needle: Option<&str>) {
+        let n = needle.map(|n| n.trim().to_lowercase());
+        let has = |s: &str| n.as_ref().is_none_or(|n| s.to_lowercase().contains(n.as_str()));
+        if self
+            .last_outcome
+            .as_ref()
+            .is_some_and(|o| has(&o.said) || has(&o.reply))
+        {
+            self.last_outcome = None;
+        }
+        if self.pending_correction.as_deref().is_some_and(has) {
+            self.pending_correction = None;
+        }
+        let unsure = self.corr.unsure.borrow().clone();
+        if unsure
+            .as_ref()
+            .is_some_and(|(q, o)| has(q) || o.iter().any(|x| has(x)))
+        {
+            *self.corr.unsure.borrow_mut() = None;
+        }
+        if self.pronoun_offer.as_ref().is_some_and(|(s, q, _)| has(s) || has(q)) {
+            self.pronoun_offer = None;
+        }
+        if n.is_none() {
+            self.offer_accepted = None;
+        }
+    }
+
     /// The words about the log itself: forgetting, stopping, starting.
     pub(super) fn the_log_asked(&mut self, a: Asked) -> String {
+        match &a {
+            Asked::Last | Asked::Everything => self.scrub_memory(None),
+            Asked::About(x) => self.scrub_memory(Some(x)),
+            _ => {}
+        }
         let said = |n: usize, what: &str| match n {
             0 => format!("There was nothing {what} in the corrections log."),
             1 => format!("Done -- I've taken 1 line {what} out of the corrections log."),

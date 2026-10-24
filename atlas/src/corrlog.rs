@@ -155,6 +155,23 @@ pub struct Facts {
     pub outside: bool,
 }
 
+impl Facts {
+    /// Does any of the words in these facts contain `needle` (lower case)?
+    pub fn mentions(&self, needle: &str) -> bool {
+        let has = |s: &str| s.to_lowercase().contains(needle);
+        let opt = |s: &Option<String>| s.as_deref().is_some_and(has);
+        has(&self.said)
+            || has(&self.prev.said)
+            || has(&self.prev.reply)
+            || opt(&self.did_detail)
+            || opt(&self.right_detail)
+            || self
+                .ask
+                .as_ref()
+                .is_some_and(|(q, o)| has(q) || o.iter().any(|x| has(x)))
+    }
+}
+
 /// Commands whose turn is a secret's: signing in, a two-factor code, a new
 /// account, the vault passphrase and keys, pairing and handing over.
 fn is_secret_command(name: &str) -> bool {
@@ -185,6 +202,7 @@ fn clip(s: &str, chars: usize) -> String {
     out
 }
 
+/// Words after which what follows is a secret.
 const SECRET_WORDS: &[&str] = &[
     "password",
     "passwords",
@@ -196,41 +214,45 @@ const SECRET_WORDS: &[&str] = &[
     "secret",
     "token",
     "pwd",
-];
-const CODE_LEADS: &[&str] = &[
-    "verification",
-    "security",
-    "login",
-    "sms",
     "2fa",
-    "auth",
-    "authentication",
-    "confirmation",
-    "access",
-    "one-time",
-    "onetime",
-    "my",
-    "the",
-    "code",
+    "mfa",
 ];
+/// Words that are a secret only when a value follows: "the code is 4829",
+/// "my key is abc", not "open the code editor".
+const SECRET_IF_VALUE: &[&str] = &["code", "codes", "key", "keys"];
 const NOT_A_VALUE: &[&str] = &[
     "manager", "reset", "field", "page", "box", "for", "on", "in", "vault", "screen", "prompt",
-    "entry", "change", "to", "and", "or", "with", "from", "again", "protected", "hint",
+    "entry", "change", "to", "and", "or", "with", "from", "again", "protected", "hint", "editor",
+    "board", "chain", "frame", "light", "lock",
 ];
 const LINKING: &[&str] = &["is", "was", "are", "=", ":", "its", "it's", "equals", "be"];
+const SPOKEN_DIGITS: &[&str] = &[
+    "zero", "oh", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine",
+];
 
 fn bare(w: &str) -> String {
     w.trim_matches(|c: char| !c.is_alphanumeric() && c != '-')
         .to_lowercase()
 }
 
-/// `text` with whatever follows a word like "password", "pin" or "code" (a
-/// code only when it has digits) replaced. The count of spans replaced.
-/// Redact's scanners cannot catch "my password is hunter2": it has the shape
-/// of any short word.
+fn has_digit(w: &str) -> bool {
+    w.chars().any(|c| c.is_ascii_digit()) || SPOKEN_DIGITS.contains(&bare(w).as_str())
+}
+
+/// Does this word end a clause? A full stop or semicolon on it.
+fn ends_clause(w: &str) -> bool {
+    w.ends_with('.') || w.ends_with(';') || w.ends_with('!') || w.ends_with('?')
+}
+
+/// `text` with everything after a word like "password", "pin", "code" or
+/// "2fa", up to the end of that clause (a full stop, a semicolon or "and
+/// then"), replaced; and how many such stretches there were. Redact's
+/// scanners cannot catch "my password for gmail is hunter2" or a code said
+/// as "4 8 2 9": they have the shape of any words. "code" and "key" count
+/// only when a value (a digit, or "is ...") follows.
 pub fn mask_secret_words(text: &str) -> (String, u32) {
     let words: Vec<&str> = text.split(' ').collect();
-    let mut out: Vec<String> = words.iter().map(|w| w.to_string()).collect();
+    let mut out: Vec<String> = Vec::with_capacity(words.len());
     let mut n = 0u32;
     let mut i = 0;
     while i < words.len() {
@@ -238,47 +260,61 @@ pub fn mask_secret_words(text: &str) -> (String, u32) {
         // "password:hunter2", "pin=1234"
         if let Some((left, right)) = w.split_once([':', '=']) {
             let key = bare(left);
-            if !right.is_empty() && (SECRET_WORDS.contains(&key.as_str()) || key == "code") {
-                out[i] = format!("{left}:⟦secret⟧");
+            if !right.is_empty()
+                && (SECRET_WORDS.contains(&key.as_str()) || SECRET_IF_VALUE.contains(&key.as_str()))
+            {
+                out.push(format!("{left}:⟦secret⟧"));
                 n += 1;
                 i += 1;
                 continue;
             }
         }
+        out.push(w.to_string());
         let key = bare(w);
-        let secret_word = SECRET_WORDS.contains(&key.as_str());
-        let code_word = key == "code" || key == "codes";
-        if secret_word || code_word {
-            // The value: past "is", "was", ":" ...
-            let mut j = i + 1;
-            while j < words.len() && LINKING.contains(&bare(words[j]).as_str())
-                || (j < words.len() && words[j].is_empty())
-            {
-                j += 1;
+        let always = SECRET_WORDS.contains(&key.as_str());
+        let with_value = SECRET_IF_VALUE.contains(&key.as_str());
+        if !(always || with_value) || ends_clause(w) {
+            i += 1;
+            continue;
+        }
+        // The rest of the clause.
+        let mut end = i + 1;
+        while end < words.len() {
+            let cur = words[end];
+            let next_is_then = bare(cur) == "and" && words.get(end + 1).is_some_and(|x| bare(x) == "then");
+            if next_is_then {
+                break;
             }
-            if j < words.len() {
-                let v = bare(words[j]);
-                let has_digit = v.chars().any(|c| c.is_ascii_digit());
-                let value_like = !v.is_empty() && !NOT_A_VALUE.contains(&v.as_str());
-                let code_ok = !code_word || (has_digit && CODE_LEADS.iter().any(|l| *l != "code"));
-                let is_a_value = if code_word { code_ok } else { value_like };
-                // "the code is 482913": the value has digits. "open the code
-                // editor": no words follow that carry one.
-                if is_a_value {
-                    out[j] = "⟦secret⟧".to_string();
-                    n += 1;
-                    i = j + 1;
-                    continue;
-                }
+            end += 1;
+            if ends_clause(cur) {
+                break;
             }
         }
-        i += 1;
+        let rest = &words[i + 1..end];
+        let linked = rest.first().is_some_and(|f| LINKING.contains(&bare(f).as_str()));
+        let digits = rest.iter().any(|r| has_digit(r));
+        let first = rest.first().map(|f| bare(f)).unwrap_or_default();
+        // "my password manager": nothing said to hide, unless a value
+        // comes later ("the password for gmail is hunter2").
+        let masked = !rest.is_empty()
+            && if with_value {
+                digits || linked
+            } else {
+                linked || digits || !NOT_A_VALUE.contains(&first.as_str())
+            };
+        if masked {
+            out.push("⟦secret⟧".to_string());
+            n += 1;
+            i = end;
+        } else {
+            i += 1;
+        }
     }
     (out.join(" "), n)
 }
 
 /// Redacted and cut: the text, and how many spans were replaced.
-pub fn redact_text(text: &str, chars: usize) -> (String, u32) {
+fn redact_text(text: &str, chars: usize) -> (String, u32) {
     let (masked, a) = mask_secret_words(text);
     let mut s = crate::redact::Scrubber::default();
     let scrubbed = s.scrub(&masked);
@@ -286,7 +322,7 @@ pub fn redact_text(text: &str, chars: usize) -> (String, u32) {
     (clip(&scrubbed, chars), a + b)
 }
 
-/// Do these words look like a secret being said?
+/// Do these words carry a secret?
 fn says_a_secret(text: &str) -> bool {
     mask_secret_words(text).1 > 0
 }
@@ -332,7 +368,19 @@ pub fn build(f: &Facts) -> Option<Record> {
     {
         return None;
     }
-    if says_a_secret(&f.said) || says_a_secret(&f.prev.said) {
+    // A secret in any of the words that would be kept leaves nothing: the
+    // line is not edited, it is not written.
+    let mut kept: Vec<&str> = vec![&f.said, &f.prev.said];
+    if !f.outside {
+        kept.push(&f.prev.reply);
+        kept.extend(f.did_detail.as_deref());
+        kept.extend(f.right_detail.as_deref());
+        if let Some((q, opts)) = &f.ask {
+            kept.push(q);
+            kept.extend(opts.iter().map(|o| o.as_str()));
+        }
+    }
+    if kept.iter().any(|t| says_a_secret(t)) {
         return None;
     }
     let mut n = 0u32;
@@ -416,6 +464,23 @@ fn fit(mut r: Record) -> Record {
 pub struct Log {
     path: PathBuf,
     lines: Option<usize>,
+    /// The file's length as this process last left it: a different length
+    /// means another process wrote, and the lines are counted again.
+    bytes_seen: u64,
+}
+
+/// A lock file beside the log, held across an append or a rewrite so two
+/// Atlas processes cannot lose each other's lines. Taken with an exclusive
+/// create; one older than `STALE_LOCK_SECS` is a crashed holder's.
+struct LockGuard(PathBuf);
+
+const STALE_LOCK_SECS: u64 = 30;
+const LOCK_WAIT_MS: u64 = 5_000;
+
+impl Drop for LockGuard {
+    fn drop(&mut self) {
+        crate::heard!(std::fs::remove_file(&self.0));
+    }
 }
 
 impl Log {
@@ -424,6 +489,7 @@ impl Log {
         Log {
             path: data_dir.join("learning").join("corrections.jsonl"),
             lines: None,
+            bytes_seen: 0,
         }
     }
 
@@ -431,9 +497,54 @@ impl Log {
         &self.path
     }
 
+    fn lock(&self) -> std::io::Result<LockGuard> {
+        let lock = self.path.with_extension("jsonl.lock");
+        if let Some(dir) = lock.parent() {
+            std::fs::create_dir_all(dir)?;
+        }
+        let started = std::time::Instant::now();
+        loop {
+            match std::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&lock)
+            {
+                Ok(_) => return Ok(LockGuard(lock)),
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+                    let old = std::fs::metadata(&lock)
+                        .and_then(|m| m.modified())
+                        .ok()
+                        .and_then(|t| t.elapsed().ok())
+                        .is_some_and(|age| age.as_secs() >= STALE_LOCK_SECS);
+                    if old {
+                        crate::heard!(std::fs::remove_file(&lock));
+                    } else if started.elapsed().as_millis() as u64 > LOCK_WAIT_MS {
+                        return Err(std::io::Error::other("the correction log is busy"));
+                    } else {
+                        std::thread::sleep(std::time::Duration::from_millis(5));
+                    }
+                }
+                // Windows reports a file being deleted by its holder as a
+                // permission error: wait and try again like any other busy.
+                Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => {
+                    if started.elapsed().as_millis() as u64 > LOCK_WAIT_MS {
+                        return Err(e);
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(5));
+                }
+                Err(e) => return Err(e),
+            }
+        }
+    }
+
     fn raw_lines(&self) -> Vec<String> {
         std::fs::read_to_string(&self.path)
-            .map(|t| t.lines().filter(|l| !l.trim().is_empty()).map(str::to_string).collect())
+            .map(|t| {
+                t.lines()
+                    .filter(|l| !l.trim().is_empty())
+                    .map(str::to_string)
+                    .collect()
+            })
             .unwrap_or_default()
     }
 
@@ -450,29 +561,39 @@ impl Log {
         use std::io::Write;
         let mut line = serde_json::to_string(r).map_err(std::io::Error::other)?;
         if line.len() > MAX_LINE_BYTES {
-            return Err(std::io::Error::other("a line over the size cap was not written"));
+            return Err(std::io::Error::other(
+                "a line over the size cap was not written",
+            ));
         }
         line.push('\n');
-        if let Some(dir) = self.path.parent() {
-            std::fs::create_dir_all(dir)?;
-        }
-        if self.lines.is_none() {
+        let _lock = self.lock()?;
+        let on_disk = std::fs::metadata(&self.path).map(|m| m.len()).unwrap_or(0);
+        if self.lines.is_none() || on_disk != self.bytes_seen {
             self.lines = Some(self.raw_lines().len());
         }
-        let mut f = std::fs::OpenOptions::new().create(true).append(true).open(&self.path)?;
+        let mut f = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&self.path)?;
         f.write_all(line.as_bytes())?;
         let n = self.lines.map(|n| n + 1).unwrap_or(1);
         self.lines = Some(n);
         let size = f.metadata().map(|m| m.len()).unwrap_or(0);
         drop(f);
+        self.bytes_seen = size;
         if n > MAX_LINES || size > MAX_BYTES {
-            self.trim()?;
+            self.trim_held()?;
         }
         Ok(())
     }
 
     /// The oldest lines dropped until within 90% of both bounds.
     pub fn trim(&mut self) -> std::io::Result<()> {
+        let _lock = self.lock()?;
+        self.trim_held()
+    }
+
+    fn trim_held(&mut self) -> std::io::Result<()> {
         let mut lines = self.raw_lines();
         let max_lines = MAX_LINES * TRIM_TO_PERCENT / 100;
         let max_bytes = (MAX_BYTES as usize) * TRIM_TO_PERCENT / 100;
@@ -489,6 +610,7 @@ impl Log {
         self.rewrite(&lines)
     }
 
+    /// The whole file replaced atomically. The lock is held by the caller.
     fn rewrite(&mut self, lines: &[String]) -> std::io::Result<()> {
         let mut body = lines.join("\n");
         if !body.is_empty() {
@@ -496,15 +618,24 @@ impl Log {
         }
         crate::store::write_whole(&self.path, body.as_bytes())?;
         self.lines = Some(lines.len());
+        self.bytes_seen = body.len() as u64;
         Ok(())
     }
 
     /// Lines for which `drop` is true are removed. How many.
-    fn remove_where(&mut self, drop: impl Fn(&serde_json::Value) -> bool) -> std::io::Result<usize> {
+    fn remove_where(
+        &mut self,
+        drop: impl Fn(&serde_json::Value) -> bool,
+    ) -> std::io::Result<usize> {
+        let _lock = self.lock()?;
         let lines = self.raw_lines();
         let kept: Vec<String> = lines
             .iter()
-            .filter(|l| !serde_json::from_str::<serde_json::Value>(l).map(|v| drop(&v)).unwrap_or(false))
+            .filter(|l| {
+                !serde_json::from_str::<serde_json::Value>(l)
+                    .map(|v| drop(&v))
+                    .unwrap_or(false)
+            })
             .cloned()
             .collect();
         let gone = lines.len() - kept.len();
@@ -520,6 +651,7 @@ impl Log {
 
     /// The newest record only.
     fn forget_newest(&mut self) -> std::io::Result<usize> {
+        let _lock = self.lock()?;
         let mut lines = self.raw_lines();
         if lines.pop().is_none() {
             return Ok(0);
@@ -539,6 +671,7 @@ impl Log {
 
     /// The file emptied. How many lines it held.
     pub fn clear(&mut self) -> std::io::Result<usize> {
+        let _lock = self.lock()?;
         let n = self.raw_lines().len();
         if self.path.exists() {
             self.rewrite(&[])?;
@@ -575,7 +708,7 @@ pub struct Keeper {
     chain: Vec<String>,
     chain_at: u64,
     /// "That's wrong", held until the next turn says what was right.
-    pub held: Option<Record>,
+    pub held: Option<Facts>,
     /// Atlas's last specific question and what it offered: set where it asks
     /// because it is unsure, read when the next turn answers.
     pub unsure: std::cell::RefCell<Option<(String, Vec<String>)>>,
@@ -639,15 +772,23 @@ impl Keeper {
     /// gone (a restart). How many went.
     pub fn forget_that(&mut self) -> std::io::Result<usize> {
         self.held = None;
-        let ids = std::mem::take(&mut self.chain);
-        if ids.is_empty() {
-            return self.log.forget_newest();
-        }
-        self.log.forget_ids(&ids)
+        // The chain is let go only once the rewrite has worked.
+        let ids = self.chain.clone();
+        let n = if ids.is_empty() {
+            self.log.forget_newest()?
+        } else {
+            self.log.forget_ids(&ids)?
+        };
+        self.chain.clear();
+        Ok(n)
     }
 
     pub fn forget_about(&mut self, needle: &str) -> std::io::Result<usize> {
-        if self.held.as_ref().is_some_and(|h| mentions(&serde_json::to_value(h).unwrap_or_default(), &needle.to_lowercase())) {
+        if self
+            .held
+            .as_ref()
+            .is_some_and(|h| h.mentions(&needle.trim().to_lowercase()))
+        {
             self.held = None;
         }
         let n = self.log.forget_about(needle)?;
@@ -826,8 +967,37 @@ mod tests {
     fn a_password_and_a_code_never_appear() {
         let (m, n) = mask_secret_words("my password is hunter2 and the verification code is 482913");
         assert!(!m.contains("hunter2") && !m.contains("482913"), "{m}");
-        assert_eq!(n, 2);
+        assert!(n >= 1);
+        // Every way of saying it, to the end of the clause.
+        for (said, secret) in [
+            ("the password for gmail is hunter2", "hunter2"),
+            ("my pin number is 1234", "1234"),
+            ("the code is 4 8 2 9", "4 8 2 9"),
+            ("the code is four eight two nine", "four eight two nine"),
+            ("2fa code 123456", "123456"),
+            ("my api key is abc123xyz", "abc123xyz"),
+            ("password is correct horse battery staple", "horse battery"),
+            ("passcode: 8842", "8842"),
+        ] {
+            let (m, n) = mask_secret_words(said);
+            assert!(n >= 1 && !m.contains(secret), "{said:?} -> {m:?}");
+            // Never kept, in any field: the line is not written.
+            let mut f = facts(Kind::Correction);
+            f.said = said.into();
+            assert!(build(&f).is_none(), "{said:?} was written");
+            let mut f = facts(Kind::Correction);
+            f.prev.reply = said.into();
+            assert!(build(&f).is_none(), "{said:?} in a reply was written");
+            let mut f = facts(Kind::Correction);
+            f.right_detail = Some(said.into());
+            assert!(build(&f).is_none(), "{said:?} in a detail was written");
+        }
+        // The clause ends at a full stop; what is after it is not hidden.
+        let (m, _) = mask_secret_words("my pin is 1234. open notepad");
+        assert!(m.contains("open notepad") && !m.contains("1234"), "{m}");
+        assert_eq!(mask_secret_words("press the enter key").1, 0);
         assert_eq!(mask_secret_words("open the code editor").1, 0);
+        assert_eq!(mask_secret_words("write the code for a timer").1, 0);
         assert_eq!(mask_secret_words("open my password manager").1, 0);
         // A secret said in the words drops the record whole.
         let mut f = facts(Kind::Correction);
@@ -835,7 +1005,7 @@ mod tests {
         assert!(build(&f).is_none());
         // One in what Atlas said back is cut out of the line.
         let mut f = facts(Kind::Approval);
-        f.prev.reply = "Typed the key AKIAIOSFODNN7EXAMPLE and mailed sam@example.com".into();
+        f.prev.reply = "Sent AKIAIOSFODNN7EXAMPLE and mailed sam@example.com".into();
         let r = build(&f).unwrap();
         let line = serde_json::to_string(&r).unwrap();
         assert!(!line.contains("AKIAIOSFODNN7EXAMPLE") && !line.contains("sam@example.com"), "{line}");
@@ -977,6 +1147,54 @@ mod tests {
         k2.write(&rec("three", 9_000)).unwrap_or_default();
         assert_eq!(k2.forget_everything().unwrap(), 1);
         assert!(k2.log.read().is_empty());
+    }
+
+    #[test]
+    fn a_failed_forget_keeps_the_chain_for_the_next_try() {
+        let dir = tmp("chainkeep");
+        // A file where the folder should be: every rewrite fails.
+        std::fs::write(dir.join("learning"), "in the way").unwrap();
+        let mut k = Keeper { log: Log::at(&dir), on: true, chain: vec!["abc".into()], chain_at: 10, held: None, unsure: Default::default(), warned: false };
+        assert!(k.forget_that().is_err());
+        assert_eq!(k.chain, vec!["abc".to_string()], "the chain was let go before the rewrite worked");
+    }
+
+    #[test]
+    fn two_writers_do_not_lose_each_others_lines() {
+        let dir = tmp("two");
+        let threads: Vec<_> = (0..6)
+            .map(|w| {
+                let dir = dir.clone();
+                std::thread::spawn(move || {
+                    // Each its own Log, as two processes would have.
+                    let mut log = Log::at(&dir);
+                    for i in 0..40 {
+                        log.append(&rec(&format!("w{w} line {i}"), 1_000 + i)).unwrap();
+                    }
+                })
+            })
+            .collect();
+        for t in threads {
+            t.join().unwrap();
+        }
+        let log = Log::at(&dir);
+        assert_eq!(log.read().len(), 6 * 40);
+        assert!(!log.path().with_extension("jsonl.lock").exists(), "the lock was left behind");
+    }
+
+    #[test]
+    fn a_rewrite_by_one_does_not_drop_a_line_another_added() {
+        let dir = tmp("rewrite");
+        let mut a = Log::at(&dir);
+        let mut b = Log::at(&dir);
+        a.append(&rec("first", 1)).unwrap();
+        b.append(&rec("from the other process", 2)).unwrap();
+        // `a` has not seen b's line; its forget must still keep it.
+        assert_eq!(a.forget_about("first").unwrap(), 1);
+        let said: Vec<String> = b.read().into_iter().map(|r| r.said).collect();
+        assert_eq!(said, vec!["from the other process"]);
+        b.append(&rec("after", 3)).unwrap();
+        assert_eq!(Log::at(&dir).read().len(), 2);
     }
 
     #[test]

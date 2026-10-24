@@ -42,6 +42,10 @@ impl<'a> Daemon<'a> {
         }
         // A question Atlas asked long ago is not what this answers.
         self.expire_stale_question(t);
+        // "Did you mean Notepad for "close it"? Say yes, or name another."
+        if let Some(reply) = self.answer_the_offer(said, t, how) {
+            return reply;
+        }
         // The names "go to", "close" and "how's" may take.
         self.parser.know_names(self.names_for_the_parser());
         // Started now, not waited for: a line the parser settles doesn't
@@ -822,6 +826,9 @@ impl<'a> Daemon<'a> {
                     let q = self.context_question(said, &q);
                     self.note_unsure(&q, None);
                     self.session.ask(&q);
+                    let offered = self.ask_values.take();
+                    self.pronoun_offer =
+                        (!offered.is_empty()).then(|| (said.to_string(), q.clone(), offered));
                     return q;
                 }
             }

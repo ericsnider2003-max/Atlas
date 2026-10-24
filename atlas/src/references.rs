@@ -54,6 +54,27 @@ impl Resolution {
     }
 }
 
+/// `said` with its first pronoun replaced by `target`: "close it" and
+/// "Notepad" make "close Notepad". `None` when there is no pronoun.
+pub fn with_target(said: &str, target: &str) -> Option<String> {
+    let mut done = false;
+    let words: Vec<String> = said
+        .split_whitespace()
+        .map(|w| {
+            let bare = w
+                .trim_matches(|c: char| !c.is_alphanumeric())
+                .to_lowercase();
+            if !done && PRONOUNS.contains(&bare.as_str()) {
+                done = true;
+                target.to_string()
+            } else {
+                w.to_string()
+            }
+        })
+        .collect();
+    done.then(|| words.join(" "))
+}
+
 const PRONOUNS: &[&str] = &["it", "that", "this", "them", "those", "these", "there"];
 
 /// Words that hint at what kind of thing is meant, so "close it" looks for an

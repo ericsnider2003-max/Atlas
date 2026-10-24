@@ -825,6 +825,15 @@ pub struct Daemon<'a> {
     pending_correction: Option<String>,
     /// The correction log and what it is holding (23 Oct 2026, `corrlog`).
     corr: crate::corrlog::Keeper,
+    /// "Close it" with a guess to offer: the words, the question, and the
+    /// one thing it offered, for a yes (23 Oct 2026).
+    pronoun_offer: Option<(String, String, Vec<String>)>,
+    /// What `context_question` last offered, as plain targets.
+    ask_values: std::cell::RefCell<Vec<String>>,
+    /// The command a yes to that offer made, until the turn is logged.
+    offer_accepted: Option<Intent>,
+    /// This turn was a forget: it is not the turn the next correction is about.
+    forgot_just_now: bool,
     /// The words of this turn, as you actually said them.
     ///
     /// Exists because the phrase parser hands an intent the text *after* the
@@ -2000,6 +2009,10 @@ impl<'a> Daemon<'a> {
             proof_check_done: Default::default(),
             pending_correction: None,
             corr: crate::corrlog::Keeper::open(&store_for_load),
+            pronoun_offer: None,
+            ask_values: Default::default(),
+            offer_accepted: None,
+            forgot_just_now: false,
             last_said: String::new(),
             pending_edit: None,
             outbox: crate::notify::Outbox::load(&store_for_load2),
