@@ -775,3 +775,4 @@
 {"ts":"2026-10-23T11:47:47.693Z","who":"agent","op":"done","id":"ie83e"}
 {"ts":"2026-10-23T11:47:48.697Z","who":"agent","op":"done","id":"i095f"}
 {"ts":"2026-10-24T12:04:15.444Z","who":"claude","op":"add","id":"i018b","title":"crypto-bigint-advisory RUSTSEC-2026-0387 via p256 0.13 (Apple JWT signing): owner decision on p256 0.14 major bump"}
+{"ts":"2026-10-24T18:03:51.075Z","who":"agent","op":"add","id":"ia9af","title":"Video plans A/E/G proof slices: what needs me, Hub slop guard, prompt budget","home":"atlas/design/hub/NOT_SLOP.md"}
