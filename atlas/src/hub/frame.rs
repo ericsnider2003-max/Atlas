@@ -375,7 +375,7 @@ pub(super) fn shell_with(here: Option<Page>, title: &str, body: &str, waiting: u
     format!(
         "<!doctype html><html lang=en{theme}><head><meta charset=utf-8>\
          <meta name=viewport content=\"width=device-width,initial-scale=1\">\
-         <title>Atlas — {t}</title><link rel=stylesheet href={style}></head><body>\
+         <title>Atlas — {t}</title><link rel=icon href=data:,><link rel=stylesheet href={style}></head><body>\
          <a class=skip href='#main'>Skip to the page</a>\
          <div class=wrap>{sidebar}<div class=col-main>\
          <header><a class=hbrand href='/hub' aria-label='Atlas, Home'>{MARK}<span>Atlas</span></a>{trail}<span class=grow></span>\
@@ -750,5 +750,20 @@ mod sidebar_memory_tests {
         // Single braces: it was not put through `format!`.
         assert!(!SIDEBAR_MEMORY.contains("{{"));
         assert!(!SIDEBAR_MEMORY.contains("src="), "no external script");
+    }
+}
+
+#[cfg(test)]
+mod icon_tests {
+    use super::*;
+
+    /// Lighthouse `errors-in-console` (24 Oct scan): every Hub page asked for
+    /// /favicon.ico and got a 404. An inline icon answers the browser without a
+    /// request.
+    #[test]
+    fn every_hub_page_declares_an_icon_so_browsers_do_not_ask_for_favicon() {
+        let html = shell("Settings", "<p>x</p>");
+        let head = &html[..html.find("</head>").unwrap()];
+        assert!(head.contains("<link rel=icon href=data:,>"));
     }
 }

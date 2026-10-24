@@ -88,7 +88,7 @@ pub(super) fn right_now_html(d: &Deck) -> String {
          <p class=now>{now}</p><p class=nowsub>{sub}</p>\
          <form class=ask method=get action='/hub/find'>\
          <input name=q autocomplete=off placeholder='Find anything, or jump to a page…' aria-label='Find anything'>\
-         <button type=submit aria-label=Find><span class=kbd>Enter</span></button></form></section>",
+         <button type=submit aria-label='Enter to find'><span class=kbd>Enter</span></button></form></section>",
         now = esc(&d.now),
         sub = esc(&d.now_sub),
     )
@@ -709,5 +709,24 @@ pub(super) fn stakes_word(s: crate::accounts::Stakes) -> &'static str {
         crate::accounts::Stakes::High => "Matters a lot",
         crate::accounts::Stakes::Medium => "Matters",
         crate::accounts::Stakes::Low => "Minor",
+    }
+}
+
+#[cfg(test)]
+mod accessible_name_tests {
+    use super::*;
+
+    /// Lighthouse/axe `label-content-name-mismatch` (24 Oct scan): a control's
+    /// accessible name must contain its visible text, or voice-control users
+    /// who say "click Enter" get nothing.
+    #[test]
+    fn the_find_button_name_contains_its_visible_text() {
+        let html = right_now_html(&Deck::not_running());
+        assert!(html.contains("<span class=kbd>Enter</span>"));
+        assert!(
+            html.contains("<button type=submit aria-label='Enter to find'>"),
+            "the button's aria-label must contain the visible word Enter"
+        );
+        assert!(!html.contains("aria-label=Find>"));
     }
 }
