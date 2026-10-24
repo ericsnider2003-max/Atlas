@@ -61,6 +61,9 @@ impl Daemon<'_> {
     /// "go ahead on the laptop" for the last one it held. `None` when the
     /// words aren't either.
     pub(super) fn ask_the_laptop_turn(&mut self, said: &str, t: u64) -> Option<String> {
+        if let Some(reply) = self.sync_replaced_turn(said, t) {
+            return Some(reply);
+        }
         if crate::remote::asks_whats_waiting(said)
             && self.plat.device_kind() != crate::sync::Kind::Full
         {

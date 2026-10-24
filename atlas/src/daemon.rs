@@ -85,6 +85,7 @@ mod askthelaptop;
 mod calendar_delivery;
 mod execute;
 mod correction_log;
+mod newest_wins;
 mod learning;
 mod making;
 mod onethread;

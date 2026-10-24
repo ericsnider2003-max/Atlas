@@ -2380,6 +2380,11 @@ impl<'a> Daemon<'a> {
                     .seen_up_to
                     .iter()
                     .any(|(d, s)| *d == e.device && e.seq <= *s)
+                    // An event this device already holds, relayed back by
+                    // the other: not fresh (24 Oct 2026: the laptop's own
+                    // change, echoed by the phone, hid a clash and was kept
+                    // twice).
+                    && !self.synclog.holds(e)
             })
             .cloned()
             .collect();
@@ -2389,6 +2394,7 @@ impl<'a> Daemon<'a> {
         let merged = crate::sync::merge(&self.synclog.events, &fresh, now);
         if !merged.clashes.is_empty() {
             clashes.push(crate::sync::spoken(&merged, &bundle.from_name));
+            self.keep_replaced(&merged, &bundle.from_name, now);
         }
         if let Some(skew) = self.synclog.note_seen(&fresh, now) {
             skews.push(skew.plain(&bundle.from_name));
@@ -2665,7 +2671,7 @@ impl<'a> Daemon<'a> {
     /// that travelled. Now a capture lands in the notebook, and an add-on
     /// change lands in the add-ons (`plugins::take_synced`, which only takes
     /// an approval from a sealed bundle). Returns anything worth saying.
-    fn take_in_synced(
+    pub(super) fn take_in_synced(
         &mut self,
         fresh: &[crate::sync::Event],
         sealed: bool,
@@ -3127,6 +3133,8 @@ impl<'a> Daemon<'a> {
                             .seen_up_to
                             .iter()
                             .any(|(d, s)| *d == e.device && e.seq <= *s)
+                            // Already held here, relayed back: not fresh.
+                            && !self.synclog.holds(e)
                     })
                     .cloned()
                     .collect();
@@ -3135,6 +3143,7 @@ impl<'a> Daemon<'a> {
                 taken += fresh.len();
                 if !merged.clashes.is_empty() {
                     clashes.push(crate::sync::spoken(&merged, &bundle.from_name));
+                    self.keep_replaced(&merged, &bundle.from_name, now);
                 }
                 // Advance this device's clock past everything the bundle
                 // carried, so anything done after this reconnect sorts after

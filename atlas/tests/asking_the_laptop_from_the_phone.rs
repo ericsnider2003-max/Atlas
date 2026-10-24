@@ -587,3 +587,61 @@ fn with_the_laptop_off_the_phone_answers_queues_honestly_and_it_runs_when_the_la
         "Nothing is waiting for your laptop."
     );
 }
+
+/// Newest wins, nothing is lost (Dispatch for Eric, 24 Oct 2026): the same
+/// thing changed on both devices keeps the newer answer, says so instead of
+/// asking "Which?", keeps the one it replaced, and "put back what sync
+/// replaced" makes that the newest again, carried to the other device.
+#[test]
+fn the_same_thing_changed_on_both_devices_keeps_the_newer_and_the_other_can_be_put_back() {
+    let (lc, pc, ls, ps, _) = pair("newest-wins");
+    let (lp, pp) = (plat(), plat());
+    pp.be_a_phone_for_test();
+    let now = atlas::store::now();
+    let audit = |status: &str| atlas::sync::What::Changed {
+        id: "the VPS audit".into(),
+        field: "status".into(),
+        to: status.into(),
+    };
+    // Each device changed the same thing while apart: the phone later.
+    let mut l = atlas::sync::Log::new("laptop-device");
+    l.append(audit("done"), now);
+    ls.save("synclog", &Some(l)).unwrap();
+    let mut p = atlas::sync::Log::new("phone-device");
+    p.append(audit("parked"), now + 100);
+    ps.save("synclog", &Some(p)).unwrap();
+
+    let mut laptop = daemon(&lc, &lp, &ls);
+    let mut phone = daemon(&pc, &pp, &ps);
+    laptop.turn("sync", now + 200);
+    phone.turn("sync", now + 210);
+    let said = laptop.turn("sync", now + 220);
+    assert!(said.contains("I kept the newer one"), "{said}");
+    assert!(!said.contains("Which?"), "{said}");
+    let replaced: Vec<atlas::sync::Replaced> = ls.load(atlas::sync::REPLACED_KEY);
+    assert_eq!(replaced.len(), 1, "{replaced:?}");
+    assert_eq!((replaced[0].kept.as_str(), replaced[0].replaced.as_str()), ("parked", "done"));
+    let what = laptop.turn("what did sync replace?", now + 230);
+    assert!(what.contains("kept \"parked\"") && what.contains("replaced \"done\""), "{what}");
+
+    let back = laptop.turn("put back what sync replaced", now + 300);
+    assert!(back.starts_with("Put back the VPS audit"), "{back}");
+    let replaced: Vec<atlas::sync::Replaced> = ls.load(atlas::sync::REPLACED_KEY);
+    assert!(replaced.is_empty(), "put back, so no longer pending: {replaced:?}");
+    let newest = |s: &Store| -> Option<String> {
+        let log: Option<atlas::sync::Log> = s.load("synclog");
+        log?.events
+            .iter()
+            .filter_map(|e| match &e.what {
+                atlas::sync::What::Changed { id, to, .. } if id == "the VPS audit" => Some((e.hlc, e.at, to.clone())),
+                _ => None,
+            })
+            .max_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)))
+            .map(|x| x.2)
+    };
+    assert_eq!(newest(&ls).as_deref(), Some("done"), "the put-back isn't the newest on the laptop");
+    phone.turn("sync", now + 310);
+    assert_eq!(newest(&ps).as_deref(), Some("done"), "the put-back never reached the phone");
+    let again = laptop.turn("put back what sync replaced", now + 320);
+    assert_eq!(again, "There's nothing sync replaced to put back.");
+}

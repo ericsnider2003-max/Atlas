@@ -1,4 +1,4 @@
-use atlas::sync::{
+use atlas::sync::{replaced_by, 
     can_open, drifting, how_to_carry, make_bundle, merge, spoken, Bundle, Carry, Kind, Log,
     SyncConfig, What, BUNDLE_VERSION, WHAT_THE_PHONE_MISSES, WHY_THIS_WORKS,
 };
@@ -358,7 +358,14 @@ fn a_clash_is_put_to_you_with_both_versions_and_which_is_newer() {
     assert!(said.contains("\"done\" here"));
     assert!(said.contains("\"parked\" there"));
     assert!(said.contains("newer"));
-    assert!(said.ends_with("Which?"));
+    // Newest wins (24 Oct 2026): said, kept, and undoable -- not a question.
+    assert!(!said.contains("Which?"), "{said}");
+    assert!(said.contains("I kept the newer one"), "{said}");
+    assert!(said.contains("put back what sync replaced"), "{said}");
+    let r = replaced_by(&merge(&laptop.events, &phone.events, 300), "your phone", 300);
+    assert_eq!(r.len(), 1);
+    assert_eq!((r[0].kept.as_str(), r[0].replaced.as_str()), ("parked", "done"));
+    assert_eq!(r[0].kept_from, "your phone");
 }
 
 #[test]
@@ -714,4 +721,20 @@ fn the_sync_port_answers_only_your_own_devices() {
         "laptop",
         "personal"
     ));
+}
+
+#[test]
+fn an_event_relayed_back_is_not_a_second_change_and_does_not_hide_a_clash() {
+    // 24 Oct 2026: the phone relayed the laptop's own change back with its
+    // own; counted twice, the echo hid the real clash.
+    let mut laptop = Log::new("laptop");
+    let mut phone = Log::new("phone");
+    laptop.append(What::Changed { id: "audit".into(), field: "status".into(), to: "done".into() }, 100);
+    phone.append(What::Changed { id: "audit".into(), field: "status".into(), to: "parked".into() }, 200);
+    let mut relayed = laptop.events.clone();
+    relayed.extend(phone.events.clone());
+    let m = merge(&laptop.events, &relayed, 300);
+    assert_eq!(m.clashes.len(), 1, "{m:?}");
+    assert_eq!(m.clashes[0].later, "there");
+    assert!(laptop.holds(&laptop.events[0]) && !laptop.holds(&phone.events[0]));
 }
