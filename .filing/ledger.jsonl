@@ -773,3 +773,4 @@
 {"ts":"2026-10-23T09:41:36.217Z","who":"agent","op":"note","id":"ie83e","text":"Commits 6fbe1a7c (one work record + test), 20c16c26 (six sections, Home lanes, cached gzip stylesheet, a11y), 0743cf34 + c55533fd (fixes from two independent reviews). Evidence: verification/runs/20261023T000000Z-claude-hub-redesign/. Debug-build stack overflow on /hub/settings found; pre-existing on candidate, release unaffected; spun off as its own task."}
 {"ts":"2026-10-23T11:47:47.693Z","who":"agent","op":"done","id":"ie83e"}
 {"ts":"2026-10-23T11:47:48.697Z","who":"agent","op":"done","id":"i095f"}
+{"ts":"2026-10-24T09:34:24.936Z","who":"agent","op":"add","id":"i122d","title":"Phone standalone-first: bundled models, honest outbox, Tailscale sync","home":"verification/runs/20261024T010000Z-claude-phone-standalone/RESULTS.md"}
