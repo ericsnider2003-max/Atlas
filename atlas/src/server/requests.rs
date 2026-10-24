@@ -72,7 +72,7 @@ impl Reply {
         Reply {
             status: 200,
             body: format!(
-                "<!doctype html><html lang=en><head><meta charset=utf-8><meta name=referrer content=no-referrer>\
+                "<!doctype html><html lang=en><head><meta charset=utf-8><link rel=icon href=data:,><meta name=referrer content=no-referrer>\
                  <meta http-equiv=refresh content='0;url={to}'><meta name=viewport content='width=device-width,initial-scale=1'>\
                  <title>Atlas</title></head><body><p><a href='{to}'>Open Atlas</a></p>\
                  <script>location.replace('{to}')</script></body></html>"
@@ -113,7 +113,7 @@ impl Reply {
     pub(super) fn denied_page() -> Reply {
         Reply {
             status: 401,
-            body: "<!doctype html><html lang=en><head><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'>\
+            body: "<!doctype html><html lang=en><head><meta charset=utf-8><link rel=icon href=data:,><meta name=viewport content='width=device-width,initial-scale=1'>\
                    <title>Atlas</title><style>body{font:17px/1.5 system-ui,sans-serif;max-width:32em;margin:3em auto;padding:0 1em}</style></head>\
                    <body><h1>This device isn't signed in to Atlas</h1><p>On the computer Atlas runs on, open Atlas, go to \
                    <b>Your phone</b>, and scan the code again with this device. On a phone, Tailscale has to be on and \
@@ -128,7 +128,7 @@ impl Reply {
         Reply {
             status: 404,
             body: format!(
-                "<!doctype html><html lang=en><head><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'>\
+                "<!doctype html><html lang=en><head><meta charset=utf-8><link rel=icon href=data:,><meta name=viewport content='width=device-width,initial-scale=1'>\
                  <title>Atlas</title><style>body{{font:17px/1.5 system-ui,sans-serif;max-width:32em;margin:3em auto;padding:0 1em}}</style></head>\
                  <body><h1>That isn't a page in Atlas</h1><p>Nothing answers at <code>{}</code>. It's a fault in Atlas, not \
                  something you did.</p><p><a href='/hub'>Back to Atlas</a></p></body></html>",
@@ -142,7 +142,7 @@ impl Reply {
     pub(super) fn failed_page() -> Reply {
         Reply {
             status: 500,
-            body: "<!doctype html><html lang=en><head><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'>\
+            body: "<!doctype html><html lang=en><head><meta charset=utf-8><link rel=icon href=data:,><meta name=viewport content='width=device-width,initial-scale=1'>\
                    <title>Atlas</title><style>body{font:17px/1.5 system-ui,sans-serif;max-width:32em;margin:3em auto;padding:0 1em}</style></head>\
                    <body><h1>Something in Atlas went wrong there</h1><p>It's a fault in Atlas, not something you did, and \
                    it's been written down. Try again, or go back.</p><p><a href='/hub'>Back to Atlas</a></p></body></html>"
@@ -189,7 +189,7 @@ impl Reply {
         Reply {
             status: 413,
             body: format!(
-                "<!doctype html><html lang=en><head><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'>\
+                "<!doctype html><html lang=en><head><meta charset=utf-8><link rel=icon href=data:,><meta name=viewport content='width=device-width,initial-scale=1'>\
                  <title>Atlas</title><style>body{{font:17px/1.5 system-ui,sans-serif;max-width:32em;margin:3em auto;padding:0 1em}}</style></head>\
                  <body><h1>That was more than Atlas takes in one go</h1><p>Nothing was kept. Send less at once — \
                  for something long, save it as a file and give Atlas the file instead.</p>\
@@ -431,7 +431,7 @@ pub fn private_line(ip: std::net::IpAddr) -> bool {
 pub(super) fn secret_refused_page() -> Reply {
     Reply {
         status: 403,
-        body: "<!doctype html><html lang=en><head><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'>\
+        body: "<!doctype html><html lang=en><head><meta charset=utf-8><link rel=icon href=data:,><meta name=viewport content='width=device-width,initial-scale=1'>\
                <title>Atlas</title><style>body{font:17px/1.5 system-ui,sans-serif;max-width:32em;margin:3em auto;padding:0 1em}</style></head>\
                <body><h1>Passphrases only over this machine or Tailscale.</h1><p>This came from a network I can't vouch for, so \
                I didn't read it and nothing changed. Open Atlas on this laptop, or on your phone with Tailscale switched on, \

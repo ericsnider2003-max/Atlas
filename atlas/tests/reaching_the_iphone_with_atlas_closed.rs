@@ -184,3 +184,65 @@ fn the_iphone_app_asks_for_its_address_and_hands_it_over() {
     assert!(core.contains("/hub/push-token"));
     assert!(ent.contains("<key>aps-environment</key>"));
 }
+
+fn hex(s: &str) -> Vec<u8> {
+    (0..s.len())
+        .step_by(2)
+        .map(|i| u8::from_str_radix(&s[i..i + 2], 16).unwrap())
+        .collect()
+}
+
+#[test]
+fn a_tampered_token_fails_to_verify_and_the_same_input_signs_the_same_way() {
+    let (pem, public) = a_key();
+    let jwt = apns::provider_token(&pem, "G3D89YSJD4", "Z6NSM9AXB7", 1_790_000_000).unwrap();
+    let parts: Vec<&str> = jwt.split('.').collect();
+    let sig = p256::ecdsa::Signature::from_slice(&unb64url(parts[2])).unwrap();
+    // Another team in the claims: the signature no longer holds.
+    let forged = apns::provider_token(&pem, "G3D89YSJD4", "Z6NSM9AXB8", 1_790_000_000).unwrap();
+    let fp: Vec<&str> = forged.split('.').collect();
+    assert!(public
+        .verify(format!("{}.{}", fp[0], fp[1]).as_bytes(), &sig)
+        .is_err());
+    assert!(public
+        .verify(format!("{}.{}x", parts[0], parts[1]).as_bytes(), &sig)
+        .is_err());
+    // ES256 signing here is deterministic (RFC 6979): same key and input, same token.
+    assert_eq!(
+        jwt,
+        apns::provider_token(&pem, "G3D89YSJD4", "Z6NSM9AXB7", 1_790_000_000).unwrap()
+    );
+    // A different key's verifier rejects it.
+    let other = p256::ecdsa::SigningKey::from_slice(&[8u8; 32]).unwrap();
+    assert!(other
+        .verifying_key()
+        .verify(format!("{}.{}", parts[0], parts[1]).as_bytes(), &sig)
+        .is_err());
+}
+
+/// RFC 6979 appendix A.2.5 (P-256, SHA-256, message "sample"): the signing
+/// primitive under the token produces the published r, and the published s
+/// (up to the low-s/high-s mirror image, which both verify).
+#[test]
+fn p256_signing_matches_the_rfc_6979_known_answer() {
+    use p256::ecdsa::signature::Signer;
+    let key = p256::ecdsa::SigningKey::from_slice(&hex(
+        "C9AFA9D845BA75166B5C215767B1D6934E50C3DB36E89B127B8A622B120F6721",
+    ))
+    .unwrap();
+    let sig: p256::ecdsa::Signature = key.sign(b"sample");
+    let b = sig.to_bytes();
+    assert_eq!(b.len(), 64);
+    assert_eq!(
+        &b[..32],
+        &hex("EFD48B2AACB6A8FD1140DD9CD45E81D69D2C877B56AAF991C34D0EA84EAF3716")[..]
+    );
+    let want_s = p256::ecdsa::Signature::from_slice(&hex(
+        "EFD48B2AACB6A8FD1140DD9CD45E81D69D2C877B56AAF991C34D0EA84EAF3716\
+         F7CB1C942D657C41D436C7A1B6E29F65F3E900DBB9AFF4064DC4AB2F843ACDA8",
+    ))
+    .unwrap();
+    let norm = |s: p256::ecdsa::Signature| s.normalize_s();
+    assert_eq!(norm(sig).to_bytes(), norm(want_s).to_bytes());
+    key.verifying_key().verify(b"sample", &want_s).unwrap();
+}

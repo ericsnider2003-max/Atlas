@@ -107,6 +107,25 @@ fn read_all(d: &mut Daemon, t: u64) -> HuntState {
     panic!("the read never came back");
 }
 
+/// Spoken follow-ups run on the wall clock (the daemon reads its own time for
+/// what is said aloud), while the saved answers are dated 29 Sep 2026. So a
+/// test that speaks to the hunter moves what was read forward to now, keeping
+/// every age as it was -- else the list shrinks as the real calendar passes the
+/// shelf life of the samples (a niche find drops after 30 days).
+fn dated_as_of_now(d: &Daemon) {
+    let wall = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    let shift = wall.saturating_sub(NOW);
+    let mut s: HuntState = d.store.load(hunt::FILE);
+    for r in s.shortlist.iter_mut() {
+        r.found.at += shift;
+        r.found.closes = r.found.closes.map(|c| c + shift);
+    }
+    d.store.save(hunt::FILE, &s).unwrap();
+}
+
 fn want(words: &[&str], skills: &[&str]) -> Interests {
     Interests {
         want: words.iter().map(|s| s.to_string()).collect(),
@@ -872,6 +891,7 @@ fn tell_me_more_then_that_kind_by_voice() {
     let mut d = daemon(&c, &p, "thatkind");
     d.turn("my skills are video", NOW);
     read_all(&mut d, NOW);
+    dated_as_of_now(&d);
     let list = d.turn("any opportunities?", NOW + 10);
     assert!(list.starts_with("1. ") && list.contains("\n2. "), "{list}");
     let second = list.lines().nth(1).unwrap().to_string();
@@ -893,6 +913,26 @@ fn tell_me_more_then_that_kind_by_voice() {
     // The list stays live for the numbers left on it.
     let r = d.turn("save 2", NOW + 40);
     assert!(r.starts_with("Saved"), "still the hunter's list: {r}");
+}
+
+#[test]
+fn spoken_to_today_the_list_has_its_full_top_three_whatever_the_calendar_says() {
+    // Regression (24 Oct 2026): the samples are dated 29 Sep 2026 but a
+    // spoken ask reads the wall clock, so once a sample outlived its shelf
+    // the list silently shrank from three to two. Dated as of now, it is three.
+    let c = cfg_on();
+    let p = plat();
+    let mut d = daemon(&c, &p, "fulltop");
+    d.turn("my skills are video", NOW);
+    read_all(&mut d, NOW);
+    dated_as_of_now(&d);
+    let list = d.turn("any opportunities?", NOW + 10);
+    assert!(
+        list.contains("
+3. ") && !list.contains("
+4. "),
+        "the top three: {list}"
+    );
 }
 
 #[test]

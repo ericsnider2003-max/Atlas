@@ -1355,13 +1355,8 @@ pub struct SetAside {
 
 static SET_ASIDE: std::sync::Mutex<Vec<SetAside>> = std::sync::Mutex::new(Vec::new());
 
-/// For the tests of what the hub says about a set-aside file.
-#[cfg(test)]
-pub(crate) fn note_set_aside_for_tests(store: &Store, name: &str, why: &str) {
-    note_set_aside(&store.root, name, why);
-}
-
-fn note_set_aside(root: &std::path::Path, name: &str, why: &str) {
+/// Records a file set aside (also what the hub's tests call, with a store's `root()`).
+pub(crate) fn note_set_aside(root: &std::path::Path, name: &str, why: &str) {
     let mut v = SET_ASIDE.lock().unwrap_or_else(|p| p.into_inner());
     v.push(SetAside {
         root: root.to_path_buf(),

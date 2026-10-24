@@ -766,4 +766,56 @@ mod icon_tests {
         let head = &html[..html.find("</head>").unwrap()];
         assert!(head.contains("<link rel=icon href=data:,>"));
     }
+
+    /// No text under 12px: every `font-size` and every `font:` shorthand in
+    /// hub.css, in px or rem (user-facing size tokens too).
+    #[test]
+    fn hub_css_has_no_font_size_under_12px() {
+        fn too_small(tok: &str) -> Option<f64> {
+            let tok = tok.split('/').next().unwrap_or(tok);
+            if let Some(n) = tok.strip_suffix("px") {
+                return n.parse::<f64>().ok().filter(|v| *v < 12.0);
+            }
+            if let Some(n) = tok.strip_suffix("rem") {
+                return n.parse::<f64>().ok().filter(|v| *v < 0.75).map(|v| v * 16.0);
+            }
+            None
+        }
+        let mut seen = 0;
+        let mut bad = Vec::new();
+        for decl in STYLE.split(|c| c == ';' || c == '{' || c == '}') {
+            let d = decl.trim();
+            let Some(k) = d.find(':') else { continue };
+            let prop = d[..k].trim().rsplit(char::is_whitespace).next().unwrap_or("");
+            let val = d[k + 1..].trim();
+            let sized = prop == "font-size" || prop == "font" || prop.starts_with("--t-");
+            if !sized {
+                continue;
+            }
+            for tok in val.split_whitespace() {
+                if tok.starts_with("var(") || tok.starts_with("clamp(") {
+                    continue;
+                }
+                if tok.ends_with("px") || tok.ends_with("rem") || tok.contains("px/") || tok.contains("rem/") {
+                    seen += 1;
+                    if let Some(px) = too_small(tok) {
+                        bad.push(format!("{prop}: {val} ({px}px)"));
+                    }
+                    if prop == "font" {
+                        break;
+                    }
+                }
+            }
+        }
+        assert!(seen > 100, "parsed too few sizes ({seen}); the guard is not reading hub.css");
+        assert!(bad.is_empty(), "text under 12px in hub.css: {bad:#?}");
+    }
+
+    /// The type-scale tokens are used, not just declared.
+    #[test]
+    fn every_type_scale_token_is_used() {
+        for t in ["--t-page", "--t-section", "--t-card", "--t-body", "--t-meta"] {
+            assert!(STYLE.matches(&format!("var({t})")).count() >= 1, "{t} is declared but never used");
+        }
+    }
 }

@@ -127,3 +127,34 @@ fn the_iphone_app_carries_weatherkit() {
     let core = std::fs::read_to_string("mobile/ios/Atlas/AtlasCore.swift").unwrap();
     assert!(core.contains("AppleWeather.register()"));
 }
+
+#[test]
+fn a_tampered_rest_token_fails_to_verify() {
+    let k = p256::ecdsa::SigningKey::from_slice(&[9u8; 32]).unwrap();
+    let pem = k
+        .to_pkcs8_pem(p256::pkcs8::LineEnding::LF)
+        .unwrap()
+        .to_string();
+    let jwt = applewx::signed_token(&pem, "G3D89YSJD4", "Z6NSM9AXB7", "com.ericsnider.atlas", 1_000)
+        .unwrap();
+    let p: Vec<&str> = jwt.split('.').collect();
+    assert_eq!(p.len(), 3);
+    assert!(!jwt.contains('=') && !jwt.contains('+') && !jwt.contains('/'));
+    let mut t = p[2].replace('-', "+").replace('_', "/");
+    while t.len() % 4 != 0 {
+        t.push('=');
+    }
+    let raw = atlas::b64::decode(&t).unwrap();
+    assert_eq!(raw.len(), 64);
+    let sig = p256::ecdsa::Signature::from_slice(&raw).unwrap();
+    assert!(k
+        .verifying_key()
+        .verify(format!("{}.{}y", p[0], p[1]).as_bytes(), &sig)
+        .is_err());
+    // Deterministic (RFC 6979): signing again gives the same token.
+    assert_eq!(
+        jwt,
+        applewx::signed_token(&pem, "G3D89YSJD4", "Z6NSM9AXB7", "com.ericsnider.atlas", 1_000)
+            .unwrap()
+    );
+}

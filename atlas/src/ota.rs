@@ -460,6 +460,7 @@ pub fn android_page(apk: &Apk, apk_url: &str) -> String {
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<link rel="icon" href="data:,">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Install Atlas</title>
 <style>
@@ -591,6 +592,7 @@ pub fn page(ipa: &Ipa, manifest_url: &str, now_iso: &str) -> String {
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<link rel="icon" href="data:,">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Install {title}</title>
 <style>

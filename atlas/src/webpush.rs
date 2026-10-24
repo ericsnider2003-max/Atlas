@@ -19,7 +19,7 @@
 //! allows it, as with every push (`phone::body_for`).
 
 use hmac::{Hmac, Mac};
-use p256::elliptic_curve::sec1::ToEncodedPoint;
+use p256::elliptic_curve::sec1::ToSec1Point;
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
 use std::path::Path;
@@ -170,7 +170,7 @@ pub fn seal_with(
     use aes_gcm::aead::{Aead, KeyInit};
     let ua = p256::PublicKey::from_sec1_bytes(ua_public)
         .map_err(|_| "the phone's key isn't a P-256 key".to_string())?;
-    let as_public = as_secret.public_key().to_encoded_point(false);
+    let as_public = as_secret.public_key().to_sec1_point(false);
     let as_public = as_public.as_bytes();
     let ecdh = p256::ecdh::diffie_hellman(as_secret.to_nonzero_scalar(), ua.as_affine());
     // Combining the shared and authentication secrets (§3.3).
@@ -235,7 +235,7 @@ pub fn vapid_key(state_dir: &Path) -> Result<p256::SecretKey, String> {
 /// The public half, base64url uncompressed: what `k=` carries, and what an
 /// app may register with (87 characters).
 pub fn vapid_public(key: &p256::SecretKey) -> String {
-    b64url(key.public_key().to_encoded_point(false).as_bytes())
+    b64url(key.public_key().to_sec1_point(false).as_bytes())
 }
 
 /// The push service's origin (`https://ntfy.sh`), the audience VAPID signs.

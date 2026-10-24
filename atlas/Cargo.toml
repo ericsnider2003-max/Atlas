@@ -72,7 +72,7 @@ ort = { version = "=2.0.0-rc.13", default-features = false, features = ["load-dy
 # ECDSA from the RustCrypto project (Apache-2.0/MIT, pure Rust), reading the
 # .p8 key Apple gives. Signing a curve Atlas doesn't otherwise have is not
 # something to write by hand.
-p256 = { version = "0.13", default-features = false, features = ["ecdsa", "ecdh", "pkcs8", "pem", "std"] }
+p256 = { version = "0.14", default-features = false, features = ["ecdsa", "ecdh", "pkcs8", "pem", "std"] }
 # Web Push to Android (item 15, RFC 8291): the message is sealed with
 # AES-128-GCM under a key from ECDH + HKDF (HMAC-SHA256). Same project
 # (RustCrypto, Apache-2.0/MIT, pure Rust); no new transport.
