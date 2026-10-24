@@ -143,7 +143,25 @@ impl Daemon<'_> {
     /// the lane headings -- reads `hub::Counts::of` this, so they cannot
     /// disagree. It reads memory plus one cached durable-job file
     /// (`job::load_cached`), so it is cheap enough for the pill on every page.
+    /// The one work record. Built once per page or reply drawn: inside
+    /// `one_record`, every reader (Home's lanes, its brief, the header count,
+    /// Now, `live.json`) gets the same build rather than each reading the
+    /// saved jobs again (23 Oct 2026, the review: seven builds per Home).
     pub(super) fn open_work(&self, now: u64) -> hub::Open {
+        let cached = OPEN_ONCE.with(|c| c.borrow().as_ref().and_then(|o| o.clone()));
+        if let Some(open) = cached {
+            return open;
+        }
+        let open = self.open_work_built(now);
+        OPEN_ONCE.with(|c| {
+            if let Some(slot) = c.borrow_mut().as_mut() {
+                *slot = Some(open.clone());
+            }
+        });
+        open
+    }
+
+    fn open_work_built(&self, now: u64) -> hub::Open {
         /// How long a failed scheduled job stays in the Failed lane: this page
         /// cannot drop it, so it ages out. Everything else that failed stays
         /// until dismissed.
@@ -191,6 +209,7 @@ impl Daemon<'_> {
             drops.blocked.push(Some(format!("b:{}", i.id)));
         }
         let mut in_progress: Vec<(String, String)> = Vec::new();
+        let mut queued: Vec<(String, String)> = Vec::new();
         for job in &self.scheduler.jobs {
             if job.in_flight {
                 let status = if job.state == crate::scheduler::JobState::Cancelled {
@@ -251,9 +270,12 @@ impl Daemon<'_> {
         }
         // A failed task stays until it is dropped (21 Oct 2026); only a
         // scheduled job, which this page cannot take off, still ages out.
-        for task in self.queue.tasks.iter().filter(|task| {
-            task.state == crate::lanes::TaskState::Failed && !task.interrupted
-        }) {
+        for task in self
+            .queue
+            .tasks
+            .iter()
+            .filter(|task| task.state == crate::lanes::TaskState::Failed && !task.interrupted)
+        {
             failed.push(hub::Ended {
                 what: sentence(&task.command),
                 detail: task
@@ -388,17 +410,29 @@ impl Daemon<'_> {
                 // Heavy self-repair work (`heavywork`): running, or paused and
                 // waiting for you to be away. It writes its record every
                 // minute, so it only falls through to Blocked if Atlas died.
+                // Only a Running record is in progress; one waiting or paused
+                // (Checkpointed) is queued, with its reason (22 Oct 2026).
                 s if !s.terminal()
                     && job.job_id.starts_with(crate::heavywork::JOB_PREFIX)
                     && !job.stale(now, STALE_AFTER_SECS) =>
                 {
-                    in_progress.push((
-                        name,
-                        job.checkpoint
-                            .clone()
-                            .unwrap_or_else(|| "Running while you're away.".into()),
-                    ));
-                    drops.in_progress.push(None);
+                    if s == S::Running {
+                        in_progress.push((
+                            name,
+                            job.checkpoint
+                                .clone()
+                                .unwrap_or_else(|| "Running while you're away.".into()),
+                        ));
+                        drops.in_progress.push(None);
+                    } else {
+                        queued.push((
+                            name,
+                            job.checkpoint
+                                .clone()
+                                .unwrap_or_else(|| "Waits until you step away.".into()),
+                        ));
+                        drops.queued.push(None);
+                    }
                 }
                 s if !s.terminal()
                     && job.stale(now, STALE_AFTER_SECS)
@@ -442,21 +476,30 @@ impl Daemon<'_> {
                 crate::lanes::TaskState::Done | crate::lanes::TaskState::Failed
             )
         }) {
-            let how = match t.state {
-                crate::lanes::TaskState::Running if t.stop_requested => {
+            let drop = (t.state != crate::lanes::TaskState::Running
+                || t.worker_id.is_some()
+                || t.file_move_id.is_some())
+            .then(|| format!("t:{}", t.id));
+            if t.state == crate::lanes::TaskState::Running {
+                let how = if t.stop_requested {
                     "Stopping; the worker has not finished yet."
-                }
-                crate::lanes::TaskState::Running => "Running now.",
-                crate::lanes::TaskState::WaitingForGap => "Waiting for a pause in your work.",
-                _ => "Next in line.",
-            };
-            in_progress.push((sentence(&t.command), how.to_string()));
-            drops.in_progress.push(
-                (t.state != crate::lanes::TaskState::Running
-                    || t.worker_id.is_some()
-                    || t.file_move_id.is_some())
-                .then(|| format!("t:{}", t.id)),
-            );
+                } else {
+                    "Running now."
+                };
+                in_progress.push((sentence(&t.command), how.to_string()));
+                drops.in_progress.push(drop);
+            } else {
+                // Not started yet: queued, never "in progress" (22 Oct 2026).
+                let why = if t.state == crate::lanes::TaskState::WaitingForGap {
+                    "Waiting for a pause in your work."
+                } else if t.needs_net {
+                    "Waiting for an internet connection."
+                } else {
+                    "Next in line."
+                };
+                queued.push((sentence(&t.command), why.to_string()));
+                drops.queued.push(drop);
+            }
         }
         for e in self.crew.errands() {
             in_progress.push((
@@ -486,10 +529,48 @@ impl Daemon<'_> {
         // Done, newest first, a handful: it is a receipt for today, not a log.
         done.sort_by_key(|d| std::cmp::Reverse(d.at));
         done.truncate(DONE_SHOWN);
+        // What Atlas is thinking through for you (`mind`), when no other
+        // source already shows it: until 22 Oct 2026 only the Now page read
+        // this, so Home and Outstanding could say nothing was underway while
+        // Now showed a task, and the other way round.
+        for w in self.mind.work.iter().filter(|w| !w.stage.finished()) {
+            let what = sentence(&w.asked);
+            if in_progress
+                .iter()
+                .chain(queued.iter())
+                .any(|(t, _)| *t == what)
+            {
+                continue;
+            }
+            if w.stage == crate::mind::Stage::Waiting {
+                let why = w
+                    .blocked_on
+                    .as_deref()
+                    .map(sentence)
+                    .unwrap_or_else(|| "Waiting on something outside my control.".into());
+                queued.push((what, why));
+                drops.queued.push(None);
+            } else {
+                let step = w
+                    .thoughts
+                    .last()
+                    .map(|t| sentence(&t.text))
+                    .unwrap_or_default();
+                let stage = sentence(w.stage.label());
+                let how = if step.is_empty() {
+                    stage
+                } else {
+                    format!("{}: {step}", stage.trim_end_matches('.'))
+                };
+                in_progress.push((what, how));
+                drops.in_progress.push(None);
+            }
+        }
         hub::Open {
             waiting,
             blocked,
             in_progress,
+            queued,
             carried,
             drops,
             failed,
@@ -1386,9 +1467,19 @@ mod one_count_tests {
         d.persist();
         let o = d.open_work(now);
         assert!(
-            !o.drops.waiting.iter().flatten().any(|k| k.starts_with("j:approval:")),
+            !o.drops
+                .waiting
+                .iter()
+                .flatten()
+                .any(|k| k.starts_with("j:approval:")),
             "it came back: {}",
-            o.drops.waiting.iter().flatten().cloned().collect::<Vec<_>>().join(", ")
+            o.drops
+                .waiting
+                .iter()
+                .flatten()
+                .cloned()
+                .collect::<Vec<_>>()
+                .join(", ")
         );
     }
 
@@ -1418,8 +1509,10 @@ mod one_count_tests {
         .unwrap();
         // A request that failed three days ago is still there, undismissed.
         let mut old = crate::job::Record::planned("chat:1:1", "open a thing");
-        old.transition(crate::job::State::Running, "started").unwrap();
-        old.finish(crate::job::State::Failed, "it did not open", "t").unwrap();
+        old.transition(crate::job::State::Running, "started")
+            .unwrap();
+        old.finish(crate::job::State::Failed, "it did not open", "t")
+            .unwrap();
         old.updated_at = now - 3 * 86_400;
         crate::job::upsert(&store, old).unwrap();
         // A saved approval: its own lane, with a way to drop it.
@@ -1432,12 +1525,36 @@ mod one_count_tests {
         )
         .unwrap();
         let o = d.open_work(now);
-        assert_eq!(o.failed.len(), 1, "{}", o.failed.iter().map(|f| f.what.to_string()).collect::<Vec<_>>().join(", "));
+        assert_eq!(
+            o.failed.len(),
+            1,
+            "{}",
+            o.failed
+                .iter()
+                .map(|f| f.what.to_string())
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
         assert_eq!(o.failed[0].what, "open a thing");
         assert!(!o.failed[0].when.is_empty(), "a failure says when");
-        assert!(o.waiting.iter().any(|w| w.0.contains("Close Chrome")), "{}", o.waiting.iter().map(|w| w.0.to_string()).collect::<Vec<_>>().join(", "));
-        assert!(o.blocked.is_empty(), "a question waiting on you is not Blocked");
-        assert!(o.drops.waiting.iter().any(|k| k.as_deref().is_some_and(|k| k.starts_with("j:approval:"))));
+        assert!(
+            o.waiting.iter().any(|w| w.0.contains("Close Chrome")),
+            "{}",
+            o.waiting
+                .iter()
+                .map(|w| w.0.to_string())
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
+        assert!(
+            o.blocked.is_empty(),
+            "a question waiting on you is not Blocked"
+        );
+        assert!(o
+            .drops
+            .waiting
+            .iter()
+            .any(|k| k.as_deref().is_some_and(|k| k.starts_with("j:approval:"))));
     }
 
     #[test]
@@ -1481,5 +1598,64 @@ mod one_count_tests {
         let page = hub::activity_page(&lines);
         assert!(page.contains("st-failed") && page.contains("st-done"));
         assert!(!page.contains("mutation sweep"));
+    }
+}
+
+thread_local! {
+    /// `Some` while one page or reply is being drawn (`one_record`); holds
+    /// that drawing's work record once built. `None` otherwise, so a reader
+    /// outside a drawing always gets a fresh one.
+    static OPEN_ONCE: std::cell::RefCell<Option<Option<hub::Open>>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+/// Draw one page or reply with a single build of the work record. Only for
+/// reading: nothing inside may change the work and then read it again.
+pub(super) fn one_record<R>(draw: impl FnOnce() -> R) -> R {
+    /// Ends the drawing's record when the drawing ends, however it ends: a
+    /// page that panics (and is caught) must not leave a stale record behind
+    /// for every reader after it.
+    struct Ends(bool);
+    impl Drop for Ends {
+        fn drop(&mut self) {
+            if self.0 {
+                OPEN_ONCE.with(|c| *c.borrow_mut() = None);
+            }
+        }
+    }
+    let outer = OPEN_ONCE.with(|c| c.borrow().is_some());
+    if !outer {
+        OPEN_ONCE.with(|c| *c.borrow_mut() = Some(None));
+    }
+    let _ends = Ends(!outer);
+    draw()
+}
+
+#[cfg(test)]
+mod one_record_tests {
+    use super::*;
+
+    #[test]
+    fn a_panic_inside_a_drawing_leaves_no_record_behind() {
+        let caught = std::panic::catch_unwind(|| {
+            one_record(|| {
+                OPEN_ONCE.with(|c| *c.borrow_mut() = Some(Some(hub::Open::default())));
+                panic!("a page failed to draw");
+            })
+        });
+        assert!(caught.is_err());
+        assert!(OPEN_ONCE.with(|c| c.borrow().is_none()));
+    }
+
+    #[test]
+    fn a_drawing_inside_a_drawing_keeps_the_outer_record() {
+        one_record(|| {
+            one_record(|| ());
+            assert!(
+                OPEN_ONCE.with(|c| c.borrow().is_some()),
+                "the inner end must not end the outer"
+            );
+        });
+        assert!(OPEN_ONCE.with(|c| c.borrow().is_none()));
     }
 }

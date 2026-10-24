@@ -745,6 +745,8 @@ mod the_oldest_vault_still_opens;
 mod the_printed_address_actually_opens;
 #[path = "the_project_workshop.rs"]
 mod the_project_workshop;
+#[path = "the_status_is_one_truth.rs"]
+mod the_status_is_one_truth;
 #[path = "the_three_it_promised.rs"]
 mod the_three_it_promised;
 #[path = "the_trash_is_not_where_space_goes_to_die.rs"]

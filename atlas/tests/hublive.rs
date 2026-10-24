@@ -1088,7 +1088,9 @@ fn today_runs_down_the_spine_in_order_with_now_between_done_and_to_come() {
         ("13:40", "Backed up the vault", atlas::hub::Mark::Done),
         "{said:?}"
     );
-    assert_eq!(said[2].2, atlas::hub::Mark::Now, "{said:?}");
+    // Nothing is running, so the divider is the plain NOW, not "Working"
+    // (22 Oct 2026: Home said Working beside "Nothing underway").
+    assert_eq!(said[2].2, atlas::hub::Mark::Idle, "{said:?}");
     assert_eq!(
         said[3],
         ("20:30", "Call with the broker", atlas::hub::Mark::Later),

@@ -1,0 +1,39 @@
+What a screen reader is given on /hub/outstanding (accessibility tree, reading order)
+
+link: Skip to the page
+navigation: Atlas
+link: Atlas, Home
+  Atlas
+link: Search Ctrl K
+link: Home
+link: Talk
+link: Projects
+link: Messages
+link: Business
+link: Settings
+banner
+link: Find anything
+  Find anything Ctrl K
+link: Nothing waiting
+link: Help
+group
+button: Quit Atlas
+main
+heading 1: Outstanding
+status
+navigation: Home
+link: Home
+link: Now
+link: Outstanding
+link: Calendar
+link: History
+link: Activity
+heading 2: Waiting on you 0
+heading 2: Blocked 0
+heading 2: Failed 0
+heading 2: Interrupted 0
+heading 2: In progress 0
+heading 2: Queued 0
+heading 2: Carried over 0
+heading 2: Done today 0
+  Nothing here rots quietly. Anything carried more than a week, I raise in your brief. If you want something gone, press D

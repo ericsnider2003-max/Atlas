@@ -1,0 +1,25 @@
+{
+  "runs": [
+    {
+      "tool": "announce",
+      "at": "2026-10-23T08:55:46.406Z",
+      "ran": true,
+      "axe": true,
+      "pages": 3,
+      "not_read": 0,
+      "exit": 0
+    },
+    {
+      "tool": "render",
+      "at": "2026-10-23T08:57:58.442Z",
+      "ran": true,
+      "mode": "standard",
+      "pages": 6,
+      "not_checked": 0,
+      "partial": 0,
+      "authenticated": true,
+      "leads": 0,
+      "exit": 0
+    }
+  ]
+}

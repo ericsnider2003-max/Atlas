@@ -10,6 +10,25 @@ impl Daemon<'_> {
     /// `q` is the address's query: which conversation, business or view, a
     /// line to say once (`said`), or what a phone's share sheet sent.
     pub(super) fn hub_page_q(&mut self, page: Page, q: &str) -> String {
+        let html = self.hub_page_q_drawn(page, q);
+        // A business's own pages keep that business in their tabs (23 Oct
+        // 2026, the review: with two businesses, "Clients" from Acme's
+        // overview opened the first business's clients instead).
+        match field_of(&hub::form_fields(q), "b") {
+            Some(b)
+                if !b.is_empty()
+                    && Page::Business
+                        .section()
+                        .2
+                        .contains(&page.group().unwrap_or("")) =>
+            {
+                hub::tabs_for_business(html, &b)
+            }
+            _ => html,
+        }
+    }
+
+    fn hub_page_q_drawn(&mut self, page: Page, q: &str) -> String {
         let now = crate::store::now();
         let off = crate::localclock::offset_secs();
         let fields = hub::form_fields(q);

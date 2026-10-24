@@ -1,0 +1,28 @@
+{
+  "root": "C:\\Users\\erics\\Atlas\\wt-hub",
+  "node": "24.21.0",
+  "tier": "static",
+  "platforms": [
+    "web",
+    "ios",
+    "android"
+  ],
+  "frameworks": [],
+  "libraries": [],
+  "linters": [
+    "Android Lint (via gradlew lint)"
+  ],
+  "playwright": "missing",
+  "axe_core": "missing",
+  "git": true,
+  "spa": false,
+  "needs_login": false,
+  "routes": [],
+  "coverage_lost": [
+    "rendered checks (keyboard walk, dialogs, rendered contrast, reflow, SPA routes)",
+    "axe-core second engine"
+  ],
+  "commands": [
+    "node \"C:\\Users\\erics\\AppData\\Local\\Claude-Data\\claude_pzs8sxrjxfjjc\\rpm\\95ff9e20\\e74ff5fd\\plugin_01YGzXGsAtGEBf6mGXx4FgUa\\skills\\barrier-check\\scripts\\check.mjs\" . --json --fail-on none --project ."
+  ]
+}

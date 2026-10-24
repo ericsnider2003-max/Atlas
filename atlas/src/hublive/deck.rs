@@ -87,7 +87,11 @@ impl Daemon<'_> {
             ));
         }
         for e in self.journal.since(now.saturating_sub(86_400)) {
+            // Things Atlas said (a memory notice, an offer) are not things
+            // done: they stay in Activity, not on Today (23 Oct 2026: Home's
+            // Today was three "Memory is at 91 percent." marked Done).
             if e.kind == crate::activity::Kind::Upkeep
+                || e.kind == crate::activity::Kind::Offered
                 || e.kind.internal()
                 || day(e.at, off) != today
             {
@@ -143,16 +147,6 @@ impl Daemon<'_> {
                 },
                 sentence(&t.command),
             )
-        } else if let Some(t) = waiting_to_start {
-            (
-                format!("About to start: {}", t.command.trim()),
-                if t.state == crate::lanes::TaskState::WaitingForGap {
-                    "Waiting for you to stop typing, so it doesn't get in your way.".to_string()
-                } else {
-                    "Next in line.".to_string()
-                },
-                "About to start".to_string(),
-            )
         } else if self.attention.is_paused() {
             (
                 "Paused.".to_string(),
@@ -172,15 +166,37 @@ impl Daemon<'_> {
                 },
                 what.clone(),
             )
+        } else if let Some(t) = waiting_to_start {
+            (
+                format!("About to start: {}", t.command.trim()),
+                if t.state == crate::lanes::TaskState::WaitingForGap {
+                    "Waiting for you to stop typing, so it doesn't get in your way.".to_string()
+                } else {
+                    "Next in line.".to_string()
+                },
+                "About to start".to_string(),
+            )
+        } else if let Some((what, why)) = open.queued.first() {
+            // Accepted and waiting its turn: said as queued, with why, never
+            // as "Working" and never as nothing at all (22 Oct 2026).
+            let more = counts.queued.saturating_sub(1);
+            (
+                format!("Queued: {}", what.trim_end_matches('.')),
+                if more > 0 {
+                    format!("{why} {more} more queued.")
+                } else {
+                    why.clone()
+                },
+                "Nothing running".to_string(),
+            )
         } else {
             (
                 "Nothing underway.".to_string(),
                 match next {
                     Some((_, time, what, _)) => format!("Next: {what} at {time}."),
-                    None if crate::phonemode::on() => {
-                        "Say what you need, or tap the search to find anything.".to_string()
-                    }
-                    None => "Say what you need, or press Ctrl K to find anything.".to_string(),
+                    // The same words on every device: a phone reaching the
+                    // laptop's hub has no Ctrl key either (23 Oct 2026).
+                    None => "Say what you need, or search to find anything.".to_string(),
                 },
                 "You're here".to_string(),
             )
@@ -199,8 +215,15 @@ impl Daemon<'_> {
             .skip(done.len().saturating_sub(3))
             .map(|(_, t, w, _)| (t.clone(), w.clone(), hub::Mark::Done))
             .collect();
-        if !events.is_empty() || running.is_some() || counts.running > 0 {
+        // The NOW mark says Working only when the headline is something
+        // running (23 Oct 2026, the review: "About to start" and "Paused"
+        // were drawn with the Working mark whenever an errand ran).
+        let working =
+            running.is_some() || (!self.attention.is_paused() && !open.in_progress.is_empty());
+        if working {
             spine.push(("NOW".to_string(), now_short, hub::Mark::Now));
+        } else if !events.is_empty() || counts.running > 0 || counts.queued > 0 {
+            spine.push(("NOW".to_string(), now_short, hub::Mark::Idle));
         }
         spine.extend(
             later
@@ -239,6 +262,7 @@ impl Daemon<'_> {
             asks,
             businesses: self.glances(now),
             first_run,
+            work: open,
         }
     }
 

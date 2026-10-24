@@ -95,7 +95,7 @@ fn the_fonts_are_the_ones_already_on_the_machine() {
     // A web font is the commonest offline break: the page loads, the text is
     // invisible or wrong until the font arrives, and it never arrives. The hub
     // asks only for the system stack.
-    let html = hub::shell("Atlas", "<p>x</p>");
+    let html = styled(hub::shell("Atlas", "<p>x</p>"));
     assert!(
         html.contains("system-ui"),
         "the system font stack should be named"
@@ -112,7 +112,7 @@ fn light_dark_and_contrast_follow_the_system_with_no_script() {
     // Appearance adapts to the system through media queries — no script, no
     // stored round-trip, no network. The hooks for a stored override are in the
     // CSS, applied server-side, so the manual switch stays script-free too.
-    let html = hub::shell_at(Some(Page::Dashboard), "Dashboard", "<p>x</p>");
+    let html = styled(hub::shell_at(Some(Page::Dashboard), "Dashboard", "<p>x</p>"));
     assert!(
         !html.to_lowercase().contains("<script"),
         "appearance needs no script"
@@ -126,4 +126,13 @@ fn light_dark_and_contrast_follow_the_system_with_no_script() {
         "and the system's contrast preference"
     );
     assert!(network_refs(&html).is_empty(), "and pulls nothing in");
+}
+
+/// The page as the browser draws it: the stylesheet it links, in place
+/// (22 Oct 2026: the hub's CSS became one cached file instead of 60 KB pasted
+/// into every page, so a page's CSS is read through its link).
+fn styled(page: String) -> String {
+    let link = format!("<link rel=stylesheet href={}>", atlas::hub::style_path());
+    assert!(page.contains(&link), "the page links the hub's stylesheet");
+    page.replace(&link, &format!("<style>{}</style>", atlas::hub::STYLE))
 }

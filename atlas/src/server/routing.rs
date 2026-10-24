@@ -699,6 +699,78 @@ pub fn render(reply: &Reply) -> String {
     )
 }
 
+/// Whether the browser said it takes gzip (`Accept-Encoding`), read from the
+/// request head.
+pub(super) fn takes_gzip(head: &str) -> bool {
+    head.lines().any(|l| {
+        let l = l.to_ascii_lowercase();
+        let Some(list) = l.strip_prefix("accept-encoding:") else {
+            return false;
+        };
+        // "gzip;q=0" is a refusal, not an offer.
+        list.split(',').any(|t| {
+            let mut parts = t.trim().split(';');
+            parts.next().map(str::trim) == Some("gzip")
+                && !parts.any(|p| matches!(p.trim(), "q=0" | "q=0.0" | "q=0.00" | "q=0.000"))
+        })
+    })
+}
+
+/// Bodies smaller than this go as they are: one packet either way.
+const GZIP_FROM: usize = 1400;
+
+/// gzip, from the deflate Atlas already carries (`miniz_oxide`) and the
+/// zip reader's CRC: no new dependency.
+pub(super) fn gzip(bytes: &[u8]) -> Vec<u8> {
+    let mut out = vec![0x1f, 0x8b, 8, 0, 0, 0, 0, 0, 0, 0xff];
+    out.extend(miniz_oxide::deflate::compress_to_vec(bytes, 6));
+    out.extend(crate::zipread::crc32(bytes).to_le_bytes());
+    out.extend((bytes.len() as u32).to_le_bytes());
+    out
+}
+
+/// [`render`], compressed when the browser takes gzip (22 Oct 2026: every
+/// hub page went to the phone as 90-170 KB of plain text; compressed it is
+/// about a fifth of that). Redirects, files to save and tiny bodies go as
+/// they are.
+pub(crate) fn render_bytes(reply: &Reply, gzip_ok: bool) -> Vec<u8> {
+    let plain = render(reply);
+    if !gzip_ok || reply.status == 303 || reply.download.is_some() || reply.body.len() < GZIP_FROM {
+        return plain.into_bytes();
+    }
+    let Some(split) = plain.find("\r\n\r\n") else {
+        return plain.into_bytes();
+    };
+    let packed = gzip(reply.body.as_bytes());
+    let head = plain[..split].replace(
+        &format!("Content-Length: {}\r\n", reply.body.len()),
+        &format!(
+            "Content-Length: {}\r\nContent-Encoding: gzip\r\nVary: Accept-Encoding\r\n",
+            packed.len()
+        ),
+    );
+    let mut out = format!("{head}\r\n\r\n").into_bytes();
+    out.extend(packed);
+    out
+}
+
+/// A public file (`hub::public_file`), the stylesheet compressed when the
+/// browser takes gzip. The rest are images and small scripts.
+pub(super) fn render_public(file: &crate::hub::PublicFile, gzip_ok: bool) -> Vec<u8> {
+    if gzip_ok && file.content_type.starts_with("text/css") {
+        // Compressed once per run: the file never changes while Atlas runs.
+        static PACKED: std::sync::OnceLock<Vec<u8>> = std::sync::OnceLock::new();
+        let packed = PACKED.get_or_init(|| gzip(file.bytes));
+        let headers = format!(
+            "{}Content-Encoding: gzip\r\nVary: Accept-Encoding\r\n",
+            file.headers
+        );
+        render_file(file.content_type, &headers, packed)
+    } else {
+        render_file(file.content_type, file.headers, file.bytes)
+    }
+}
+
 /// A 200 carrying bytes rather than a page: the phone app's manifest, service
 /// worker and icons.
 ///
@@ -718,4 +790,72 @@ pub(super) fn render_file(content_type: &str, headers: &str, bytes: &[u8]) -> Ve
     .into_bytes();
     out.extend_from_slice(bytes);
     out
+}
+
+#[cfg(test)]
+mod compressed_replies {
+    use super::*;
+
+    /// The head of a response: everything before the one blank line.
+    fn head_of(bytes: &[u8]) -> String {
+        let text = String::from_utf8_lossy(bytes);
+        let end = text
+            .find("\r\n\r\n")
+            .expect("a response head ends in a blank line");
+        text[..end].to_string()
+    }
+
+    fn inflate(gz: &[u8]) -> Vec<u8> {
+        // 10-byte gzip header, raw deflate, 8-byte trailer.
+        miniz_oxide::inflate::decompress_to_vec(&gz[10..gz.len() - 8]).unwrap()
+    }
+
+    // 22 Oct 2026: a header string carried a real line break where an escaped
+    // line ending was meant, so the head ended early and the browser got gzip bytes it
+    // was never told were gzip: every page drew with no stylesheet.
+    #[test]
+    fn the_stylesheet_says_it_is_gzip_and_inflates_to_itself() {
+        let file = crate::hub::public_file("GET", crate::hub::style_path()).unwrap();
+        assert!(file.headers.ends_with("\r\n") && !file.headers.contains("\r\n\r\n"));
+        let out = render_public(&file, true);
+        let head = head_of(&out);
+        assert!(head.contains("Content-Encoding: gzip"), "{head}");
+        assert!(
+            head.contains("Cache-Control: public, max-age=31536000, immutable"),
+            "{head}"
+        );
+        assert!(head.lines().skip(1).all(|l| l.contains(": ")), "{head}");
+        let body = &out[head.len() + 4..];
+        assert_eq!(inflate(body), crate::hub::STYLE.as_bytes());
+        let len: usize = head
+            .lines()
+            .find_map(|l| l.strip_prefix("Content-Length: "))
+            .unwrap()
+            .trim()
+            .parse()
+            .unwrap();
+        assert_eq!(len, body.len());
+    }
+
+    #[test]
+    fn a_page_goes_gzipped_with_a_whole_head_and_plain_without() {
+        let page = Reply::html(format!("<p>{}</p>", "Atlas ".repeat(2000)));
+        let out = render_bytes(&page, true);
+        let head = head_of(&out);
+        assert!(head.contains("Content-Encoding: gzip"), "{head}");
+        assert!(head.lines().skip(1).all(|l| l.contains(": ")), "{head}");
+        assert_eq!(inflate(&out[head.len() + 4..]), page.body.as_bytes());
+        assert!(takes_gzip(
+            "GET / HTTP/1.1\r\nAccept-Encoding: gzip, deflate, br\r\n"
+        ));
+        assert!(!takes_gzip(
+            "GET / HTTP/1.1\r\nAccept-Encoding: gzip;q=0, br\r\n"
+        ));
+        assert!(!takes_gzip(
+            "GET / HTTP/1.1\r\nAccept-Encoding: identity\r\n"
+        ));
+        let plain = render_bytes(&page, false);
+        assert!(!head_of(&plain).contains("Content-Encoding"));
+        assert!(String::from_utf8_lossy(&plain).ends_with(&page.body));
+    }
 }

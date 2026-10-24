@@ -101,7 +101,7 @@ fn contrast(a: &str, b: &str) -> f64 {
 
 #[test]
 fn the_hub_wears_the_three_colourways_exactly_as_the_artboards_have_them() {
-    let page = hub::shell("Atlas", "<p>x</p>").to_lowercase();
+    let page = styled(hub::shell("Atlas", "<p>x</p>")).to_lowercase();
     let root = &page[page.find(":root{").unwrap()..];
     let root = &root[..root.find('}').unwrap()];
     let dark = &page[page.find(":root[data-theme=dark]{").unwrap()..];
@@ -185,50 +185,53 @@ fn every_page_has_the_designs_labelled_sidebar_and_breadcrumb() {
     assert!(!html.contains("class=rail"), "no icon rail");
     assert!(html.contains("<span class=owner>Atlas</span>"), "the brand");
     assert!(html.contains(">Search<kbd class=ck>Ctrl K</kbd></a>"));
-    assert!(
-        html.contains("<p class=grp>Personal</p>"),
-        "the Personal group, named"
-    );
+    // 22 Oct 2026, the six sections Eric approved: the sidebar is Search and
+    // the six, with Settings at the foot.
     let at = html.find("<nav class=sidebar").unwrap();
     let sidebar = &html[at..at + html[at..].find("</nav>").unwrap()];
-    for p in [
-        Page::Dashboard,
-        Page::Now,
-        Page::Calendar,
-        Page::Workshop,
-        Page::Outstanding,
-        Page::Settings,
-    ] {
+    for (name, lead, _) in hub::SECTIONS {
         assert!(
-            sidebar.contains(&format!("href='{}'", p.href())),
-            "{} isn't in the sidebar",
-            p.label()
+            sidebar.contains(&format!("href='{}'", lead.href())) && sidebar.contains(name),
+            "{name} isn't in the sidebar"
         );
     }
     assert!(
-        html.contains("class='nav on' href='/hub/calendar'"),
-        "the page you're on is marked"
+        sidebar.matches("<a ").count() <= 10,
+        "the sidebar is the six sections, not every page: {sidebar}"
     );
     assert!(
-        html.contains("<details class=more>"),
-        "everything else one press away"
+        html.contains("class='nav on' href='/hub'"),
+        "the section you're in is marked"
     );
-    // Settings at the foot, after More.
     assert!(
-        html.rfind("href='/hub/settings'").unwrap() > html.find("<details class=more>").unwrap()
+        html.contains("<a href='/hub/calendar' aria-current=page class=on>"),
+        "and the page you're on, in the section's tabs"
     );
-    // Every page in the hub can be reached from the sidebar.
+    assert!(sidebar.rfind("href='/hub/settings'").unwrap() > sidebar.find("href='/hub'").unwrap());
+    // Every page is reachable: its section from the sidebar, then the
+    // section's tabs, then (for Settings' further rows) that row's tabs.
     for (_, pages) in hub::NAV {
         for p in *pages {
+            let (_, lead, _) = p.section();
+            assert!(sidebar.contains(&format!("href='{}'", lead.href())));
+            let first = pages[0];
+            let section = hub::shell_at(Some(*lead), "x", "<p>x</p>");
             assert!(
-                html.contains(&format!("href='{}'", p.href())),
+                section.contains(&format!("href='{}'", first.href())),
+                "{} can't be reached from {}",
+                first.label(),
+                lead.label()
+            );
+            let row = hub::shell_at(Some(first), "x", "<p>x</p>");
+            assert!(
+                row.contains(&format!("href='{}'", p.href())),
                 "{} can't be reached",
                 p.label()
             );
         }
     }
-    // The top bar is the breadcrumb: "Personal / Calendar".
-    assert!(html.contains("<p class=crumbs>Personal<span>/</span><b>Calendar</b></p>"));
+    // The top bar is the breadcrumb: "Home / Calendar".
+    assert!(html.contains("<p class=crumbs>Home<span>/</span><b>Calendar</b></p>"));
     // The names the design uses.
     assert_eq!(Page::Dashboard.label(), "Home");
     assert_eq!(Page::Now.label(), "Now");
@@ -277,6 +280,7 @@ fn a_business_gets_its_own_group_in_the_sidebar_only_once_it_exists() {
 
 fn deck() -> Deck {
     Deck {
+        work: Default::default(),
         greeting: "Good evening, Eric.".into(),
         status: "On, listening".into(),
         tone: "",
@@ -335,8 +339,8 @@ fn home_is_the_brief_with_whats_waiting_inside_it_then_today() {
             && html.contains("</svg>Next</span>")
     );
     assert!(html.contains("Call &lt;with&gt; the broker"), "escaped");
-    // The front page is Personal / Home.
-    assert!(html.contains("<p class=crumbs>Personal<span>/</span><b>Home</b></p>"));
+    // The front page's top bar is just Home (22 Oct 2026).
+    assert!(html.contains("<p class=crumbs><b>Home</b></p>"));
     assert!(html.contains("<h1>Home</h1>"));
     // With no business, Right now sits beside Today, with the box to find anything.
     assert!(
@@ -782,7 +786,7 @@ fn the_appearance_becomes_exactly_the_attributes_the_css_reads() {
 fn warm_paper_is_the_default_and_the_settings_change_it() {
     // Warm Paper is the lead colourway of the locked design (and Eric's
     // ruling of 26 Sep): the default, with the settings to change it.
-    let page = hub::shell("Atlas", "<p>x</p>");
+    let page = styled(hub::shell("Atlas", "<p>x</p>"));
     assert!(
         page.contains("<html lang=en data-theme=paper"),
         "Warm Paper when nothing is chosen"
@@ -840,4 +844,13 @@ fn warm_paper_is_the_default_and_the_settings_change_it() {
     );
     // Only `look.` choices reach the stored record; anything else is the menu's.
     assert!(atlas::appearance::choose("theme", "ember").is_none());
+}
+
+/// The page as the browser draws it: the stylesheet it links, in place
+/// (22 Oct 2026: the hub's CSS became one cached file instead of 60 KB pasted
+/// into every page, so a page's CSS is read through its link).
+fn styled(page: String) -> String {
+    let link = format!("<link rel=stylesheet href={}>", atlas::hub::style_path());
+    assert!(page.contains(&link), "the page links the hub's stylesheet");
+    page.replace(&link, &format!("<style>{}</style>", atlas::hub::STYLE))
 }

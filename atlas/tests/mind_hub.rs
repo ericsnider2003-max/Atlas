@@ -231,7 +231,7 @@ fn now(title: &str, steps: Vec<(Step, String)>, background: Vec<String>, working
 
 #[test]
 fn the_live_page_shows_the_thinking_animation_while_it_works() {
-    let page = now("tidy downloads", vec![], vec![], true);
+    let page = styled(now("tidy downloads", vec![], vec![], true));
     assert!(page.contains("class=think"));
     assert!(page.contains("animation:spin"), "it actually moves");
     let idle = now("Nothing at the moment", vec![], vec![], false);
@@ -267,7 +267,7 @@ fn the_animation_needs_nothing_from_the_internet() {
 
 #[test]
 fn motion_is_dropped_for_anyone_who_asked_for_less_of_it() {
-    let page = now("x", vec![], vec![], true);
+    let page = styled(now("x", vec![], vec![], true));
     assert!(page.contains("prefers-reduced-motion"));
 }
 
@@ -467,4 +467,13 @@ fn notes_kept_for_you_are_on_the_now_page() {
         !now_page(&v).contains("Kept for you"),
         "nothing held, nothing shown"
     );
+}
+
+/// The page as the browser draws it: the stylesheet it links, in place
+/// (22 Oct 2026: the hub's CSS became one cached file instead of 60 KB pasted
+/// into every page, so a page's CSS is read through its link).
+fn styled(page: String) -> String {
+    let link = format!("<link rel=stylesheet href={}>", atlas::hub::style_path());
+    assert!(page.contains(&link), "the page links the hub's stylesheet");
+    page.replace(&link, &format!("<style>{}</style>", atlas::hub::STYLE))
 }

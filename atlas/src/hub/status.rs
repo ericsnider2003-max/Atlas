@@ -150,6 +150,7 @@ impl Open {
         self.waiting.len()
             + self.blocked.len()
             + self.in_progress.len()
+            + self.queued.len()
             + self.carried.len()
             + self.failed.len()
             + self.interrupted.len()
@@ -169,6 +170,8 @@ pub struct Counts {
     pub blocked: usize,
     /// Running now: the In progress lane.
     pub running: usize,
+    /// Accepted but not started: the Queued lane.
+    pub queued: usize,
     pub failed: usize,
     /// Shown in the Done lane, which is capped, so this is a floor.
     pub done_today: usize,
@@ -181,6 +184,7 @@ impl Counts {
             waiting: o.waiting.len(),
             blocked: o.blocked.len(),
             running: o.in_progress.len(),
+            queued: o.queued.len(),
             failed: o.failed.len(),
             done_today: o.done.len(),
             interrupted: o.interrupted.len(),
@@ -222,6 +226,9 @@ pub fn state_icon(state: &str) -> &'static str {
         "blocked" | "stopped" => "<path d='M8.5 3h7L21 8.5v7L15.5 21h-7L3 15.5v-7z'/><path d='M8 12h8'/>",
         // A clock: it is going, and takes time.
         "running" | "working" => "<circle cx=12 cy=12 r=9 /><path d='M12 7v5l3 2'/>",
+        // An hourglass: accepted, and waiting its turn. Not the running
+        // clock, so queued never reads as working (22 Oct 2026).
+        "queued" | "idle" => "<path d='M7 3h10M7 21h10M8 3c0 5 8 5 8 9s-8 4-8 9M16 3c0 5-8 5-8 9s8 4 8 9'/>",
         // A cross in a circle: it ended and did not work.
         "failed" => "<circle cx=12 cy=12 r=9 /><path d='M9 9l6 6M15 9l-6 6'/>",
         // A tick: it finished.
@@ -475,6 +482,29 @@ pub fn outstanding_page(o: &Open) -> String {
             "<div class=item><div class=t>{}</div><div class=d>{}</div>{}</div>",
             esc(what),
             esc(how),
+            if drop.is_empty() {
+                String::new()
+            } else {
+                format!("<div class=acts>{drop}</div>")
+            }
+        ));
+    }
+    right.push_str("</section><section class=lane id=lane-queued>");
+    right.push_str(&lane_head(
+        state_icon("queued"),
+        "--st-running",
+        "Queued",
+        o.queued.len(),
+    ));
+    if o.queued.is_empty() {
+        right.push_str("<p class=nothing>Nothing waiting its turn.</p>");
+    }
+    for (n, (what, why)) in o.queued.iter().enumerate() {
+        let drop = drop_button(o.drops.queued.get(n), what);
+        right.push_str(&format!(
+            "<div class=item><div class=t>{}</div><div class=d>{}</div>{}</div>",
+            esc(what),
+            esc(why),
             if drop.is_empty() {
                 String::new()
             } else {

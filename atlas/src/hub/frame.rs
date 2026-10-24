@@ -206,7 +206,30 @@ pub fn with_palette(
     }
 }
 
-/// The files anyone may fetch: the service worker and the icons.
+/// FNV-1a, at compile time: the stylesheet's address carries its hash.
+const fn fnv(bytes: &[u8]) -> u64 {
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+    let mut i = 0;
+    while i < bytes.len() {
+        h ^= bytes[i] as u64;
+        h = h.wrapping_mul(0x0000_0100_0000_01b3);
+        i += 1;
+    }
+    h
+}
+
+/// The stylesheet's address, named by its contents (22 Oct 2026).
+///
+/// It was pasted into every page: 60 KB of every 95 KB page, never cached
+/// and never compressed, on every visit from a phone. Now it is one file a
+/// browser keeps for good, because a new build gives it a new name.
+pub fn style_path() -> &'static str {
+    static PATH: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    PATH.get_or_init(|| format!("/hub/hub-{:016x}.css", fnv(STYLE.as_bytes())))
+}
+
+/// The files anyone may fetch: the service worker, the icons and the
+/// stylesheet.
 ///
 /// Public because a browser fetches them without the cookie (an icon for a
 /// home screen, a worker registration's update check) and because nothing in
@@ -244,6 +267,11 @@ pub fn public_file(method: &str, path: &str) -> Option<PublicFile> {
             content_type: "image/png",
             headers: ICON_CACHE,
             bytes: APPLE_TOUCH_ICON,
+        }),
+        p if p == style_path() => Some(PublicFile {
+            content_type: "text/css; charset=utf-8",
+            headers: "Cache-Control: public, max-age=31536000, immutable\r\n",
+            bytes: STYLE.as_bytes(),
         }),
         _ => None,
     }
@@ -347,15 +375,16 @@ pub(super) fn shell_with(here: Option<Page>, title: &str, body: &str, waiting: u
     format!(
         "<!doctype html><html lang=en{theme}><head><meta charset=utf-8>\
          <meta name=viewport content=\"width=device-width,initial-scale=1\">\
-         <title>Atlas — {t}</title><style>{STYLE}</style></head><body>\
+         <title>Atlas — {t}</title><link rel=stylesheet href={style}></head><body>\
          <a class=skip href='#main'>Skip to the page</a>\
          <div class=wrap>{sidebar}<div class=col-main>\
          <header><a class=hbrand href='/hub' aria-label='Atlas, Home'>{MARK}<span>Atlas</span></a>{trail}<span class=grow></span>\
          <a class=tool id=palopen href='/hub/find' aria-label='Find anything'>{SEARCH_ICON}<span class=lbl>Find anything</span>{ctrl_k}</a>\
          <a class='tool talkbtn' href='/hub/talk' aria-label='Talk'>{MIC_ICON}</a>\
-         {waiting_link}<a class='tool help' href='/hub/help' aria-label='Help'>{HELP_ICON}<span class=lbl>Help</span></a>{theme_chip}{menu}{QUIT}</header>\
-         <main id=main tabindex=-1>{heading}{body}</main></div></div>{tabs}</body></html>",
+         {waiting_link}<a class='tool help' href='/hub/help' aria-label='Help'>{HELP_ICON}<span class=lbl>Help</span></a>{theme_chip}{QUIT}</header>\
+         <main id=main tabindex=-1>{heading}{subnav}{body}</main></div></div>{tabs}</body></html>",
         t = esc(title),
+        style = style_path(),
         // A phone has no Ctrl key (`phonemode`).
         ctrl_k = if crate::phonemode::on() { "" } else { "<kbd class=ck>Ctrl K</kbd>" },
         // Two stored appearances, merged 26 Sep 2026. The hub's own "Aa" menu
@@ -368,7 +397,7 @@ pub(super) fn shell_with(here: Option<Page>, title: &str, body: &str, waiting: u
         theme = crate::appearance::Appearance::load().html_attrs(),
         sidebar = sidebar_html(here, waiting),
         tabs = tabs_html(here, waiting),
-        menu = menu_html(here),
+        subnav = subnav_html(here),
         theme_chip = appearance_menu(),
         waiting_link = if waiting > 0 {
             format!(
@@ -416,145 +445,123 @@ pub(super) fn icon(page: Page) -> &'static str {
     }
 }
 
-/// The navigation the design draws: a labelled sidebar in Notion's calm shape.
+/// The navigation: the six sections (`SECTIONS`), in the design's calm
+/// labelled sidebar.
 ///
-/// The brand, Search and Now at the top; the Personal pages; the people you
-/// talk to; a business's own group, once a business exists (written in by
-/// `with_business`, since only the running Atlas knows your businesses);
-/// everything else one press away under More; Settings at the foot.
-///
-/// It replaced the command deck's icon rail on 26 Sep 2026. Four icons and a
-/// grid button hid every page's name, which is the opposite of the calm,
-/// read-at-a-glance structure Eric chose on 20-21 Sep.
+/// 22 Oct 2026, Eric: "Pages are layed out in a shitty non optimal way" and
+/// "there is redundancy and it creates extra pages that don't genuinely have
+/// a purpose." The sidebar had grown to about seventy links over two folded
+/// menus, and every page carried them all again in a phone menu: a hundred
+/// and fifty links on every page. Now: Search, then six sections, Settings
+/// at the foot as drawn. A section's own pages are its row of tabs at the
+/// top of the page (`subnav_html`), on every device alike.
 pub(super) fn sidebar_html(here: Option<Page>, waiting: usize) -> String {
-    let item = |page: Page, name: &str, extra: &str| {
-        format!(
-            "<a class='nav{on}' href='{href}'{cur}><svg viewBox='0 0 24 24' fill=none stroke=currentColor stroke-width=2 aria-hidden=true>{paths}</svg>{name}{extra}</a>",
-            on = if here == Some(page) { " on" } else { "" },
-            cur = if here == Some(page) { " aria-current=page" } else { "" },
-            href = page.href(),
-            paths = icon(page),
-            name = esc(name),
-        )
-    };
+    let current = here.map(|p| p.section().0);
     let mut out = format!(
-        "<nav class=sidebar aria-label='Atlas'><a class=brand href='/hub' aria-label='Atlas, Home'>{MARK}<span class=owner>Atlas</span></a>\
-         <a class=nav href='/hub/find'><svg viewBox='0 0 24 24' fill=none stroke=currentColor stroke-width=2 aria-hidden=true>\
-         <circle cx=11 cy=11 r=7 /><path d='M21 21l-4-4'/></svg>Search{}</a>",
+        "<nav class=sidebar aria-label='Atlas'><a class=brand href='/hub' aria-label='Atlas, Home'>{MARK}<span class=owner>Atlas</span></a>         <a class=nav href='/hub/find'><svg viewBox='0 0 24 24' fill=none stroke=currentColor stroke-width=2 aria-hidden=true>         <circle cx=11 cy=11 r=7 /><path d='M21 21l-4-4'/></svg>Search{}</a>",
         if crate::phonemode::on() { "" } else { "<kbd class=ck>Ctrl K</kbd>" }
     );
-    // The sidebar's own groups, shown open. Settings sits at the foot rather
-    // than in a group, as drawn; the rest go under More.
-    let shown = |g: &str| g.is_empty() || g == "Personal" || g == "People";
-    for (group, pages) in NAV.iter().filter(|(g, _)| shown(g)) {
-        if !group.is_empty() {
-            out.push_str(&format!("<p class=grp>{}</p>", esc(group)));
+    for (name, lead, _) in SECTIONS {
+        if !lead.here() {
+            continue;
         }
-        for page in pages.iter().filter(|p| p.here()) {
-            let extra = if *page == Page::Outstanding && waiting > 0 {
+        if *name == "Settings" {
+            out.push_str("<span class=grow></span>");
+        }
+        let on = current == Some(*name);
+        out.push_str(&format!(
+            "<a class='nav{on}' href='{href}'{cur}><svg viewBox='0 0 24 24' fill=none stroke=currentColor stroke-width=2 aria-hidden=true>{paths}</svg>{name}{extra}</a>",
+            on = if on { " on" } else { "" },
+            cur = if on { " aria-current=true" } else { "" },
+            href = lead.href(),
+            paths = icon(*lead),
+            name = esc(name),
+            extra = if *name == "Home" && waiting > 0 {
                 format!("<span class=count>{waiting}</span>")
             } else {
                 String::new()
-            };
-            out.push_str(&item(*page, page.label(), &extra));
+            },
+        ));
+        if *name == "Business" {
+            out.push_str(BUSINESS_SLOT);
         }
     }
-    // The three things from Your devices people reach for, shown open.
-    out.push_str("<p class=grp>Your devices</p>");
-    for page in [Page::Phone, Page::Updates, Page::Help]
-        .into_iter()
-        .filter(|p| p.here())
-    {
-        out.push_str(&item(page, page.label(), ""));
-    }
-    out.push_str(BUSINESS_SLOT);
-    // Eric, 27 Sep 2026: More was "too complicated and not organized" --
-    // twenty-six pages in five groups. Now two short menus: More, for your own
-    // work and the business pages; Atlas setup, for how Atlas behaves, what
-    // it's connected to, and Atlas about itself.
-    let folded = |label: &str, groups: &[(&str, &[Page])]| {
-        let inside = here.is_some_and(|h| groups.iter().any(|(_, ps)| ps.contains(&h)));
-        let mut m = format!(
-            "<details class=more{open}><summary class=nav><svg viewBox='0 0 24 24' fill=none stroke=currentColor stroke-width=2 aria-hidden=true>\
-             <circle cx=5 cy=12 r=1.6 /><circle cx=12 cy=12 r=1.6 /><circle cx=19 cy=12 r=1.6 /></svg>{label}</summary><div class=side>",
-            open = if inside { " open" } else { "" },
+    out.push_str("</nav>");
+    out
+}
+
+/// The Business section's tabs, each carrying which business (`?b=`).
+pub(crate) fn tabs_for_business(page: String, business: &str) -> String {
+    let (Some(start), q) = (
+        page.find("<nav class=subnav"),
+        format!("?b={}", esc(&crate::research::urlencode(business))),
+    ) else {
+        return page;
+    };
+    let end = page[start..]
+        .find("</nav>")
+        .map(|e| start + e)
+        .unwrap_or(page.len());
+    let mut tabs = page[start..end].to_string();
+    for p in [
+        Page::Business,
+        Page::SharedTasks,
+        Page::Clients,
+        Page::Partners,
+    ] {
+        tabs = tabs.replace(
+            &format!("href='{}'", p.href()),
+            &format!("href='{}{q}'", p.href()),
         );
-        for (group, pages) in groups {
-            m.push_str(&format!("<p class=gh>{}</p>", esc(group)));
-            for page in pages.iter().filter(|p| p.here()) {
-                m.push_str(&format!(
-                    "<a class='{}' href='{}'{}>{}</a>",
-                    if here == Some(*page) { "here" } else { "" },
-                    page.href(),
-                    if here == Some(*page) {
-                        " aria-current=page"
+    }
+    format!("{}{tabs}{}", &page[..start], &page[end..])
+}
+
+/// A section's own pages, as a row of tabs at the top of each of them: the
+/// group the page is in, then the section's other groups by name. Drawn the
+/// same on a laptop and a phone, so every page is one press from its section
+/// on both (22 Oct 2026; this replaced the phone's all-pages menu).
+pub(super) fn subnav_html(here: Option<Page>) -> String {
+    let Some(here) = here else {
+        return String::new();
+    };
+    let (name, _, groups) = here.section();
+    let own = NAV
+        .iter()
+        .find(|(_, pages)| pages.contains(&here))
+        .map(|(g, _)| *g)
+        .unwrap_or("");
+    let mut links = String::new();
+    let mut count = 0;
+    for (group, pages) in NAV.iter().filter(|(g, _)| groups.contains(g)) {
+        if *group == own {
+            for p in pages.iter().filter(|p| p.here()) {
+                count += 1;
+                let on = *p == here;
+                links.push_str(&format!(
+                    "<a href='{}'{}>{}</a>",
+                    p.href(),
+                    if on {
+                        " aria-current=page class=on"
                     } else {
                         ""
                     },
-                    esc(page.label())
+                    esc(p.label())
                 ));
             }
+        } else if let Some(first) = pages.iter().find(|p| p.here()) {
+            count += 1;
+            links.push_str(&format!(
+                "<a class=grp href='{}'>{} ›</a>",
+                first.href(),
+                esc(group)
+            ));
         }
-        m.push_str("</div></details>");
-        m
-    };
-    out.push_str(&folded(
-        "More",
-        &[
-            (
-                "Your work",
-                &[
-                    Page::Workspace,
-                    Page::LookingBack,
-                    Page::Give,
-                    Page::Social,
-                    Page::Opportunities,
-                ],
-            ),
-            (
-                "Business",
-                &[
-                    Page::Business,
-                    Page::SharedTasks,
-                    Page::Clients,
-                    Page::Partners,
-                ],
-            ),
-        ],
-    ));
-    out.push_str(&folded(
-        "Atlas setup",
-        &[
-            (
-                "How Atlas behaves",
-                &[Page::Sound, Page::Permissions, Page::Gestures, Page::Access],
-            ),
-            (
-                "What it's connected to",
-                &[
-                    Page::Accounts,
-                    Page::AddOns,
-                    Page::Connections,
-                    Page::Sync,
-                    Page::Offline,
-                ],
-            ),
-            (
-                "About Atlas",
-                &[
-                    Page::Status,
-                    Page::Recommendations,
-                    Page::Activity,
-                    Page::Edits,
-                    Page::Feedback,
-                ],
-            ),
-        ],
-    ));
-    out.push_str("<span class=grow></span>");
-    out.push_str(&item(Page::Settings, "Settings", ""));
-    out.push_str("</nav>");
-    out
+    }
+    if count < 2 {
+        return String::new();
+    }
+    format!("<nav class=subnav aria-label='{}'>{links}</nav>", esc(name))
 }
 
 /// Keeps the sidebar where you left it from one page to the next: how far it
@@ -564,35 +571,6 @@ pub(super) fn sidebar_html(here: Option<Page>, waiting: usize) -> String {
 /// every storage touch is in try/catch, so a browser that refuses it just
 /// behaves as before.
 pub(super) const SIDEBAR_MEMORY: &str = "<script>(function(){    var n=document.querySelector('nav.sidebar');if(!n)return;    var d=n.querySelectorAll('details.more');    try{var o=JSON.parse(sessionStorage.getItem('atlasNavOpen')||'[]');    for(var i=0;i<d.length;i++){if(o[i])d[i].open=true;}    var y=parseInt(sessionStorage.getItem('atlasNavScroll')||'0',10);if(y>0)n.scrollTop=y;}catch(e){}    function save(){try{sessionStorage.setItem('atlasNavScroll',String(n.scrollTop));    var o=[];for(var i=0;i<d.length;i++)o.push(d[i].open);    sessionStorage.setItem('atlasNavOpen',JSON.stringify(o));}catch(e){}}    n.addEventListener('scroll',save);    for(var i=0;i<d.length;i++)d[i].addEventListener('toggle',save);    window.addEventListener('pagehide',save);    })();</script>";
-
-/// Every page, one press away: the phone's Menu, at the end of its one-row
-/// top bar. (On a laptop, a tablet or an unfolded phone the sidebar is this.)
-pub(super) fn menu_html(here: Option<Page>) -> String {
-    let mut out = String::from(
-        "<details class=allpages><summary class='tool icon' aria-label='Menu, every page'><svg viewBox='0 0 24 24' fill=none stroke=currentColor stroke-width=2 aria-hidden=true><path d='M4 6h16M4 12h16M4 18h16'/></svg></summary><div class=side>",
-    );
-    for (group, pages) in NAV {
-        out.push_str(&format!(
-            "<p class=gh>{}</p>",
-            esc(if group.is_empty() { "Atlas" } else { group })
-        ));
-        for page in pages.iter().filter(|p| p.here()) {
-            out.push_str(&format!(
-                "<a class='{}' href='{}'{}>{}</a>",
-                if here == Some(*page) { "here" } else { "" },
-                page.href(),
-                if here == Some(*page) {
-                    " aria-current=page"
-                } else {
-                    ""
-                },
-                esc(page.label())
-            ));
-        }
-    }
-    out.push_str("</div></details>");
-    out
-}
 
 /// The phone's bottom tab bar, as the design's phone screens (24 Sep) draw
 /// it: five, evenly spaced — Home, Projects, Messages, Business, Settings.

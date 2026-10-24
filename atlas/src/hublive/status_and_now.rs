@@ -151,6 +151,10 @@ impl Daemon<'_> {
                 let v = self.now_view();
                 (hub::live_version(&v), v.working)
             }
+            "home" => {
+                let open = self.open_work(crate::store::now());
+                (hub::work_version(&open), !open.in_progress.is_empty())
+            }
             "talk" => {
                 self.thread.len().hash(&mut h);
                 self.thread.last().map(|e| e.reply.len()).hash(&mut h);
@@ -177,6 +181,41 @@ impl Daemon<'_> {
             .map(|w| sentence(&w.asked))
             .collect();
         let held = held_lines(&self.outbox.held);
+        // Work that isn't a conversation (a scheduled job, a worker's errand,
+        // self-repair) is shown from the same record Home and Outstanding
+        // read, so Now never says "nothing underway" beside a page that says
+        // something is running, or calls queued work running (22 Oct 2026).
+        if self.mind.focus().is_none() && !paused {
+            let open = self.open_work(now);
+            let other = open
+                .in_progress
+                .first()
+                .map(|(what, how)| (what.clone(), how.clone(), true))
+                .or_else(|| {
+                    open.queued.first().map(|(what, why)| {
+                        (
+                            "Nothing running right now.".to_string(),
+                            format!("Queued: {} {why}", what),
+                            false,
+                        )
+                    })
+                });
+            if let Some((title, since, working)) = other {
+                return hub::NowView {
+                    title,
+                    since,
+                    steps: Vec::new(),
+                    plain_from: 0,
+                    spent: None,
+                    fallback: "When a step fails I stop and tell you what stopped it — I don't cut the corner to finish.".into(),
+                    paused,
+                    working,
+                    background,
+                    held,
+                    receipt: None,
+                };
+            }
+        }
         let Some(w) = self
             .mind
             .focus()

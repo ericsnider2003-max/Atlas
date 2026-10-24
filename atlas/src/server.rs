@@ -541,6 +541,8 @@ struct Asked {
     stream: TcpStream,
     action: Action,
     page: Option<(String, String)>,
+    /// The browser takes gzip: the answer goes compressed (`render_bytes`).
+    gzip: bool,
 }
 
 /// One authenticated hub request waiting for the daemon to answer it.

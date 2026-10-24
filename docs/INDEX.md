@@ -34,6 +34,8 @@ Dates are UTC. The card at the top of `AGENTS.md` holds the facts; this file hol
 ## Recently done
 
 - `iff9c` kokoro-per-call-slowdown Kokoro: back-to-back synth calls slow to ~2x real time; profile threads/power before chunking (branch fix/kokoro-first-clause-2026-10-22 unmerged) (2026-10-23)
+- `i095f` Phone Atlas standalone-first (owner decision 22 Oct 2026) (2026-10-23)
+- `ie83e` Hub redesign: one work record, six sections, phone-first, Jarvis/EDITH/Donna bar (2026-10-23)
 - `owner-after-e2e1020` Owner decisions after e2e fixes: approve 16.2 GB pieces, program-copy cleanup (2.27 GB), self-audit act-without-asking runs cargo, panel outlives Atlas, owner desktop re-run (2026-10-22)
 - `ui-leftovers-1021` Hub wording leftovers from the 20 Oct run (kept notes, updates page, sidebar, subtitle, internet health) (2026-10-22)
 - `quiet-failures` Quiet failures made visible: full disk, file index, clock jumps, unreadable settings (2026-10-22)
@@ -123,6 +125,7 @@ One line per doc. "Last true" is the date the doc declares (`Last updated: YYYY-
 | [docs/GOALS_AND_VERIFICATION_2026-10-18.md](GOALS_AND_VERIFICATION_2026-10-18.md) | Atlas goals and verification order — 2026-10-18 | — |
 | [docs/HANDOFF_2026-10-19_CREATIVE_WORKSPACE.md](HANDOFF_2026-10-19_CREATIVE_WORKSPACE.md) | Atlas Creative Workspace Handoff — 2026-10-19 | — |
 | [docs/HANDOFF_ONE_COMPLETION_PATH_2026-10-21.md](HANDOFF_ONE_COMPLETION_PATH_2026-10-21.md) | Hand-off: finishing "one completion path" (item 6) | 2026-10-21 |
+| [docs/HUB_REDESIGN_2026-10-22.md](HUB_REDESIGN_2026-10-22.md) | Hub redesign — 22 Oct 2026 | — |
 | [docs/INTEGRATION_REVIEW_2026-10-15.md](INTEGRATION_REVIEW_2026-10-15.md) | Canonical integration review — 2026-10-15 | — |
 | [docs/OFFLINE_ASSISTANT_DESIGN_2026-10-20.md](OFFLINE_ASSISTANT_DESIGN_2026-10-20.md) | Atlas as a full offline assistant that keeps the PC usable | 2026-10-20 |
 | [docs/OPEN_WORK_AUDIT_2026-10-15.md](OPEN_WORK_AUDIT_2026-10-15.md) | Atlas open-work audit — 2026-10-15 | 2026-10-20 |

@@ -1,0 +1,98 @@
+{
+  "schema_version": 2,
+  "project": "wt-hub",
+  "date": "2026-10-23",
+  "findings": [
+    {
+      "id": "BC-01",
+      "severity": "major",
+      "level": "AA",
+      "criterion": "2.4.7 Focus Visible",
+      "title": "The Find anything box on Home showed no focus",
+      "plain": "Someone using a keyboard could not see when the Find anything box on Home had focus, so typing seemed to go nowhere.",
+      "fix": "Give the field its own 2px accent outline when focused (form.ask input:focus-visible).",
+      "location": {
+        "file": "atlas/assets/hub/hub.css",
+        "line": 268
+      },
+      "effort": "S",
+      "source": "rendering",
+      "detected_by": {
+        "tool": "render",
+        "check": "focus-not-visible",
+        "page": "/hub",
+        "url": "http://127.0.0.1:26551/hub",
+        "match": "Find anything"
+      },
+      "group": "focus-ring",
+      "reach": 1,
+      "core": true,
+      "user_groups": [
+        "keyboard",
+        "low vision"
+      ],
+      "status": "verified",
+      "manual_step": "Press Tab until the Find anything box on Home is reached: a clear orange ring must show around it.",
+      "hours": [
+        0.25,
+        1
+      ],
+      "locations": [],
+      "reverify_note": "not machine-verifiable: found by reading or on a device — no script can confirm the fix",
+      "verification": "render-check.mjs: focus-not-visible for \"Find anything\" no longer reported on /hub (re-run 2026-10-23)",
+      "verified_by": "reverify"
+    },
+    {
+      "id": "BC-02",
+      "severity": "minor",
+      "level": "AA",
+      "criterion": "2.5.8 Target Size (Minimum)",
+      "title": "Appearance switches were 40x22 and crowded",
+      "plain": "The High contrast and Reduce motion switches in the Aa menu were under 24 px tall and close together, so a shaky hand or finger could hit the wrong one.",
+      "fix": "Extend each switch link 4 px beyond the drawn pill (inset:-4px).",
+      "location": {
+        "file": "atlas/assets/hub/hub.css",
+        "line": 634
+      },
+      "effort": "S",
+      "source": "rendering",
+      "detected_by": {
+        "tool": "render",
+        "check": "target-size",
+        "page": "/hub/talk",
+        "url": "http://127.0.0.1:26551/hub/talk",
+        "match": "contrast on"
+      },
+      "group": "toggle-target",
+      "reach": 5,
+      "core": false,
+      "user_groups": [
+        "motor",
+        "touch"
+      ],
+      "status": "verified",
+      "manual_step": "Open the Aa menu on a phone and tap High contrast, then Reduce motion: each tap changes only the switch you meant.",
+      "hours": [
+        0.25,
+        1
+      ],
+      "locations": [],
+      "reverify_note": "not machine-verifiable: found by reading or on a device — no script can confirm the fix",
+      "verification": "render-check.mjs: target-size for \"contrast on\" no longer reported on /hub/talk (re-run 2026-10-23)",
+      "verified_by": "reverify"
+    }
+  ],
+  "product": "Atlas Hub (redesign, 22 Oct 2026)",
+  "standard": "WCAG 2.2 AA",
+  "mode": "fix",
+  "legal": false,
+  "jurisdiction": {
+    "value": "unknown",
+    "inferred": true,
+    "basis": "Personal product for one owner; no legal or procurement exposure raised"
+  },
+  "sr_tested": false,
+  "render_args": {
+    "login": "C:\\Users\\erics\\AppData\\Local\\Temp\\claude\\C--Users-erics-Atlas\\5776a689-006c-4b1c-acbe-29411f4a59d9\\scratchpad\\bc-login.mjs"
+  }
+}

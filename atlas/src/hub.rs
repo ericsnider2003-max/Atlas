@@ -120,39 +120,45 @@ pub enum Page {
 /// typing the URL, and no link anywhere pointed at it. A page nothing links to
 /// is a page nobody opens.
 pub const NAV: &[(&str, &[Page])] = &[
-    // Now and Talk sit at the top of the sidebar on their own, under Search:
-    // Atlas's thought process, and talking to it, one press from anywhere.
-    ("", &[Page::Now, Page::Talk]),
-    // The design's Personal group. Home leads it: the design files the front
-    // page under Personal ("Personal / Home"), beside the business groups
-    // that appear once a business exists.
+    // 22 Oct 2026, Eric: "Across the Atlas hub there is redundancy and it
+    // creates extra pages that don't genuinely have a purpose." Six sections
+    // now, each with one job (`SECTIONS`); every page still has its address
+    // and is one press away from its section's own row of tabs. Nothing was
+    // removed. The groups below are those sections' members, each six or
+    // fewer so no row becomes a list you reread.
+    //
+    // Home: what is happening -- needs you, working, queued, failed, done.
     (
-        "Personal",
+        "Home",
         &[
             Page::Dashboard,
-            Page::Calendar,
-            Page::Workshop,
+            Page::Now,
             Page::Outstanding,
-            Page::Messages,
-            Page::Documents,
+            Page::Calendar,
+            Page::LookingBack,
+            Page::Activity,
         ],
     ),
-    // The people you talk to through Atlas, who decides what in each group,
-    // and who may be sent to without asking.
-    ("People", &[Page::Friends, Page::Groups, Page::Trusted]),
-    // Your work in other shapes, and handing Atlas something.
+    // Talk: say it or type it.
+    ("Talk", &[Page::Talk]),
+    // Projects: your work in every shape.
     (
-        "Your work",
+        "Projects",
         &[
+            Page::Workshop,
+            Page::Documents,
             Page::Workspace,
-            Page::LookingBack,
+            Page::Opportunities,
             Page::Give,
             Page::Social,
-            Page::Opportunities,
         ],
     ),
-    // The business section: under More until a business exists, when each
-    // business also gets its own group in the sidebar.
+    // Messages: the people you talk to through Atlas.
+    (
+        "Messages",
+        &[Page::Messages, Page::Friends, Page::Groups, Page::Trusted],
+    ),
+    // Business: each business's overview, shared tasks, clients, partners.
     (
         "Business",
         &[
@@ -162,41 +168,53 @@ pub const NAV: &[(&str, &[Page])] = &[
             Page::Partners,
         ],
     ),
-    // Atlas talking about itself. Under More in the sidebar.
+    // Settings: Atlas itself, in three rows.
     (
-        "Atlas itself",
-        &[
-            Page::Status,
-            Page::Connections,
-            Page::Recommendations,
-            Page::Gestures,
-            Page::Activity,
-            // Your edits to Atlas's own config files: about Atlas itself.
-            Page::Edits,
-        ],
-    ),
-    // Under More, except Settings, which the design keeps at the sidebar's foot.
-    (
-        "What it may do",
+        "Settings",
         &[
             Page::Settings,
             Page::Sound,
+            Page::Gestures,
             Page::Permissions,
-            Page::AddOns,
-            Page::Accounts,
             Page::Access,
+            Page::Accounts,
         ],
     ),
     (
-        "Your devices",
+        "Devices and connections",
         &[
-            Page::Sync,
             Page::Phone,
-            Page::Updates,
+            Page::Sync,
             Page::Offline,
+            Page::Connections,
+            Page::AddOns,
+            Page::Updates,
+        ],
+    ),
+    (
+        "About Atlas",
+        &[
+            Page::Status,
+            Page::Recommendations,
+            Page::Edits,
             Page::Help,
             Page::Feedback,
         ],
+    ),
+];
+
+/// The six sections: the sidebar, the phone's tabs and each page's own row of
+/// tabs all draw from this. (name, the page it opens on, its NAV groups.)
+pub const SECTIONS: &[(&str, Page, &[&str])] = &[
+    ("Home", Page::Dashboard, &["Home"]),
+    ("Talk", Page::Talk, &["Talk"]),
+    ("Projects", Page::Workshop, &["Projects"]),
+    ("Messages", Page::Messages, &["Messages"]),
+    ("Business", Page::Business, &["Business"]),
+    (
+        "Settings",
+        Page::Settings,
+        &["Settings", "Devices and connections", "About Atlas"],
     ),
 ];
 
@@ -386,6 +404,16 @@ impl Page {
         }
     }
 
+    /// The section this page belongs to: (name, the page it opens on, its
+    /// groups). Drives the sidebar, the section tabs and the breadcrumb.
+    pub fn section(self) -> &'static (&'static str, Page, &'static [&'static str]) {
+        let group = self.group().unwrap_or("Home");
+        SECTIONS
+            .iter()
+            .find(|(_, _, groups)| groups.contains(&group))
+            .unwrap_or(&SECTIONS[0])
+    }
+
     /// The group this page sits under, for the breadcrumb.
     pub fn group(self) -> Option<&'static str> {
         NAV.iter()
@@ -402,7 +430,12 @@ impl Page {
 /// is a link to itself is a small lie about where you are — and the groups
 /// are headings in the sidebar, not pages, so they are words here too.
 pub fn crumbs(here: Page) -> String {
-    let group = here.group().unwrap_or("Atlas");
+    let (group, lead, _) = here.section();
+    // A section's own front page is just its name: "Home / Home" would be a
+    // trail back to itself.
+    if *lead == here {
+        return format!("<p class=crumbs><b>{}</b></p>", esc(here.label()));
+    }
     format!(
         "<p class=crumbs>{}<span>/</span><b>{}</b></p>",
         esc(group),
@@ -472,7 +505,7 @@ pub const IDLE: &str = "\
   <circle cx=60 cy=60 r=6  class=core/>\
 </svg>";
 
-const STYLE: &str = include_str!("../assets/hub/hub.css");
+pub const STYLE: &str = include_str!("../assets/hub/hub.css");
 
 /// Where your appearance choices are kept.
 pub const APPEARANCE_KEY: &str = "appearance";
@@ -672,6 +705,10 @@ pub enum Mark {
     Done,
     /// Now — what Atlas is working on.
     Now,
+    /// Now, with nothing running: the day's divider without the "Working"
+    /// pill (22 Oct 2026: Home showed "Working" beside "Nothing underway"
+    /// whenever anything was on the calendar).
+    Idle,
     /// Still to come.
     Later,
 }
@@ -708,6 +745,9 @@ pub struct Deck {
     /// Nothing known yet: Home is the design's first-run welcome, calm but
     /// not blank, instead of a page of empty sections.
     pub first_run: bool,
+    /// The one work record (`Open`), which Home leads with: needs you,
+    /// failed, working, queued, done today (22 Oct 2026).
+    pub work: Open,
 }
 
 /// One business, at a glance on Home.
@@ -769,8 +809,16 @@ pub struct Open {
     /// (what, a line on why it's yours, where to act on it)
     pub waiting: Vec<(String, String, String)>,
     pub blocked: Vec<Stopped>,
-    /// (what, who's on it or how far along)
+    /// (what, who's on it or how far along). Only work that is actually
+    /// running: something waiting its turn is in `queued`, never here
+    /// (22 Oct 2026: Home said "Working" and Outstanding "In progress 2" for
+    /// a self-repair run that was waiting for memory, while Now said nothing
+    /// was underway).
     pub in_progress: Vec<(String, String)>,
+    /// (what, why it hasn't started, in plain words). Accepted and going to
+    /// happen, but not running yet: next in line, waiting for you to step
+    /// away, for a connection, or for the laptop.
+    pub queued: Vec<(String, String)>,
     /// (what, days carried)
     pub carried: Vec<(String, u64)>,
     /// What each item's remove button sends back, lane by lane, in the same
@@ -811,6 +859,7 @@ pub struct Drops {
     pub waiting: Vec<Option<String>>,
     pub blocked: Vec<Option<String>>,
     pub in_progress: Vec<Option<String>>,
+    pub queued: Vec<Option<String>>,
     pub carried: Vec<Option<String>>,
     pub failed: Vec<Option<String>>,
     pub interrupted: Vec<Option<String>>,

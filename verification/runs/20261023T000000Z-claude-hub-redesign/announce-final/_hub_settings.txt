@@ -1,0 +1,92 @@
+What a screen reader is given on /hub/settings (accessibility tree, reading order)
+
+link: Skip to the page
+navigation: Atlas
+link: Atlas, Home
+  Atlas
+link: Search Ctrl K
+link: Home
+link: Talk
+link: Projects
+link: Messages
+link: Business
+link: Settings
+banner
+link: Find anything
+  Find anything Ctrl K
+link: Nothing waiting
+link: Help
+group
+button: Quit Atlas
+main
+heading 1: Settings
+navigation: Settings
+link: Settings
+link: Sound & voice
+link: Gestures
+link: Permissions
+link: Access
+link: Accounts
+link: Devices and connections ›
+link: About Atlas ›
+navigation: Settings areas
+link: Appearance & access Colourway, accent, text size, density, colour-blind mode.
+link: Sound & voice Atlas's voice, volume, the wake word, quiet hours, mute — and when it may pop up.
+'link "Gestures Hands-free on camera: whether it''s on, and how each works."':
+link: Trusted recipients Who Atlas can send to without asking.
+link: Calendars & accounts Connect your email and calendars, and see which are working.
+link: Help & accessibility Using Atlas with a screen reader, keyboard or larger text; the statement.
+group
+heading 2: How it looks
+link: Talking to it 12
+link: Keys 4
+link: How it talks back 11
+link: Sound 8
+link: When it speaks first 4
+link: What it can see 12
+link: What it may touch 12
+link: Writing code 2
+link: Your accounts and secrets 10
+link: Reaching outside this machine 12
+link: Social 10
+link: Looking for opportunities 9
+link: Your devices 3
+group
+heading 2: Talking to it
+  "12"
+group
+heading 2: Keys
+  "4"
+group
+heading 2: How it talks back
+  "11"
+group
+heading 2: Sound
+  "8"
+group
+heading 2: When it speaks first
+  "4"
+group
+heading 2: What it can see
+  "12"
+group
+heading 2: What it may touch
+  "12"
+group
+heading 2: Writing code
+  "2"
+group
+heading 2: Your accounts and secrets
+  "10"
+group
+heading 2: Reaching outside this machine
+  "12"
+group
+heading 2: Social
+  "10"
+group
+heading 2: Looking for opportunities
+  "9"
+group
+heading 2: Your devices
+  "3"

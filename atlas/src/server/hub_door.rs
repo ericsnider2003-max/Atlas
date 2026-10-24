@@ -783,7 +783,10 @@ fn permission_records(root: &std::path::Path) -> Option<Vec<Option<Vec<u8>>>> {
 }
 
 fn cached_readonly(cache: &ReadOnlySnapshots, page: crate::hub::Page) -> Option<Reply> {
-    if !matches!(page, crate::hub::Page::Now | crate::hub::Page::Outstanding) {
+    if !matches!(
+        page,
+        crate::hub::Page::Dashboard | crate::hub::Page::Now | crate::hub::Page::Outstanding
+    ) {
         return None;
     }
     let mut cache = cache.lock().unwrap_or_else(|p| p.into_inner());
@@ -801,17 +804,21 @@ fn cached_readonly(cache: &ReadOnlySnapshots, page: crate::hub::Page) -> Option<
     }
     let mut reply = snapshot.pages.iter().find(|(p, _)| *p == page)?.1.clone();
     let age = snapshot.made.elapsed().as_secs();
-    let note = if age > 2 {
-        format!("Status has not refreshed for {age} seconds. Atlas may be busy or unresponsive; this view may have changed. {}", if snapshot.pause.is_some() { "Pause requests reach the active workers now; other buttons still wait for Atlas." } else { "Buttons still wait for Atlas to respond." })
+    // Plain words (22 Oct 2026: "This is the latest completed status. Pause
+    // requests reach active workers" opened every status page on a phone).
+    let buttons = if snapshot.pause.is_some() {
+        "Pause works now; other buttons act when I'm free."
     } else {
-        if snapshot.pause.is_some() {
-            "This is the latest completed status. Pause requests reach active workers; other buttons wait for Atlas to handle them.".to_string()
-        } else {
-            "This is the latest completed status. Buttons wait for Atlas to handle them."
-                .to_string()
-        }
+        "Buttons act when I'm free."
     };
-    reply.body = crate::hub::with_said(reply.body, Some(&note));
+    // Two seconds old or less is as good as live: no banner, so the one loud
+    // thing on the page stays the work itself (the quality review, 23 Oct).
+    if age > 2 {
+        let note = format!(
+            "I'm busy, so this is how things stood {age} seconds ago and may have changed. {buttons}"
+        );
+        reply.body = crate::hub::with_said(reply.body, Some(&note));
+    }
     Some(reply)
 }
 
@@ -1053,7 +1060,8 @@ mod readonly_tests {
         let status = request(port, "/hub/now", true, "GET");
         assert!(status.starts_with("HTTP/1.1 200"), "{status}");
         assert!(status.contains("First status"));
-        assert!(status.contains("latest completed status"));
+        // Fresh: shown as it is, with no busy banner.
+        assert!(!status.contains("how things stood"));
         assert!(request(port, "/hub/now", false, "GET").starts_with("HTTP/1.1 401"));
         assert!(request(port, "/hub/now?said=test", true, "GET").starts_with("HTTP/1.1 503"));
         assert!(request(port, "/hub/messages", true, "GET").starts_with("HTTP/1.1 503"));
@@ -1086,8 +1094,8 @@ mod readonly_tests {
         );
         door.snapshots.lock().unwrap().as_mut().unwrap().made -= std::time::Duration::from_secs(10);
         let old = cached_readonly(&door.snapshots, page).unwrap();
-        assert!(old.body.contains("Status has not refreshed for"));
-        assert!(old.body.contains("busy or unresponsive"));
+        assert!(old.body.contains("how things stood 10 seconds ago"));
+        assert!(old.body.contains("may have changed"));
         door.publish_readonly(
             vec![(page, Reply::html("<html><body><h1>New</h1></body></html>"))],
             root.clone(),
