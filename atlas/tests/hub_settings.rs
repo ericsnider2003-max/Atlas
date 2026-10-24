@@ -376,14 +376,22 @@ fn the_status_page_says_how_much_you_have_changed() {
 
 #[test]
 fn every_page_carries_the_same_navigation() {
-    for page in [
+    // 23 Oct 2026: the sidebar is eight links and the section's own tabs sit
+    // under the heading, so a page links to Settings and shows on a phone,
+    // and the pages of the Settings section link to each other as tabs.
+    for (i, page) in [
         settings_page(&s()),
         permissions_page(&s(), &[]),
         list_page_at(None, "Activity", "x", &[]),
         status_page(&[], 0),
-    ] {
+    ]
+    .into_iter()
+    .enumerate()
+    {
         assert!(page.contains("/hub/settings"));
-        assert!(page.contains("/hub/permissions"));
+        if i < 2 {
+            assert!(page.contains("/hub/permissions"), "page {i}");
+        }
         assert!(page.contains("<meta name=viewport"), "must work on a phone");
     }
 }

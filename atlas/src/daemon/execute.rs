@@ -3220,6 +3220,38 @@ impl<'a> Daemon<'a> {
     /// from context where there is any. `generic` is what `references` would
     /// have asked; the candidates here are what you mentioned, have open,
     /// used last or usually pick.
+    /// A yes to the one thing a pronoun question offered runs that command
+    /// through the ordinary turn, so a close still asks first; a no drops it;
+    /// anything else (a named alternative) is read as itself.
+    pub(super) fn answer_the_offer(&mut self, said: &str, t: u64, how: Arrival) -> Option<String> {
+        let (orig, q, values) = self.pronoun_offer.take()?;
+        if !matches!(&self.session.pending, Pending::Clarification(p) if *p == q) {
+            return None;
+        }
+        if crate::session::is_no(said) {
+            self.session.pending = Pending::Nothing;
+            let reply = "Alright, I'll leave it.".to_string();
+            self.thread.append(said, &reply, None, t);
+            return Some(reply);
+        }
+        if !crate::session::is_yes(said) {
+            return None;
+        }
+        if values.len() != 1 {
+            self.pronoun_offer = Some((orig, q, values));
+            let reply = "I had more than one in mind -- say which.".to_string();
+            self.thread.append(said, &reply, None, t);
+            return Some(reply);
+        }
+        let rewritten = crate::references::with_target(&orig, &values[0])?;
+        self.session.pending = Pending::Nothing;
+        match self.parser.parse(&rewritten) {
+            Intent::Unknown(_) => {}
+            i => self.offer_accepted = Some(i),
+        }
+        Some(self.turn_from(&rewritten, t, how))
+    }
+
     pub(crate) fn context_question(&self, said: &str, generic: &str) -> String {
         let kinds: &[&str] = match generic {
             "Which app?" => &["app"],
@@ -3239,10 +3271,15 @@ impl<'a> Daemon<'a> {
             }
         }
         options.truncate(3);
+        *self.ask_values.borrow_mut() = options
+            .iter()
+            .map(|o| o.rsplit_once(" (").map(|(v, _)| v).unwrap_or(o).to_string())
+            .collect();
         if options.is_empty() {
             return generic.to_string();
         }
         let short: String = said.trim().chars().take(40).collect();
+        self.note_unsure("", Some(options.clone()));
         crate::understood::ask_with_options(&format!("\"{short}\""), &options)
     }
 

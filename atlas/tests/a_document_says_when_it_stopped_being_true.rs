@@ -73,6 +73,9 @@ const CURRENT: &[&str] = &[
     "HOW_IT_WORKS_ON_ITSELF.md",
     "INSTALLING.md",
     "JARVIS.md",
+    // The correction log's line format, written from the code that writes it
+    // (23 Oct 2026); a mechanism, with no tree-size numbers.
+    "LEARNING_LOG_FORMAT_2026-10-23.md",
     "MEDIA.md",
     "METRICS.md",
     "MODEL_STACK.md",

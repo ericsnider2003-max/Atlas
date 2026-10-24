@@ -262,6 +262,7 @@ pub mod integrations;
 pub mod misses;
 pub mod opportunity;
 pub mod phrasebook;
+pub mod corrlog;
 // Finding opportunities on a polite daily schedule, and the daemon's side of it.
 pub mod astype;
 pub mod bisect;

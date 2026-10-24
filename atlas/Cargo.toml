@@ -353,6 +353,10 @@ path = "tests/pairing_wiring.rs"
 name = "saying_youre_back"
 path = "tests/saying_youre_back.rs"
 [[test]]
+name = "the_hub_settings_page_in_a_debug_daemon"
+path = "tests/the_hub_settings_page_in_a_debug_daemon.rs"
+
+[[test]]
 name = "settings_that_do_something_now"
 path = "tests/settings_that_do_something_now.rs"
 [[test]]

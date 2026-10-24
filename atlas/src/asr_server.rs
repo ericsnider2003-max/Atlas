@@ -72,9 +72,10 @@ impl Default for Config {
     }
 }
 
-/// Half the machine's processors, at least two and at most four (the same
-/// reading as `kokoro::thread_count`; logical processors halved approximates
-/// the physical cores).
+/// Half the machine's processors, at least two and at most four (logical
+/// processors halved approximates the physical cores). Kokoro moved to one
+/// thread on eight-processor machines on 23 Oct 2026; the recogniser was not
+/// re-measured, so it keeps this reading.
 pub fn server_thread_count(cfg: &Config) -> u32 {
     if cfg.threads > 0 {
         return cfg.threads;

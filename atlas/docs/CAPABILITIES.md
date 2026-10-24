@@ -197,6 +197,7 @@ There is one build of Atlas, and it is the Windows one. Every other column is wh
 | learn how you work | working | `person` | ready | ready | ready | ready | ready | ready |
 | reason properly rather than following rules | waiting on a language model | `brain` `infer` `models` `deepbrain` `freeonline` `muse` `contemplate` | ready | ready | ready | ready | ready | ready |
 | learn the words you use for things from being corrected -- "no, I meant open Spotify" -- and do what you meant next time without guessing; "what have you learned about how I talk" lists them and "forget that phrase" drops one | built, never run for real | `phrasebook` | ready | ready | ready | ready | ready | ready |
+| keep a private log on this laptop of what you corrected, undid, approved, refused and answered when it asked -- redacted, never sent anywhere, never backed up -- for its own training; "forget that", "forget what I said about X" and "forget everything" take lines out, "stop learning from me" turns it off | built, never run for real | `corrlog` | ready | ready | ready | catch | would | catch |
 | catch a thought in one step -- said, or a key chord on whatever's selected -- dated when it said a time so it comes up that day, and gone back over once a week | built, never run for real | `capture` | ready | ready | ready | catch | would | catch |
 | remember what you'd want to about the people you deal with, who you meant to keep in touch with, and their birthdays | built, never run for real | `people` | ready | ready | ready | catch | would | catch |
 | flashcards that come back just before you'd forget them (FSRS) | built, never run for real | `srs` | ready | ready | ready | catch | would | catch |
@@ -367,4 +368,4 @@ There is one build of Atlas, and it is the Windows one. Every other column is wh
 
 ---
 
-248 things, across 441 of 502 source files. The other 61 are plumbing — config, storage, the platform layer — each named in `capability::PLUMBING` with the reason it is not a capability. `tests/catalogue.rs` fails for a module that is neither, so nothing built can go unlisted here.
+249 things, across 442 of 503 source files. The other 61 are plumbing — config, storage, the platform layer — each named in `capability::PLUMBING` with the reason it is not a capability. `tests/catalogue.rs` fails for a module that is neither, so nothing built can go unlisted here.

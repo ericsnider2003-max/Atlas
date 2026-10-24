@@ -2873,6 +2873,9 @@ pub fn parse_decision(reply: &str) -> Result<Decision> {
         .get("action")
         .and_then(|a| a.as_str())
         .unwrap_or("")
+        .trim()
+        // An exact name in another case is the same name, not a guess at a
+        // near one ("Say", "OPEN_APP"); "openn_app" is still not a command.
         .to_lowercase();
     let arg = v
         .get("arg")

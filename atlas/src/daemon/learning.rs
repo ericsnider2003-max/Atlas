@@ -36,6 +36,8 @@ pub(super) struct Outcome {
     pub by_voice: bool,
     /// The learned wording that routed it, when one did.
     pub routed_by: Option<String>,
+    /// How it was read and where, for the correction log.
+    pub ctx: crate::corrlog::Context,
 }
 
 /// What a turn looked like as it started, for telling what it did.
@@ -44,6 +46,7 @@ pub(super) struct Watch {
     asked_already: bool,
     correcting: bool,
     pub by_voice: bool,
+    before: super::correction_log::Before,
 }
 
 impl<'a> Daemon<'a> {
@@ -69,7 +72,9 @@ impl<'a> Daemon<'a> {
             ));
         }
         self.routed_by_phrase = None;
+        let before = self.log_before();
         let watch = Watch {
+            before,
             recorded: self.session.recorded,
             asked_already: matches!(self.session.pending, Pending::Clarification(_)),
             correcting: self.pending_correction.is_some(),
@@ -106,7 +111,24 @@ impl<'a> Daemon<'a> {
             _ => None,
         };
         let routed_by = self.routed_by_phrase.take().map(|(w, _)| w);
+        let ctx = if self.corr.on {
+            crate::corrlog::Context {
+                app: w.before.app.clone(),
+                recent: w.before.recent.clone(),
+                source: self
+                    .read_as(
+                        said,
+                        routed_by.is_some(),
+                        intent.is_some(),
+                        w.before.unsure.is_some(),
+                    )
+                    .into(),
+            }
+        } else {
+            Default::default()
+        };
         let now = Outcome {
+            ctx: ctx.clone(),
             said: said.trim().to_string(),
             intent: intent.clone(),
             reply: reply.clone(),
@@ -116,7 +138,7 @@ impl<'a> Daemon<'a> {
             routed_by,
         };
         self.utterance_count = self.utterance_count.saturating_add(1);
-        if handed_over || said.trim().is_empty() {
+        if handed_over || said.trim().is_empty() || std::mem::take(&mut self.forgot_just_now) {
             self.last_outcome = None;
             return reply;
         }
@@ -126,6 +148,27 @@ impl<'a> Daemon<'a> {
             .filter(|p| t.saturating_sub(p.at) <= CORRECTS_WITHIN_SECS);
         let mut reply = reply;
         let mut keep_prev = false;
+
+        // The correction log (`corrlog`): a correction left waiting is
+        // written as it was unless this turn is the answer to it; then what
+        // this turn settled.
+        let outside = self.session.tainted_by_outside || self.session.outside_reads > w.before.reads;
+        if !w.correcting {
+            self.flush_held_correction();
+        }
+        let accepted = self.offer_accepted.take();
+        let for_the_log = intent.clone().or(accepted);
+        self.log_the_turn(
+            &w.before,
+            said,
+            &action,
+            for_the_log.as_ref(),
+            asked_now,
+            missed.is_some(),
+            prev.as_ref(),
+            &ctx,
+            t,
+        );
 
         // Written down, with what Atlas did. Counted for the self-audit's
         // "not understood" signal too, which had no writer (`signals`).
@@ -146,6 +189,7 @@ impl<'a> Daemon<'a> {
         // "That's not what I asked" (`got_it_wrong`), about the turn before.
         if action == "got_it_wrong" {
             if let Some(p) = &prev {
+                self.hold_a_correction(said, p, outside, t);
                 let did = p
                     .intent
                     .as_ref()
@@ -176,6 +220,7 @@ impl<'a> Daemon<'a> {
                     ) {
                         reply = format!("{} {line}", reply.trim_end());
                     }
+                    self.settle_held_correction(&i);
                 }
             }
         }
@@ -265,25 +310,45 @@ impl<'a> Daemon<'a> {
     /// did you misunderstand this week", and "no, I meant ..." -- answered
     /// here, before anything else reads the words.
     pub(super) fn how_you_talk_turn(&mut self, said: &str, t: u64, how: Arrival) -> Option<String> {
+        // "Forget that", "forget what I said about X", "forget everything",
+        // "stop learning from me": the correction log's own words.
+        if let Some(asked) = crate::corrlog::asked_of_the_log(said) {
+            if self.handover().stance.handed_over() {
+                return Some("That's the owner's to see, not mine to share.".into());
+            }
+            self.forgot_just_now = true;
+            let reply = self.the_log_asked(asked);
+            self.thread.append(said, &reply, None, t);
+            return Some(reply);
+        }
         if let Some(asked) = crate::phrasebook::asked_about_phrasebook(said) {
             if self.handover().stance.handed_over() {
                 return Some("That's the owner's to see, not mine to share.".into());
             }
+            self.forgot_just_now = !matches!(asked, crate::phrasebook::Asked::List);
             let reply = match asked {
                 crate::phrasebook::Asked::List => self.phrasebook.listing(8),
-                crate::phrasebook::Asked::ForgetLatest => match self.phrasebook.latest_wording() {
-                    Some(w) => self.forget_phrase_said(&w),
-                    None => "There's nothing learned to forget.".into(),
-                },
-                crate::phrasebook::Asked::Forget(w) => self.forget_phrase_said(&w),
+                crate::phrasebook::Asked::ForgetLatest => {
+                    self.scrub_memory(None);
+                    let gone = self.corr.forget_that().unwrap_or(0);
+                    let r = match self.phrasebook.latest_wording() {
+                        Some(w) => self.forget_phrase_said(&w),
+                        None => "There's nothing learned to forget.".into(),
+                    };
+                    with_log_note(r, gone)
+                }
+                crate::phrasebook::Asked::Forget(w) => {
+                    self.scrub_memory(Some(&w));
+                    let gone = self.corr.forget_about(&w).unwrap_or(0);
+                    let r = self.forget_phrase_said(&w);
+                    with_log_note(r, gone)
+                }
                 crate::phrasebook::Asked::ForgetAll => {
+                    self.scrub_memory(None);
+                    let gone = self.corr.forget_everything().unwrap_or(0);
                     let n = self.phrasebook.phrases.len();
-                    self.phrasebook.phrases.clear();
-                    match self.phrasebook.save(&self.store) {
-                        Ok(_) if n == 0 => "There was nothing learned to forget.".into(),
-                        Ok(_) => format!("Done -- I've forgotten all {n} of the ways you put things. I'll learn them again as we go."),
-                        Err(e) => format!("I couldn't save that ({e}), so they may come back after a restart."),
-                    }
+                    let r = self.forget_all_phrases(n);
+                    with_log_note(r, gone)
                 }
             };
             self.thread.append(said, &reply, None, t);
@@ -298,14 +363,24 @@ impl<'a> Daemon<'a> {
             return Some(reply);
         }
         let meant = crate::phrasebook::meant_instead(said)?;
-        self.meant_this_instead(&meant, t, how)
+        self.meant_this_instead(said, &meant, t, how)
+    }
+
+    /// "Forget everything you learned about how I talk", answered.
+    fn forget_all_phrases(&mut self, n: usize) -> String {
+        self.phrasebook.phrases.clear();
+        match self.phrasebook.save(&self.store) {
+            Ok(_) if n == 0 => "There was nothing learned to forget.".into(),
+            Ok(_) => format!("Done -- I've forgotten all {n} of the ways you put things. I'll learn them again as we go."),
+            Err(e) => format!("I couldn't save that ({e}), so they may come back after a restart."),
+        }
     }
 
     /// "No, I meant X": X is run as itself, and when it does something, the
     /// words that missed mean that from now on. `None` when there's nothing
     /// recent to correct, or X reads as a fact about your world ("I meant my
     /// car is a Toyota" is the fact book's).
-    fn meant_this_instead(&mut self, meant: &str, t: u64, how: Arrival) -> Option<String> {
+    fn meant_this_instead(&mut self, said: &str, meant: &str, t: u64, how: Arrival) -> Option<String> {
         if self.handover().stance.handed_over() {
             return None;
         }
@@ -334,6 +409,8 @@ impl<'a> Daemon<'a> {
         } else {
             None
         };
+        let outside = self.session.tainted_by_outside;
+        self.log_a_meant_correction(said, &prev, did.as_ref(), outside, t);
         // What happened to the words you corrected.
         let was = prev
             .intent
@@ -380,6 +457,10 @@ impl<'a> Daemon<'a> {
             missed: None,
             by_voice: prev.by_voice,
             routed_by: None,
+            ctx: crate::corrlog::Context {
+                source: self.read_as(meant, false, true, false).into(),
+                ..prev.ctx.clone()
+            },
         });
         Some(match learned {
             Some(line) if !reply.trim().is_empty() => format!("{} {line}", reply.trim_end()),
@@ -815,4 +896,14 @@ fn did_as_it_was_told(reply: &str, said: &str) -> bool {
         .step_by(2)
         .map(|q| q.trim().to_lowercase().replace('\u{2019}', "'"))
         .any(|q| q.chars().count() >= 3 && said.starts_with(&q))
+}
+
+/// A line more for a reply when the corrections log lost lines to the same
+/// words.
+fn with_log_note(reply: String, gone: usize) -> String {
+    match gone {
+        0 => reply,
+        1 => format!("{reply} I took 1 line out of the corrections log too."),
+        n => format!("{reply} I took {n} lines out of the corrections log too."),
+    }
 }

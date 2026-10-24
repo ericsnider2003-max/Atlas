@@ -60,6 +60,7 @@ impl AsksQuietly for Console {
 /// will sit until the window closes.
 pub fn ask_quietly(prompt: &str) -> Option<String> {
     use std::io::Write;
+    let _masked = MaskedGuard::enter();
 
     // Windows, in this process: the console's own input with its echo
     // turned off (`console::Quiet`). Nothing leaves Atlas -- no child
@@ -100,6 +101,28 @@ pub fn ask_quietly(prompt: &str) -> Option<String> {
         Ok(0) | Err(_) => None,
         Ok(_) => clean(line),
     }
+}
+
+static MASKED_OPEN: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+/// Held while a masked prompt is on screen (23 Oct 2026): the correction log
+/// writes nothing while one is open.
+pub struct MaskedGuard;
+impl MaskedGuard {
+    pub fn enter() -> MaskedGuard {
+        MASKED_OPEN.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        MaskedGuard
+    }
+}
+impl Drop for MaskedGuard {
+    fn drop(&mut self) {
+        MASKED_OPEN.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
+    }
+}
+
+/// Is a masked read open right now?
+pub fn masked_read_active() -> bool {
+    MASKED_OPEN.load(std::sync::atomic::Ordering::SeqCst) > 0
 }
 
 /// Lines for the prompt, read on a thread only when one is asked for

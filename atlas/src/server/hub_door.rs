@@ -452,6 +452,23 @@ impl Server {
                 return;
             }
         }
+        // The live status and the change checks, from the last published
+        // reading, under the same checks as a page.
+        match &asked.action {
+            Action::LiveJson => {
+                if let Some(reply) = cached_live(snapshots, None) {
+                    self.answer(&mut asked, reply);
+                    return;
+                }
+            }
+            Action::Changed(which) => {
+                if let Some(reply) = cached_live(snapshots, Some(which)) {
+                    self.answer(&mut asked, reply);
+                    return;
+                }
+            }
+            _ => {}
+        }
         let what = match &asked.page {
             Some((m, p)) => format!("{m} {p}"),
             None => "peer".to_string(),
@@ -556,11 +573,28 @@ impl HubDoor {
             owner_state,
             permissions,
             pages,
+            live: None,
+            changed: Vec::new(),
             pause: None,
             pause_requested: self.pause_requested.clone(),
             cancellations: Vec::new(),
             cancel_requested: self.cancel_requested.clone(),
         });
+    }
+
+    /// The live status and the change checks, published beside the pages
+    /// (23 Oct 2026). Every page polls them every few seconds; each one
+    /// used to queue for the loop and wait out whatever tick was running.
+    pub(crate) fn publish_live(&self, live: Reply, changed: Vec<(String, Reply)>) {
+        if let Some(snapshot) = self
+            .snapshots
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .as_mut()
+        {
+            snapshot.live = Some(live);
+            snapshot.changed = changed;
+        }
     }
 
     pub(crate) fn publish_pause(&self, pause: std::sync::Arc<dyn Fn(bool) + Send + Sync>) {
@@ -782,11 +816,50 @@ fn permission_records(root: &std::path::Path) -> Option<Vec<Option<Vec<u8>>>> {
         .collect()
 }
 
+/// The pages the loop publishes for the sockets to serve without it. Only
+/// pages that are a reading of state, asked without a query: nothing here
+/// changes anything by being looked at (23 Oct 2026: Settings, Permissions,
+/// Help and Trusted joined the three status pages).
+pub(crate) const SNAPSHOT_PAGES: [crate::hub::Page; 7] = [
+    crate::hub::Page::Dashboard,
+    crate::hub::Page::Now,
+    crate::hub::Page::Outstanding,
+    crate::hub::Page::Settings,
+    crate::hub::Page::Permissions,
+    crate::hub::Page::Help,
+    crate::hub::Page::Trusted,
+];
+
+/// The live status (`which` None) or one change check, if a snapshot is
+/// there and still belongs to the owner. A reading older than two seconds
+/// says so in the status itself, so a phone can show it.
+fn cached_live(cache: &ReadOnlySnapshots, which: Option<&str>) -> Option<Reply> {
+    let mut cache = cache.lock().unwrap_or_else(|p| p.into_inner());
+    let snapshot = cache.as_ref()?;
+    if permission_records(&snapshot.install_state).as_ref() != Some(&snapshot.permissions)
+        || crate::profiles::active_dir(&snapshot.install_state)
+            .unwrap_or_else(|| snapshot.install_state.clone())
+            != snapshot.owner_state
+    {
+        *cache = None;
+        return None;
+    }
+    let mut reply = match which {
+        None => snapshot.live.clone()?,
+        Some(w) => snapshot.changed.iter().find(|(k, _)| k == w)?.1.clone(),
+    };
+    let age = snapshot.made.elapsed().as_secs();
+    if age > 2 && which.is_none() {
+        if let Ok(mut v) = serde_json::from_str::<serde_json::Value>(&reply.body) {
+            v["age_seconds"] = serde_json::json!(age);
+            reply.body = v.to_string();
+        }
+    }
+    Some(reply)
+}
+
 fn cached_readonly(cache: &ReadOnlySnapshots, page: crate::hub::Page) -> Option<Reply> {
-    if !matches!(
-        page,
-        crate::hub::Page::Dashboard | crate::hub::Page::Now | crate::hub::Page::Outstanding
-    ) {
+    if !SNAPSHOT_PAGES.contains(&page) {
         return None;
     }
     let mut cache = cache.lock().unwrap_or_else(|p| p.into_inner());
@@ -1075,6 +1148,61 @@ mod readonly_tests {
         assert!(!changed.contains("First status"));
         drop(door);
         std::fs::remove_dir_all(root).unwrap();
+    }
+
+    /// 23 Oct 2026: while the loop is busy (here: not there at all, and the
+    /// door gives up on it after 80 ms), a page that only reads state, the
+    /// phone's live status and its change checks all answer at once, from the
+    /// last published copy.
+    #[test]
+    fn reading_pages_and_the_live_status_do_not_wait_for_a_busy_loop() {
+        let cfg = ServerConfig {
+            enabled: true,
+            port: 0,
+            ..Default::default()
+        };
+        let mut server = Server::bind(&cfg, TOKEN).unwrap();
+        server.answer_wait = std::time::Duration::from_secs(5);
+        let port = server.port();
+        let door = server.threaded().unwrap();
+        let root = std::env::temp_dir().join(format!("atlas-nowait-{}-{port}", std::process::id()));
+        std::fs::create_dir_all(&root).unwrap();
+        let store = crate::store::Store::new(root.clone());
+        crate::handover::Handover::default().save(&store).unwrap();
+        crate::profiles::Profiles::default().save(&root).unwrap();
+        door.publish_readonly(
+            SNAPSHOT_PAGES
+                .iter()
+                .map(|p| (*p, Reply::html(format!("<h1>copy of {}</h1>", p.href()))))
+                .collect(),
+            root.clone(),
+            root.clone(),
+        );
+        door.publish_live(
+            Reply::ok("{\"status\":\"live copy\"}"),
+            vec![("home".to_string(), Reply::ok("{\"v\":\"7\",\"busy\":false}"))],
+        );
+        for (path, wants) in [
+            ("/hub", "copy of /hub"),
+            ("/hub/settings", "copy of /hub/settings"),
+            ("/hub/permissions", "copy of /hub/permissions"),
+            ("/hub/help", "copy of /hub/help"),
+            ("/hub/trusted", "copy of /hub/trusted"),
+            ("/hub/live.json", "live copy"),
+            ("/hub/changed.json?p=home", "\"v\":\"7\""),
+        ] {
+            let started = std::time::Instant::now();
+            let got = request(port, path, true, "GET");
+            let took = started.elapsed();
+            assert!(got.starts_with("HTTP/1.1 200"), "{path}: {got}");
+            assert!(got.contains(wants), "{path}: {got}");
+            assert!(
+                took < std::time::Duration::from_millis(1500),
+                "{path} took {took:?} with the loop busy"
+            );
+        }
+        drop(door);
+        std::fs::remove_dir_all(root).ok();
     }
 
     #[test]

@@ -606,16 +606,31 @@ pub fn to_wav(samples: &[f32], rate: u32) -> Vec<u8> {
     crate::audio::wav_bytes(&pcm, rate)
 }
 
-/// How many processor threads each sentence gets: half the machine's, at
-/// least two (or one on a single-core machine) and at most four, so the
-/// model server keeps the rest. Measured 28 Sep 2026 on two shared 2.1 GHz
-/// Xeon cores: two threads made speech at 1.25-1.31x its own length, one
-/// thread at 1.67x.
+/// How many processor threads each sentence gets, from the machine's
+/// logical processor count (`threads_for`).
 pub fn thread_count() -> i32 {
     let n = std::thread::available_parallelism()
         .map(|n| n.get())
         .unwrap_or(2);
-    (n / 2).clamp(2, 4).min(n) as i32
+    threads_for(n)
+}
+
+/// Measured on two machines, so only those shapes change:
+/// * 28 Sep 2026, two shared 2.1 GHz Xeon cores: two threads made speech at
+///   1.25-1.31x its own length, one thread at 1.67x. Small machines keep
+///   half their processors, at least two and at most four.
+/// * 23 Oct 2026, Core Ultra 7 256V (8 logical, 4 performance + 4 low-power
+///   cores): ten back-to-back sentences, one and four threads taken in turns
+///   under the same load. One thread was faster in all five comparisons:
+///   0.87x vs 1.00x on a near-idle machine, 1.14-1.43x vs 1.83-2.58x while
+///   other work ran. Four threads drifted to 2-3x after the first call. So
+///   eight or more logical processors get one thread, which also leaves the
+///   rest of the machine free.
+fn threads_for(logical: usize) -> i32 {
+    if logical >= 8 {
+        return 1;
+    }
+    (logical / 2).clamp(2, 4).min(logical) as i32
 }
 
 // ---------------------------------------------------------------- one per process
@@ -1019,4 +1034,19 @@ pub fn stock(sentence: &str, made_for: &str) -> Option<Vec<u8>> {
 /// What the stock lines are made with: voice, speed and volume.
 pub fn made_for(voice: &str, speed: f32, volume: u8) -> String {
     format!("{voice}|{speed:.3}|{volume}")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn thread_count_follows_what_was_measured() {
+        assert_eq!(threads_for(1), 1);
+        assert_eq!(threads_for(2), 2);
+        assert_eq!(threads_for(4), 2);
+        assert_eq!(threads_for(6), 3);
+        assert_eq!(threads_for(8), 1);
+        assert_eq!(threads_for(16), 1);
+    }
 }
