@@ -115,8 +115,13 @@ mod check_in_tests {
     use crate::store::Store;
 
     fn root(tag: &str) -> std::path::PathBuf {
-        let p = std::env::temp_dir().join(format!("atlas-checkin-{tag}-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&p);
+        // Fresh each run, never deleted here (the module is held to no
+        // deleting calls, tests included).
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        let p = std::env::temp_dir().join(format!("atlas-checkin-{tag}-{}-{stamp}", std::process::id()));
         std::fs::create_dir_all(&p).unwrap();
         p
     }

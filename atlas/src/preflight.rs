@@ -78,7 +78,7 @@ fn gb(mb: u64) -> String {
 
 /// The answer for this machine: measured memory, each tier against it, and
 /// the honest way to the next one -- or that there isn't one here.
-pub fn said(m: &Machine) -> String {
+pub fn said(m: &Machine, rungs: &[Rung]) -> String {
     let budget = m.budget_mb();
     let ceiling = m.total_ram_mb / 3;
     let now = plan_for(m);
@@ -88,7 +88,7 @@ pub fn said(m: &Machine) -> String {
         gb(m.free_ram_mb),
         gb(budget)
     );
-    for r in ladder() {
+    for r in rungs {
         let verdict = if r.needs_mb == 0 {
             "runs anywhere".to_string()
         } else if r.needs_mb <= budget {
@@ -150,16 +150,16 @@ mod tests {
     #[test]
     fn a_tier_out_of_reach_says_so_and_one_within_reach_says_what_it_takes() {
         // 8GB, 2GB free: the top tier needs more than a third of 8GB.
-        let small = said(&laptop(8192, 2048));
+        let small = said(&laptop(8192, 2048), &ladder());
         assert!(small.contains("everything"), "{small}");
         assert!(small.contains("out of reach here"), "{small}");
         assert!(small.contains("text only: runs anywhere"), "{small}");
         // 32GB with little free: the top tier is reachable by closing things.
-        let busy = said(&laptop(32_768, 3000));
+        let busy = said(&laptop(32_768, 3000), &ladder());
         assert!(busy.contains("more free; closing apps"), "{busy}");
         assert!(!busy.contains("out of reach"), "{busy}");
         // Plenty free: everything fits, and that's what runs.
-        let idle = said(&laptop(32_768, 20_000));
+        let idle = said(&laptop(32_768, 20_000), &ladder());
         assert!(idle.ends_with("Running now: everything."), "{idle}");
         assert!(idle.contains("measured just now"), "{idle}");
     }

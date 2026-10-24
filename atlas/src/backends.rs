@@ -431,7 +431,7 @@ impl HandsGuard {
         Background(self.clone())
     }
 
-    pub fn is_background(&self) -> bool {
+    fn is_background(&self) -> bool {
         self.depth.load(std::sync::atomic::Ordering::SeqCst) > 0
     }
 

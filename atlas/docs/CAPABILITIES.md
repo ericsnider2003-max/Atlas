@@ -83,6 +83,7 @@ There is one build of Atlas, and it is the Windows one. Every other column is wh
 | open your workspace or a named mode -- trading, writing, a call -- each app on its screen, and close it all again; 'two hours on the edit' starts a work session that holds interruptions, checks in once, and says how it went | built, never run for real | `workspace` `modes` `worksession` | ready | would | catch | **no** | **no** | **no** |
 | show you what it would do -- every window, file and message -- without doing any of it | working | `rehearse` | ready | ready | ready | ready | ready | ready |
 | do things in your apps -- click through them, fill in boxes, choose options, use their menus -- a step at a time, asking before anything that can't be taken back | built, never run for real | `operate` | ready | catch | catch | **no** | catch | **no** |
+| learn a mode from your own words -- 'when I say focus mode, close Slack and open my to-do list' -- read it back, and keep it only on your yes | built, never run for real | `teachmode` | ready | ready | ready | ready | ready | ready |
 
 ## Your files
 
@@ -161,6 +162,7 @@ There is one build of Atlas, and it is the Windows one. Every other column is wh
 | keep a receipt off the screen or the clipboard -- merchant, date, total, asked about when unsure -- and say what you spent where | built, never run for real | `receipts` | ready | catch | catch | **no** | catch | **no** |
 | audit your spending from your bank's exports -- read-only by construction, with no way to move money | switched off | `finance` | ready | ready | ready | catch | would | catch |
 | keep a hosted model cheap -- the smallest one that will do, a yes before a big job, never a surprise bill | switched off | `budget` | ready | ready | ready | ready | ready | ready |
+| replay a hypothetical position -- in at 100, stop 95, target 110 -- over every past stretch in a file of bars and say how often the target, the stop or neither came first; a simulation over past prices, never advice | built, never run for real | `whatif` | ready | ready | ready | catch | would | catch |
 
 ## Email
 
@@ -260,6 +262,8 @@ There is one build of Atlas, and it is the Windows one. Every other column is wh
 | keep every switch on one page, and keep what you change -- sound and voice too: when it speaks, how loud, when it may pop up | built, never run for real | `settings` `preferences` `sound` | ready | ready | ready | catch | would | catch |
 | arrange the hub's home the way you want it -- which parts, in what order, how big | built, never run for real | `dash` `layout_prefs` | ready | ready | ready | catch | would | catch |
 | look the way you choose -- light, dark, or following this computer's own settings -- everywhere at once | built, never run for real | `appearance` `oslook` | ready | ready | ready | catch | would | catch |
+| say what needs you right now, soonest first, each with why it is on the list -- on request, and on its own every half hour when something new needs you -- and put off what you say 'not now' to | built, never run for real | `needs_you` | ready | ready | ready | ready | ready | ready |
+| say what this computer can run -- the memory free right now, each quality tier against it, and what it would take to reach the next one | built, never run for real | `preflight` | ready | ready | ready | ready | ready | ready |
 
 ## Looking at your screen and at the room
 
@@ -368,4 +372,4 @@ There is one build of Atlas, and it is the Windows one. Every other column is wh
 
 ---
 
-249 things, across 442 of 503 source files. The other 61 are plumbing — config, storage, the platform layer — each named in `capability::PLUMBING` with the reason it is not a capability. `tests/catalogue.rs` fails for a module that is neither, so nothing built can go unlisted here.
+253 things, across 446 of 507 source files. The other 61 are plumbing — config, storage, the platform layer — each named in `capability::PLUMBING` with the reason it is not a capability. `tests/catalogue.rs` fails for a module that is neither, so nothing built can go unlisted here.

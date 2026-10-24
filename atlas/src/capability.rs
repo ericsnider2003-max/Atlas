@@ -609,6 +609,10 @@ pub fn all() -> Vec<Capability> {
         Capability { id: "taskloop", what: "work through a request of several steps -- a plan, each step's result looked at, then the next -- and say when it's finished or what it's waiting on", area: Thinking, state: Untested, needs: Some("a language model"), offline: true, added: 42, runs: &[Needs::JustThinking], modules: &["taskloop"] },
         Capability { id: "streams", what: "do several things at once -- the parts of a request that don't depend on each other side by side -- and say what's still running when asked what it's working on", area: Thinking, state: Untested, needs: Some("a language model"), offline: true, added: 42, runs: &[Needs::JustThinking], modules: &["streams"] },
         Capability { id: "backed", what: "never say it's on something unless it really started it", area: Speaking, state: Working, needs: None, offline: true, added: 42, runs: &[Needs::JustThinking], modules: &["backed"] },
+        Capability { id: "needs_you", what: "say what needs you right now, soonest first, each with why it is on the list -- on request, and on its own every half hour when something new needs you -- and put off what you say 'not now' to", area: Itself, state: Untested, needs: None, offline: true, added: 44, runs: &[Needs::JustThinking], modules: &["needs_you"] },
+        Capability { id: "preflight", what: "say what this computer can run -- the memory free right now, each quality tier against it, and what it would take to reach the next one", area: Itself, state: Untested, needs: None, offline: true, added: 44, runs: &[Needs::JustThinking], modules: &["preflight"] },
+        Capability { id: "teachmode", what: "learn a mode from your own words -- 'when I say focus mode, close Slack and open my to-do list' -- read it back, and keep it only on your yes", area: Windows, state: Untested, needs: None, offline: true, added: 44, runs: &[Needs::JustThinking], modules: &["teachmode"] },
+        Capability { id: "whatif", what: "replay a hypothetical position -- in at 100, stop 95, target 110 -- over every past stretch in a file of bars and say how often the target, the stop or neither came first; a simulation over past prices, never advice", area: Money, state: Untested, needs: Some("a file of bars"), offline: true, added: 44, runs: &[Needs::Files], modules: &["whatif"] },
     ]
 }
 
@@ -2012,7 +2016,9 @@ pub fn claimed_modules() -> std::collections::BTreeSet<&'static str> {
 // 12 Oct 2026: + `gpulost` (graphics reset safe mode) = 493.
 // 15 Oct 2026: + `evidence` and `job`, bounded foundation journals used by
 // every capability rather than user-facing capabilities themselves = 495.
-pub const MODULES_IN_TREE: usize = 503;
+// 24 Oct 2026: + `needs_you`, `preflight`, `teachmode`, `whatif` (plans A-F
+// proof slices, each a thing a person asks for) = 507.
+pub const MODULES_IN_TREE: usize = 507;
 
 /// Every module no capability claims, and why it is not one.
 ///

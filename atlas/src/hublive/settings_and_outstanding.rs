@@ -1596,11 +1596,11 @@ mod one_count_tests {
             counts.waiting + counts.blocked + counts.failed + counts.interrupted,
             "needs_you and Outstanding count different things"
         );
-        assert!(needs.len() >= 2, "{needs:?}");
+        assert!(needs.len() >= 2, "only {} open items", needs.len());
         for n in &needs {
             assert!(
                 page.contains(&hub::esc(n.what.trim_end_matches(['?', '.']))),
-                "needs_you names {:?} but Outstanding doesn't show it",
+                "needs_you names '{}' but Outstanding doesn't show it",
                 n.what
             );
         }
