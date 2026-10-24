@@ -45,11 +45,16 @@ Dates are UTC. The card at the top of `AGENTS.md` holds the facts; this file hol
 - `ie83e` Hub redesign: one work record, six sections, phone-first, Jarvis/EDITH/Donna bar (2026-10-23)
 - `iff9c` kokoro-per-call-slowdown Kokoro: back-to-back synth calls slow to ~2x real time; profile threads/power before chunking (branch fix/kokoro-first-clause-2026-10-22 unmerged) (2026-10-23)
 - `owner-after-e2e1020` Owner decisions after e2e fixes: approve 16.2 GB pieces, program-copy cleanup (2.27 GB), self-audit act-without-asking runs cargo, panel outlives Atlas, owner desktop re-run (2026-10-22)
+- `cleanup-1022` C: drive cleanup approved by Eric: ~529 GB freed, unmerged work pushed to backup/* branches, unique files archived (2026-10-22)
 - `ui-leftovers-1021` Hub wording leftovers from the 20 Oct run (kept notes, updates page, sidebar, subtitle, internet health) (2026-10-22)
 - `quiet-failures` Quiet failures made visible: full disk, file index, clock jumps, unreadable settings (2026-10-22)
 - `backup-e2e-1021` Backup and restore proved end to end (folder copy hash-checked, state backup, real restore); backup list shows real size and age (2026-10-22)
 - `current-state` Current-state consolidation doc (build, tests, readiness, vault, models, parked, historical) (2026-10-21)
 - `desktop-e2e-1020` Desktop E2E acceptance run 2026-10-20: fix false progress claims, Hub failed/done states, restart reconciliation, backup, mic (2026-10-21)
+- `sec4-dns-q25` SEC4 residual: keyless peer name lookups moved off the tick to a background cache; Q25: Daemon::set_auto_backup switch for tests (2026-10-21)
+- `gpu1-health` GPU1: a model server whose log shows Vulkan device loss is not trusted even when /health says OK; checked before each request (2026-10-21)
+- `tune-trash` PC tidy-up moves old temp files to Atlas's trash (restorable, 30 days) instead of deleting them (2026-10-21)
+- `selftest-scratch` SELFTEST1: self-test scratch cleanup removes junction links only, guarded to temp atlas-selftest-* folders, failures reported (2026-10-21)
 
 ## Docs
 

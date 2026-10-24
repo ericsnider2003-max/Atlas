@@ -781,3 +781,5 @@
 {"ts":"2026-10-24T18:03:51.075Z","who":"agent","op":"add","id":"ia9af","title":"Video plans A/E/G proof slices: what needs me, Hub slop guard, prompt budget","home":"atlas/design/hub/NOT_SLOP.md"}
 {"ts":"2026-10-24T19:21:44.492Z","who":"agent","op":"add","id":"ib65b","title":"Video plans B/C/D/F proof slices: teach a mode, what this computer runs, background hands-off guard, read-only market what-if","home":"atlas/src/whatif.rs"}
 {"ts":"2026-10-24T09:34:24.936Z","who":"agent","op":"add","id":"i122d","title":"Phone standalone-first: bundled models, honest outbox, Tailscale sync","home":"verification/runs/20261024T010000Z-claude-phone-standalone/RESULTS.md"}
+{"ts":"2026-10-22T07:45:05.473Z","who":"claude-items","op":"add","id":"cleanup-1022","title":"C: drive cleanup approved by Eric: ~529 GB freed, unmerged work pushed to backup/* branches, unique files archived","home":"docs/CURRENT_STATE_2026-10-21.md"}
+{"ts":"2026-10-22T07:45:07.480Z","who":"claude-items","op":"done","id":"cleanup-1022"}
