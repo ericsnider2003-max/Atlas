@@ -75,3 +75,32 @@ How the files get into place:
 1. **Queued lane** (`hublive/settings_and_outstanding.rs`, `open_work`): add each `remote::Queue` request in Waiting or Running state from the phone's `asked_of_the_laptop` store. Use `remote::queue_status(r, laptop_heard, now)` as its reason, with `laptop_heard` worked out as `askthelaptop.rs` does. That puts "Queued until your laptop is reachable (last seen 14:05)" on Home, Now, Outstanding and `live.json`.
 2. **Sync page on the phone** (`hub.rs`, `Page::here`): stop hiding `Page::Sync` in phone mode. The page also needs to show last sync, pending outbox items, unsent changes, and newest-wins replacements with undo. That is sync work 3, still to build.
 3. **Offline page note** (`hub.rs:397`): "what's queued to go when it's back" should become "what's queued until your laptop is reachable".
+
+## Later on 24 Oct: Eric's answers applied (commits 3c425e54 … a48b8e19)
+
+Merged candidate d55bef25 (the Hub redesign, installed) into this branch; the merge was clean.
+
+- **Q1, build through GitHub CI**
+  - The `gh` command-line tool is logged in as Eric, with `repo` and `workflow` scopes, so a push is possible. Nothing is pushed yet: Dispatch coordinates.
+  - iOS: the workflow now fetches and checks the bundled models before XcodeGen. It signs with Apple's automatic signing; the ASC key secrets are already set.
+  - Android: the workflow signs only if Eric adds `ANDROID_SIGNING_P12_B64` and `ANDROID_SIGNING_PASS` as repository secrets. Neither is set today. The key is written to the runner's temp folder only for the signing step and deleted afterwards. The unsigned APK is always uploaded. Uploading the key is Eric's one-way door, and I cannot enter it for him.
+  - `the_phone_stands_alone` now holds that rule: only those two secrets, read only by the signing step.
+- **Q2, the correction log between Eric's own devices**
+  - Each written line, already redacted, travels as a sealed sync event `corr:<id>`, and each forget follows the same way.
+  - A device takes these only from a sealed bundle. It keeps nothing while "stop learning" is on there, drops duplicates, and refuses a line the scrubber would still change (an email or a key, for example).
+  - The file itself is still in no backup and no carrier. `kin.rs` and the signal door are checked never to mention it.
+  - 25 correction-log tests pass, 4 of them new for two devices: both directions with forget, forget everything, nothing over unsealed sync, and nothing kept where learning is stopped.
+- **Newest wins, with the replaced version kept and undoable**
+  - The merge says "I kept the newer one" instead of "Which?".
+  - The losing version is kept in `sync_replaced` (the 50 newest).
+  - "what did sync replace?" says what was replaced. "put back what sync replaced" makes it the newest change on both devices. Tested with two devices.
+- **Bug fixed on the way**
+  - An event a device already held, relayed back by the other device, was taken as fresh. It was stored twice and hid the real clash.
+  - Fixed in both sync paths in `daemon/tick.rs`, as one line each, and the merge now counts such an event once. Tested.
+- **Bug found, not fixed (facts module)**
+  - The same fact changed on two devices ("my car is a Honda" on the laptop, "my car is a Toyota" on the phone) never clashes: each device files it under its own id, so both devices end up believing both.
+  - The fix belongs in how facts are identified, and it needs an owner.
+
+All suites run pass: sync 59, correction log 25, asking the laptop 11, files_remote 33, phone 15 + 5, hublive 61, floor 20, lib 41, and the project's own quality checks.
+
+Still to do: sync over Tailscale (transport and retry), and the Sync page plus the queued wording in the Hub. The Hub files are staged above, for Dispatch to sequence.
