@@ -168,8 +168,10 @@ pub fn handing_off(what: &str, laptop_reachable: bool) -> String {
     if laptop_reachable {
         "That needs the laptop. Sending it over — I'll tell you when it's done.".to_string()
     } else {
-        "That needs the laptop and it's not reachable. I've queued it, and it'll go the \
-             moment we're back in touch."
+        // 24 Oct 2026: the outbox's own words, the same on every surface
+        // (`queue_status`).
+        "That needs the laptop, and your laptop isn't reachable right now. It's queued until \
+             your laptop is reachable, and it goes the moment it is."
             .to_string()
     }
     .replace("That needs", &format!("{what} needs"))
@@ -417,9 +419,68 @@ pub fn read_answer(id: &str, to: &str) -> Option<(String, u64, String, String, b
 
 /// Said on the phone straight away.
 pub fn sent_to_the_laptop(what: &str) -> String {
+    // True whether or not the laptop answered just now: until it picks the
+    // request up, it is queued on this phone, not "sent" (24 Oct 2026).
     format!(
-        "Sent \"{what}\" to your laptop -- I'll tell you when it answers. If it's asleep, it runs when it wakes."
+        "\"{what}\" is queued for your laptop. It goes as soon as your laptop is reachable, \
+         and I'll tell you when it answers."
     )
+}
+
+/// Where a request for the laptop stands, in one line, for every place that
+/// shows it (the phone's Home and Sync pages, the outbox): the honest state,
+/// with when the laptop was last heard from. `laptop_seen` is that moment,
+/// `None` if it never has been; anything older than `REACHABLE_WITHIN`
+/// counts as not reachable.
+pub fn queue_status(r: &Request, laptop_seen: Option<u64>, now: u64) -> String {
+    let reachable = laptop_seen.is_some_and(|t| now.saturating_sub(t) <= REACHABLE_WITHIN);
+    let seen = match laptop_seen {
+        Some(t) => format!("last seen {}", crate::localclock::hhmm_here(t)),
+        None => "not seen yet".to_string(),
+    };
+    match r.state {
+        State::Waiting if reachable => "Waiting for your laptop to pick it up.".to_string(),
+        State::Waiting => format!("Queued until your laptop is reachable ({seen})."),
+        State::Running => "Running on your laptop.".to_string(),
+        State::Done => "Done on your laptop.".to_string(),
+        State::Failed => "Your laptop couldn't do it.".to_string(),
+        State::Dropped => "You cancelled it.".to_string(),
+    }
+}
+
+/// How recently the laptop must have answered to count as reachable: two
+/// sync rounds.
+pub const REACHABLE_WITHIN: u64 = 120;
+
+/// "What's waiting for my laptop?" and its everyday shapes.
+pub fn asks_whats_waiting(said: &str) -> bool {
+    let s = said.trim().trim_end_matches(['?', '.', '!']).to_lowercase();
+    let s = s.replace("what's", "what is");
+    [
+        "what is waiting for",
+        "what is queued for",
+        "anything waiting for",
+        "anything queued for",
+    ]
+    .iter()
+    .any(|start| s.starts_with(start))
+        && (s.ends_with("laptop") || s.ends_with("computer"))
+}
+
+/// The phone's outbox, one line per request still open, in the words
+/// [`queue_status`] gives every surface.
+pub(crate) fn whats_waiting(q: &Queue, laptop_heard: Option<u64>, now: u64) -> String {
+    let open: Vec<String> = q
+        .requests
+        .iter()
+        .filter(|r| matches!(r.state, State::Waiting | State::Running))
+        .map(|r| format!("\"{}\": {}", r.what, queue_status(r, laptop_heard, now)))
+        .collect();
+    if open.is_empty() {
+        "Nothing is waiting for your laptop.".to_string()
+    } else {
+        open.join(" ")
+    }
 }
 
 /// The laptop's answer for something it won't run without you.

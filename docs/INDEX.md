@@ -28,6 +28,8 @@ Dates are UTC. The card at the top of `AGENTS.md` holds the facts; this file hol
 - `i018b` crypto-bigint-advisory RUSTSEC-2026-0387 via p256 0.13 (Apple JWT signing): owner decision on p256 0.14 major bump — open since 2026-10-24 (claude)
 - `ia9af` Video plans A/E/G proof slices: what needs me, Hub slop guard, prompt budget — home: [atlas/design/hub/NOT_SLOP.md](../atlas/design/hub/NOT_SLOP.md) — open since 2026-10-24 (agent)
 - `ib65b` Video plans B/C/D/F proof slices: teach a mode, what this computer runs, background hands-off guard, read-only market what-if — home: [atlas/src/whatif.rs](../atlas/src/whatif.rs) — open since 2026-10-24 (agent)
+- `iff9c` kokoro-per-call-slowdown Kokoro: back-to-back synth calls slow to ~2x real time; profile threads/power before chunking (branch fix/kokoro-first-clause-2026-10-22 unmerged) — open since 2026-10-23 (claude)
+- `i122d` Phone standalone-first: bundled models, honest outbox, Tailscale sync — home: [verification/runs/20261024T010000Z-claude-phone-standalone/RESULTS.md](../verification/runs/20261024T010000Z-claude-phone-standalone/RESULTS.md) — open since 2026-10-24 (agent)
 
 ## Last session
 

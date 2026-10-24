@@ -41,6 +41,7 @@ object AtlasCore {
         if (!cfg.exists()) {
             copyAssets(ctx, "config", cfg)
         }
+        shipBundledModels(ctx, home)
         val rc = start(home.absolutePath, 0)
         if (rc < 0) return null
         // Up to a minute: a first start on an old phone reads a lot.
@@ -77,6 +78,23 @@ object AtlasCore {
                 override fun onLost(n: Network) = network(false)
             })
         }
+    }
+
+    /**
+     * The models this app was built with (assets/bundled), copied once per
+     * app version into home/bundled, where the core checks each one's
+     * fingerprint and moves it into place (src/bundled.rs). A marker file
+     * keeps a second start from copying 400 MB again.
+     */
+    private fun shipBundledModels(ctx: Context, home: File) {
+        val version = runCatching {
+            ctx.packageManager.getPackageInfo(ctx.packageName, 0).longVersionCode
+        }.getOrDefault(0L)
+        val marker = File(home, ".bundled-$version")
+        if (marker.exists() || ctx.assets.list("bundled").isNullOrEmpty()) return
+        copyAssets(ctx, "bundled", File(home, "bundled"))
+        marker.parentFile?.mkdirs()
+        marker.writeText("copied\n")
     }
 
     /** Copy an asset folder, subfolders included (config/guessable/…). */

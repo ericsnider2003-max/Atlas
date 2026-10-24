@@ -157,6 +157,47 @@ pub fn with_handed_over_banner(page: String) -> String {
 /// The Sync page, by where this device stands: no sync folder → choose one;
 /// no household → start one here, or join one; a household → its devices,
 /// inviting another, and taking a key from another device.
+/// Where sync stands, in plain words, before anything to set up.
+pub(super) fn sync_status_html(st: &SyncStatus) -> String {
+    let mut out = String::from("<section class=syncnow aria-labelledby=syncnow-h><h2 id=syncnow-h>Right now</h2>");
+    out.push_str(&match &st.last_heard {
+        Some(t) => format!("<p>Last heard from your other devices at {}.</p>", esc(t)),
+        None => "<p>Not in touch with your other devices yet.</p>".to_string(),
+    });
+    if st.waiting.is_empty() && st.replaced.is_empty() {
+        out.push_str("<p class=nothing>Nothing waiting for your laptop, and nothing replaced.</p>");
+    }
+    if !st.waiting.is_empty() {
+        out.push_str(&format!("<h3>Waiting for your laptop ({})</h3><ul>", st.waiting.len()));
+        for (what, status) in &st.waiting {
+            out.push_str(&format!("<li><b>{}</b> {}</li>", esc(what), esc(status)));
+        }
+        out.push_str("</ul>");
+    }
+    if !st.replaced.is_empty() {
+        out.push_str(&format!(
+            "<h3>Replaced by sync ({})</h3><p class=note>When the same thing changed on two devices, the newer change was kept. The other is here.</p><ul>",
+            st.replaced.len()
+        ));
+        for r in st.replaced.iter().take(10) {
+            out.push_str(&format!(
+                "<li><b>{}</b>: kept \u{201c}{}\u{201d} (from {}), replaced \u{201c}{}\u{201d}</li>",
+                esc(&r.subject),
+                esc(&r.kept),
+                esc(&r.kept_from),
+                esc(&r.replaced)
+            ));
+        }
+        out.push_str(
+            "</ul><form class=inline method=post action=/hub/talk>\
+             <input type=hidden name=text value=\"put back what sync replaced\">\
+             <button>Put back the most recent</button></form>",
+        );
+    }
+    out.push_str("</section>");
+    out
+}
+
 pub fn sync_page_with(
     sealing: bool,
     folder: &str,
@@ -169,6 +210,9 @@ pub fn sync_page_with(
     let mut body = String::new();
     if let Some(said) = last.filter(|s| !s.is_empty()) {
         body.push_str(&format!("<p class=notice role=status>{}</p>", esc(said)));
+    }
+    if let Some(st) = &view.status {
+        body.push_str(&sync_status_html(st));
     }
     let no_folder = folder.trim().is_empty();
 

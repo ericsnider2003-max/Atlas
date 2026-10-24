@@ -29,10 +29,11 @@ fn plat() -> MockPlatform {
     }])
 }
 
-const LAPTOP_ONLY: [Page; 6] = [
+// Sync is on the phone since 24 Oct 2026 (standalone-first): it shows what
+// waits for the laptop and what newest-wins replaced.
+const LAPTOP_ONLY: [Page; 5] = [
     Page::Phone,
     Page::Updates,
-    Page::Sync,
     Page::Offline,
     Page::Gestures,
     Page::AddOns,
@@ -193,4 +194,11 @@ fn a_yes_said_to_the_phone_is_kept() {
     // On a laptop the same words aren't the phone's question.
     let laptop = d.turn("use online models", 1_790_740_100);
     assert!(!laptop.starts_with("Done: until this phone"), "{laptop}");
+}
+
+#[test]
+fn the_sync_page_is_on_the_phone() {
+    atlas::phonemode::on_this_thread_for_test(true);
+    assert_eq!(hub::route(Page::Sync.href()), Some(Page::Sync));
+    atlas::phonemode::on_this_thread_for_test(false);
 }

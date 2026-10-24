@@ -15,8 +15,22 @@
 //!
 //! `data/learning/` is beside `data/state/`, not inside it, and is not one of
 //! the folders a backup keeps (`safety::OWNED_FOLDERS`), so it is never in a
-//! backup, a restore, or what a peer is sent. Nothing here makes a request.
-//! `tests/the_correction_log.rs` reads the backup and sync sources for it.
+//! backup, a restore, or what anyone else's Atlas is sent. Nothing here makes
+//! a request. `tests/the_correction_log.rs` reads the backup and sync sources
+//! for it.
+//!
+//! ## Your own devices (24 Oct 2026)
+//!
+//! Eric: sync the correction log "between Eric's own paired devices. Keep it
+//! encrypted/limited to his own devices, still honour 'forget' and
+//! secret-scrubbing, and never send it to anyone else's peer." So a line, once
+//! written (already redacted, as above), travels in your own sync log as a
+//! `Changed` event under [`SYNC_PREFIX`] -- only when your sync bundles are
+//! sealed with your household key -- and a forget travels the same way. A
+//! device takes them only from a sealed bundle, keeps nothing while you've
+//! said "stop learning from me" there, and refuses a line that still looks
+//! like it carries a secret. The door to other people's Atlas (`kin`) never
+//! carries the sync log at all.
 //!
 //! ## What it never holds
 //!
@@ -61,6 +75,12 @@ const TRIM_TO_PERCENT: usize = 90;
 const CHAIN_GAP_SECS: u64 = 180;
 /// The saved record behind "stop learning from me".
 pub const SWITCH: &str = "learning_log";
+/// Sync ids for the correction log: `corr:<record id>`, or `corr:*` for
+/// "forget everything".
+pub const SYNC_PREFIX: &str = "corr:";
+/// The field a synced line arrives in, and the one a forget does.
+pub const SYNC_LINE: &str = "line";
+pub const SYNC_FORGOTTEN: &str = "forgotten";
 
 /// Why the line was written.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -804,6 +824,50 @@ impl Keeper {
         }
     }
 
+    /// The ids of every line kept, oldest first: what a forget is measured
+    /// against, so it can be told to your other devices.
+    pub(crate) fn ids(&self) -> Vec<String> {
+        self.log.read().into_iter().map(|r| r.id).collect()
+    }
+
+    /// A line from your other device. `Ok(true)` when it was kept; `Ok(false)`
+    /// when there was nothing to do (already here, learning stopped here, or
+    /// not a record). Refused outright if it still carries what the scrubber
+    /// would take out: that line never reaches this device's file.
+    pub(crate) fn take_synced(&mut self, line: &str) -> std::io::Result<bool> {
+        if !self.on {
+            return Ok(false);
+        }
+        let Ok(rec) = serde_json::from_str::<Record>(line) else {
+            return Ok(false);
+        };
+        if rec.v != SCHEMA || line.len() > MAX_LINE_BYTES {
+            return Ok(false);
+        }
+        let mut s = crate::redact::Scrubber::default();
+        s.scrub(line);
+        if s.found_count() > 0 {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "a synced correction still looked like it held a secret; not kept",
+            ));
+        }
+        if self.ids().iter().any(|i| *i == rec.id) {
+            return Ok(false);
+        }
+        self.log.append(&rec)?;
+        Ok(true)
+    }
+
+    /// A forget from your other device: one line, or `*` for everything.
+    pub(crate) fn forget_synced(&mut self, id: &str) -> std::io::Result<usize> {
+        if id == "*" {
+            self.log.clear()
+        } else {
+            self.log.forget_ids(&[id.to_string()])
+        }
+    }
+
     /// "Forget that": this chain's lines, or the newest one when the chain is
     /// gone (a restart). How many went.
     pub fn forget_that(&mut self) -> std::io::Result<usize> {
@@ -1138,6 +1202,35 @@ mod tests {
         f.said = said.into();
         f.ts = ts;
         build(&f).unwrap()
+    }
+
+    #[test]
+    fn a_synced_line_is_kept_once_refused_if_it_carries_a_secret_and_forgotten_by_id() {
+        let store = crate::store::Store::new(tmp("synced"));
+        let mut k = Keeper::open(&store);
+        let r = rec("open spotify", 1_000);
+        let line = serde_json::to_string(&r).unwrap();
+        assert!(k.take_synced(&line).unwrap());
+        assert!(!k.take_synced(&line).unwrap(), "a line is kept once");
+        assert_eq!(k.ids(), vec![r.id.clone()]);
+        // A line that slipped past its own device's scrubbing is not kept.
+        let mut leaky = rec("email me at someone@example.com", 1_001);
+        leaky.said = "email me at someone@example.com".into();
+        let bad = serde_json::to_string(&leaky).unwrap();
+        let err = k.take_synced(&bad).unwrap_err();
+        assert_eq!(err.kind(), std::io::ErrorKind::InvalidData);
+        assert_eq!(k.ids().len(), 1, "a leaky line reached the file");
+        // Not a record, or another schema: nothing.
+        assert!(!k.take_synced("not json").unwrap());
+        // Forgotten by id, then everything.
+        assert_eq!(k.forget_synced(&r.id).unwrap(), 1);
+        k.take_synced(&line).unwrap();
+        assert_eq!(k.forget_synced("*").unwrap(), 1);
+        assert!(k.ids().is_empty());
+        // Learning stopped here: nothing is taken.
+        k.on = false;
+        assert!(!k.take_synced(&line).unwrap());
+        assert!(k.ids().is_empty());
     }
 
     #[test]

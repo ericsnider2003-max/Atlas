@@ -899,6 +899,7 @@ fn sync_page_unplaced(
         &atlas::hub::SyncView {
             house: atlas::hub::HouseView::Unknown,
             suggested_folder: None,
+            status: None,
         },
     )
 }

@@ -706,6 +706,7 @@ impl Daemon<'_> {
             } else {
                 None
             },
+            status: Some(self.sync_status_now()),
         };
         // What the last button said is shown by `hub_answer` from `flash_once`.
         let said: Option<String> = None;

@@ -111,8 +111,9 @@ fn a_reading_runs_on_the_laptop_and_the_answer_comes_back_to_the_phone() {
     pp.be_a_phone_for_test();
     let mut phone = daemon(&pc, &pp, &ps);
     let said = phone.turn("ask the laptop to check what time it is", T);
+    // Queued on the phone until the laptop takes it, said so (24 Oct 2026).
     assert!(
-        said.starts_with("Sent \"check what time it is\" to your laptop"),
+        said.starts_with("\"check what time it is\" is queued for your laptop"),
         "{said}"
     );
 
@@ -520,4 +521,137 @@ fn nothing_private_travels_and_a_stranger_gets_none_of_it() {
         "an unsealed bundle's thread was taken"
     );
     assert!(!mine.facts.facts.iter().any(|f| f.body.contains("fish")));
+}
+
+/// Standalone-first (Eric, 22 Oct 2026): with the laptop switched off and no
+/// internet, the phone still answers what it can by itself, keeps what needs
+/// the laptop in its outbox saying so honestly, and the laptop runs it the
+/// moment it is back, with the answer reaching the phone.
+#[test]
+fn with_the_laptop_off_the_phone_answers_queues_honestly_and_it_runs_when_the_laptop_is_back() {
+    let (lc, pc, ls, ps, _) = pair("outbox");
+    let (lp, pp) = (plat(), plat());
+    pp.be_a_phone_for_test();
+    // No model, no laptop, no internet: only the phone's own plain code.
+    let mut phone = daemon(&pc, &pp, &ps);
+    let time = phone.turn("what time is it", T);
+    assert!(
+        time.chars().any(|c| c.is_ascii_digit()) && !time.to_lowercase().contains("couldn't"),
+        "the phone could not tell the time by itself: {time}"
+    );
+
+    let said = phone.turn("ask the laptop to check what time it is", T + 5);
+    assert!(said.contains("is queued for your laptop"), "{said}");
+    let q: atlas::remote::Queue = ps.load("asked_of_the_laptop");
+    assert_eq!(q.requests.len(), 1);
+    assert_eq!(q.requests[0].state, atlas::remote::State::Waiting);
+    assert_eq!(
+        atlas::remote::queue_status(&q.requests[0], None, T + 5),
+        "Queued until your laptop is reachable (not seen yet)."
+    );
+    let waiting = phone.turn("what's waiting for my laptop?", T + 10);
+    assert_eq!(
+        waiting,
+        "\"check what time it is\": Queued until your laptop is reachable (not seen yet)."
+    );
+    // The same line on the phone's Hub: the Queued lane and the Sync page.
+    let outstanding = atlas::hublive::reply(&mut phone, atlas::server::Action::Hub(atlas::hub::Page::Outstanding)).body;
+    let lane = &outstanding[outstanding.find("id=lane-queued>").expect("the Queued lane")..];
+    let lane = &lane[..lane.find("</section>").unwrap()];
+    assert!(lane.contains("Check what time it is.") && lane.contains("Queued until your laptop is reachable"), "{lane}");
+    let sync = atlas::hublive::reply(&mut phone, atlas::server::Action::Hub(atlas::hub::Page::Sync)).body;
+    assert!(sync.contains("Waiting for your laptop (1)"), "the Sync page doesn't show the outbox");
+    assert!(sync.contains("Queued until your laptop is reachable"), "the Sync page's line differs");
+    // The phone keeps syncing into the void: nothing is lost or doubled.
+    phone.turn("sync", T + 60);
+    phone.turn("sync", T + 120);
+    let q: atlas::remote::Queue = ps.load("asked_of_the_laptop");
+    assert_eq!(q.requests.len(), 1, "the outbox doubled a request: {q:?}");
+    assert_eq!(q.requests[0].state, atlas::remote::State::Waiting);
+
+    // The laptop comes back.
+    let mut laptop = daemon(&lc, &lp, &ls);
+    laptop.turn("sync", T + 600);
+    laptop.tick(T + 610);
+    let taken: Vec<serde_json::Value> = ls.load("asked_by_your_phone");
+    assert_eq!(taken.len(), 1, "the laptop never took the queued request");
+    assert_eq!(taken[0]["phase"], "finished", "{taken:?}");
+    laptop.turn("sync", T + 620);
+
+    let back = phone.turn("sync", T + 630);
+    assert!(
+        back.contains("From your laptop, on \"check what time it is\""),
+        "the answer never reached the phone: {back}"
+    );
+    let q: atlas::remote::Queue = ps.load("asked_of_the_laptop");
+    assert_eq!(q.requests.len(), 1);
+    assert_eq!(q.requests[0].state, atlas::remote::State::Done);
+    assert_eq!(
+        atlas::remote::queue_status(&q.requests[0], Some(T + 620), T + 630),
+        "Done on your laptop."
+    );
+    assert_eq!(
+        phone.turn("anything queued for the laptop", T + 640),
+        "Nothing is waiting for your laptop."
+    );
+}
+
+/// Newest wins, nothing is lost (Dispatch for Eric, 24 Oct 2026): the same
+/// thing changed on both devices keeps the newer answer, says so instead of
+/// asking "Which?", keeps the one it replaced, and "put back what sync
+/// replaced" makes that the newest again, carried to the other device.
+#[test]
+fn the_same_thing_changed_on_both_devices_keeps_the_newer_and_the_other_can_be_put_back() {
+    let (lc, pc, ls, ps, _) = pair("newest-wins");
+    let (lp, pp) = (plat(), plat());
+    pp.be_a_phone_for_test();
+    let now = atlas::store::now();
+    let audit = |status: &str| atlas::sync::What::Changed {
+        id: "the VPS audit".into(),
+        field: "status".into(),
+        to: status.into(),
+    };
+    // Each device changed the same thing while apart: the phone later.
+    let mut l = atlas::sync::Log::new("laptop-device");
+    l.append(audit("done"), now);
+    ls.save("synclog", &Some(l)).unwrap();
+    let mut p = atlas::sync::Log::new("phone-device");
+    p.append(audit("parked"), now + 100);
+    ps.save("synclog", &Some(p)).unwrap();
+
+    let mut laptop = daemon(&lc, &lp, &ls);
+    let mut phone = daemon(&pc, &pp, &ps);
+    laptop.turn("sync", now + 200);
+    phone.turn("sync", now + 210);
+    let said = laptop.turn("sync", now + 220);
+    assert!(said.contains("I kept the newer one"), "{said}");
+    assert!(!said.contains("Which?"), "{said}");
+    let replaced: Vec<atlas::sync::Replaced> = ls.load(atlas::sync::REPLACED_KEY);
+    assert_eq!(replaced.len(), 1, "{replaced:?}");
+    assert_eq!((replaced[0].kept.as_str(), replaced[0].replaced.as_str()), ("parked", "done"));
+    let what = laptop.turn("what did sync replace?", now + 230);
+    assert!(what.contains("kept \"parked\"") && what.contains("replaced \"done\""), "{what}");
+
+    let page = atlas::hublive::reply(&mut laptop, atlas::server::Action::Hub(atlas::hub::Page::Sync)).body;
+    assert!(page.contains("Replaced by sync (1)") && page.contains("Put back the most recent"), "the Sync page doesn't show what was replaced");
+    let back = laptop.turn("put back what sync replaced", now + 300);
+    assert!(back.starts_with("Put back the VPS audit"), "{back}");
+    let replaced: Vec<atlas::sync::Replaced> = ls.load(atlas::sync::REPLACED_KEY);
+    assert!(replaced.is_empty(), "put back, so no longer pending: {replaced:?}");
+    let newest = |s: &Store| -> Option<String> {
+        let log: Option<atlas::sync::Log> = s.load("synclog");
+        log?.events
+            .iter()
+            .filter_map(|e| match &e.what {
+                atlas::sync::What::Changed { id, to, .. } if id == "the VPS audit" => Some((e.hlc, e.at, to.clone())),
+                _ => None,
+            })
+            .max_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)))
+            .map(|x| x.2)
+    };
+    assert_eq!(newest(&ls).as_deref(), Some("done"), "the put-back isn't the newest on the laptop");
+    phone.turn("sync", now + 310);
+    assert_eq!(newest(&ps).as_deref(), Some("done"), "the put-back never reached the phone");
+    let again = laptop.turn("put back what sync replaced", now + 320);
+    assert_eq!(again, "There's nothing sync replaced to put back.");
 }

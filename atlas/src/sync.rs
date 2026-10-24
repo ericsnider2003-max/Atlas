@@ -181,6 +181,11 @@ pub struct Log {
 }
 
 impl Log {
+    /// Whether this log already has that very event (same device, same seq).
+    pub fn holds(&self, e: &Event) -> bool {
+        self.events.iter().any(|m| m.device == e.device && m.seq == e.seq)
+    }
+
     pub(crate) fn observe_version(&mut self, version: &Version, now: u64) {
         self.clock.observe(
             crate::hlc::Stamp {
@@ -267,10 +272,17 @@ pub struct Clash {
 /// this independently must reach the same answer, or they'll drift again the
 /// moment they part.
 pub fn merge(mine: &[Event], theirs: &[Event], now: u64) -> Merged {
+    // An event on both sides is the same event, not a change from each:
+    // counted once, as ours (24 Oct 2026, a relayed echo hid a clash).
     let mut all: Vec<(&Event, bool)> = mine
         .iter()
         .map(|e| (e, true))
-        .chain(theirs.iter().map(|e| (e, false)))
+        .chain(
+            theirs
+                .iter()
+                .filter(|t| !mine.iter().any(|m| m.device == t.device && m.seq == t.seq))
+                .map(|e| (e, false)),
+        )
         .collect();
     // Ordered by the causal stamp, then device id, then seq — a total order
     // both sides compute identically. The stamp (not raw `at`) is what makes
@@ -688,9 +700,72 @@ pub fn spoken(m: &Merged, from: &str) -> String {
             c.there,
             c.later
         ));
-        s.push_str(" Which?");
+        // Newest wins (Dispatch for Eric, 24 Oct 2026): the newer one is
+        // kept, and the other is kept too, where you can see it and put it
+        // back. It used to end "Which?", a question nothing ever answered.
+        s.push_str(
+            " I kept the newer one; the other is kept on the Sync page, and \
+             \"put back what sync replaced\" brings it back.",
+        );
     }
     s
+}
+
+/// What newest-wins replaced: the version that lost, kept so it can be seen
+/// and put back.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Replaced {
+    pub subject: String,
+    pub field: String,
+    /// What stands now.
+    pub kept: String,
+    /// What it replaced: `"removed"` when the loser was a removal.
+    pub replaced: String,
+    /// Where the kept one came from: "here" or the other device's name.
+    pub kept_from: String,
+    pub at: u64,
+}
+
+/// The saved list behind the Sync page's "replaced" and "put back".
+pub const REPLACED_KEY: &str = "sync_replaced";
+/// The most kept: older ones go.
+pub const REPLACED_KEPT: usize = 50;
+
+/// Each clash as what newest-wins kept and what it replaced.
+pub fn replaced_by(m: &Merged, from: &str, now: u64) -> Vec<Replaced> {
+    m.clashes
+        .iter()
+        .map(|c| {
+            let here_won = c.later == "here";
+            Replaced {
+                subject: c.subject.clone(),
+                field: c.field.clone(),
+                kept: if here_won { c.here.clone() } else { c.there.clone() },
+                replaced: if here_won { c.there.clone() } else { c.here.clone() },
+                kept_from: if here_won { "here".into() } else { from.to_string() },
+                at: now,
+            }
+        })
+        .collect()
+}
+
+/// "Put back what sync replaced" and its everyday shapes.
+pub fn asks_to_put_back(said: &str) -> bool {
+    let s = said.trim().trim_end_matches(['.', '!']).to_lowercase();
+    [
+        "put back what sync replaced",
+        "undo what sync replaced",
+        "undo the sync change",
+        "put back the other version",
+    ]
+    .iter()
+    .any(|p| s == *p)
+}
+
+/// "What did sync replace?"
+pub fn asks_what_was_replaced(said: &str) -> bool {
+    let s = said.trim().trim_end_matches(['?', '.']).to_lowercase();
+    s == "what did sync replace" || s == "what did syncing replace"
 }
 
 /// Two devices that haven't met in a while.

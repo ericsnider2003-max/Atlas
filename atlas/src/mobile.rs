@@ -190,6 +190,12 @@ pub fn serve(
     }
     let cfg: &'static Config = Box::leak(Box::new(cfg));
     let tools = cfg.tools.clone().unwrap_or_default();
+    // The models the app was built with, checked and put in place before
+    // anything looks for a model (`bundled`, 24 Oct 2026).
+    let adopted = crate::bundled::adopt(home, &crate::models::Registry::dir_for(&tools.models));
+    for line in crate::bundled::said(&adopted) {
+        crate::errln!("atlas: {line}");
+    }
     let plat: &'static crate::platform::mobile::MobilePlatform =
         Box::leak(Box::new(crate::platform::mobile::MobilePlatform));
     let store = crate::roots::store();

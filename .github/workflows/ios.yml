@@ -127,7 +127,7 @@ jobs:
         run: |
           rustup target add aarch64-apple-ios
           # phone-llm-metal: the phone's own language model, on its GPU (P.7).
-          cargo rustc --release --lib --no-default-features --features phone-llm-metal --target aarch64-apple-ios --crate-type staticlib
+          cargo rustc --release --lib --no-default-features --features phone-llm-metal,onnx --target aarch64-apple-ios --crate-type staticlib
           mkdir -p mobile/ios/rustlib
           cp target/aarch64-apple-ios/release/libatlas.a mobile/ios/rustlib/
 
@@ -140,6 +140,14 @@ jobs:
           x=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -1)
           if [ -n "$x" ]; then sudo xcode-select -s "$x"; fi
           xcodebuild -version
+
+      # The models the app carries (bundled-models.json), fetched and
+      # fingerprint-checked before XcodeGen adds them as a resource
+      # (24 Oct 2026, standalone-first).
+      - name: The models the app carries
+        if: env.CHECK_ONLY != '1'
+        working-directory: atlas/mobile
+        run: ./fetch-bundled-models.sh
 
       - name: The Xcode project, from project.yml
         if: env.CHECK_ONLY != '1'

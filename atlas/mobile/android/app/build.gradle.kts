@@ -24,13 +24,25 @@ android {
     // The default config ships as an asset and is copied into the app's
     // private folder on first run (AtlasCore.ensure).
     sourceSets["main"].assets.srcDirs(layout.buildDirectory.dir("atlas-assets"))
+    // The models the app carries (bundled-models.json) are stored as they
+    // are: compressing 400 MB of weights saves nothing and costs a slow
+    // first start.
+    androidResources { noCompress += listOf("gguf", "onnx") }
 }
 
 val shipConfig by tasks.registering(Copy::class) {
     from(rootProject.file("../../config"))
     into(layout.buildDirectory.dir("atlas-assets/config"))
 }
-tasks.named("preBuild") { dependsOn(shipConfig) }
+// The models the app carries, fetched and checked by fetch-bundled-models.sh
+// (24 Oct 2026, standalone-first). Copied in as assets/bundled; the core
+// checks each again before using it (src/bundled.rs).
+val shipModels by tasks.registering(Copy::class) {
+    from(rootProject.file("../bundled-cache"))
+    include("*.gguf", "*.onnx", "vocab.txt")
+    into(layout.buildDirectory.dir("atlas-assets/bundled"))
+}
+tasks.named("preBuild") { dependsOn(shipConfig, shipModels) }
 
 dependencies {
     // UnifiedPush (Apache-2.0): the laptop reaches this phone with Atlas

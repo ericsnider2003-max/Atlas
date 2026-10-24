@@ -332,12 +332,41 @@ fn the_phone_apps_call_one_c_door_and_the_sources_are_in_the_tree() {
         !ios.contains("BEGIN PRIVATE KEY"),
         "a key pasted into the workflow"
     );
-    // Android is signed on Eric's machine; the cloud build is unsigned, and the
-    // signing script refuses to replace an existing key.
+    // Android (Eric, 24 Oct 2026: "GitHub should be able to build and sign
+    // the phone app through its CI"): the build itself needs no secrets and
+    // always hands back the unsigned APK; only the optional signing step
+    // reads Eric's own key, from two named secrets he puts there himself,
+    // writes it to the runner's temp folder and deletes it after. Never a key
+    // pasted into the workflow. The signing script on his machine still
+    // refuses to replace an existing key.
     let andr = std::fs::read_to_string("../.github/workflows/android.yml").unwrap();
+    let secrets: Vec<&str> = andr
+        .match_indices("${{ secrets.")
+        .map(|(i, _)| andr[i + 12..].split(' ').next().unwrap_or(""))
+        .collect();
+    assert_eq!(
+        secrets,
+        ["ANDROID_SIGNING_P12_B64", "ANDROID_SIGNING_PASS"],
+        "the Android build reads only Eric's signing key, and only to sign"
+    );
+    let build = &andr[..andr
+        .find("Signed with Eric's key")
+        .expect("the signing step")];
     assert!(
-        !andr.contains("${{ secrets."),
-        "the Android build needs no secrets"
+        !build.contains("${{ secrets."),
+        "the build itself needs no secrets"
+    );
+    assert!(
+        andr.contains("-unsigned\n") || andr.contains("-unsigned\r\n"),
+        "the unsigned APK is always handed back"
+    );
+    assert!(
+        andr.contains("trap 'rm -f \"$key\"' EXIT"),
+        "the key is deleted after signing"
+    );
+    assert!(
+        !andr.contains("BEGIN PRIVATE KEY"),
+        "a key pasted into the workflow"
     );
     let sign = std::fs::read_to_string("mobile/sign-android.sh").unwrap();
     assert!(sign.contains("Refusing to replace it"));

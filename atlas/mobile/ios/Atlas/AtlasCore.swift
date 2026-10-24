@@ -35,6 +35,21 @@ final class AtlasCore {
                 try? fm.createDirectory(at: home, withIntermediateDirectories: true)
                 try? fm.copyItem(at: shipped, to: cfg)
             }
+            // The models this app was built with, once per app version, into
+            // home/bundled: the core checks each one's fingerprint and moves
+            // it into place (src/bundled.rs, 24 Oct 2026).
+            let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "0"
+            let marker = home.appendingPathComponent(".bundled-\(version)")
+            if !fm.fileExists(atPath: marker.path), let models = Bundle.main.url(forResource: "bundled", withExtension: nil) {
+                let inbox = home.appendingPathComponent("bundled")
+                try? fm.createDirectory(at: inbox, withIntermediateDirectories: true)
+                for name in (try? fm.contentsOfDirectory(atPath: models.path)) ?? [] {
+                    let to = inbox.appendingPathComponent(name)
+                    try? fm.removeItem(at: to)
+                    try? fm.copyItem(at: models.appendingPathComponent(name), to: to)
+                }
+                fm.createFile(atPath: marker.path, contents: Data("copied\n".utf8))
+            }
             let rc = home.path.withCString { atlas_mobile_start($0, 0) }
             guard rc >= 0 else { return nil }
             // Up to a minute: a first start on an old phone reads a lot.

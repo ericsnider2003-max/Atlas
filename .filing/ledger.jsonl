@@ -780,3 +780,4 @@
 {"ts":"2026-10-24T20:43:40.420Z","who":"claude","op":"add","id":"ie9f9","title":"whisper-helper-at-stop whisper-server outlived Atlas's stop by up to a minute on 24 Oct (stop line said 0 helpers); check it is tracked as a helper"}
 {"ts":"2026-10-24T18:03:51.075Z","who":"agent","op":"add","id":"ia9af","title":"Video plans A/E/G proof slices: what needs me, Hub slop guard, prompt budget","home":"atlas/design/hub/NOT_SLOP.md"}
 {"ts":"2026-10-24T19:21:44.492Z","who":"agent","op":"add","id":"ib65b","title":"Video plans B/C/D/F proof slices: teach a mode, what this computer runs, background hands-off guard, read-only market what-if","home":"atlas/src/whatif.rs"}
+{"ts":"2026-10-24T09:34:24.936Z","who":"agent","op":"add","id":"i122d","title":"Phone standalone-first: bundled models, honest outbox, Tailscale sync","home":"verification/runs/20261024T010000Z-claude-phone-standalone/RESULTS.md"}
