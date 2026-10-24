@@ -776,3 +776,5 @@
 {"ts":"2026-10-23T11:47:48.697Z","who":"agent","op":"done","id":"i095f"}
 {"ts":"2026-10-24T12:04:15.444Z","who":"claude","op":"add","id":"i018b","title":"crypto-bigint-advisory RUSTSEC-2026-0387 via p256 0.13 (Apple JWT signing): owner decision on p256 0.14 major bump"}
 {"ts":"2026-10-24T19:34:38.464Z","who":"agent","op":"add","id":"idf15","title":"North star (planning only): Atlas runs Eric's faceless-UGC workflow end to end, staged with approval gates","home":"docs/UGC_WORKFLOW_NORTH_STAR_2026-10-24.md"}
+{"ts":"2026-10-24T20:43:03.138Z","who":"claude","op":"done","id":"i018b"}
+{"ts":"2026-10-24T20:43:40.420Z","who":"claude","op":"add","id":"ie9f9","title":"whisper-helper-at-stop whisper-server outlived Atlas's stop by up to a minute on 24 Oct (stop line said 0 helpers); check it is tracked as a helper"}
