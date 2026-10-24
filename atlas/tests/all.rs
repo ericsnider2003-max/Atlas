@@ -358,6 +358,8 @@ mod reading_without_the_picture_reader;
 mod speculative_decoding;
 #[path = "talking_freely.rs"]
 mod talking_freely;
+#[path = "the_hub_is_not_slop.rs"]
+mod the_hub_is_not_slop;
 #[path = "the_second_scan_holds.rs"]
 mod the_second_scan_holds;
 // Unix only: it builds tiny projects driven by shell scripts.

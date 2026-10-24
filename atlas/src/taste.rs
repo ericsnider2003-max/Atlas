@@ -69,6 +69,13 @@ pub struct Rules {
     /// Prefer classes to inline styles. Advisory: an inline style here and
     /// there is fine, a page built entirely of them is not.
     pub prefer_classes: bool,
+    /// The tells of generated, generic design ("AI slop", Plan E, 24 Oct
+    /// 2026): a purple-to-blue gradient, a card inside a card, text whose
+    /// colour against its own background falls under WCAG AA once the page's
+    /// colour tokens are resolved, and a stock web typeface as the first
+    /// choice. Rule ideas from the Impeccable design rules (Apache-2.0);
+    /// the code is Atlas's own.
+    pub slop: bool,
 }
 
 impl Default for Rules {
@@ -78,6 +85,7 @@ impl Default for Rules {
             colours_from_tokens: true,
             accessibility: true,
             prefer_classes: true,
+            slop: true,
         }
     }
 }
@@ -118,9 +126,20 @@ pub fn review(html: &str, rules: &Rules) -> Vec<Finding> {
             });
         }
         // Every form control needs a name a screen reader can announce.
+        // A hidden input is never seen or read, so it needs no name; one inside
+        // its own <label> is named by it (24 Oct 2026: the Hub's forms raised
+        // 204 false alarms from these two).
         for kind in ["input", "select", "textarea"] {
-            for tag in tags(&lower, kind) {
-                let named = has_attr(&tag, "aria-label")
+            for (at, tag) in tags_at(&lower, kind) {
+                if kind == "input" && is_hidden(&tag) {
+                    continue;
+                }
+                let before = &lower[..at];
+                let in_label = before.rfind("<label").is_some_and(|open| {
+                    before.rfind("</label").map_or(true, |close| close < open)
+                });
+                let named = in_label
+                    || has_attr(&tag, "aria-label")
                     || has_attr(&tag, "aria-labelledby")
                     || has_attr(&tag, "id") // a <label for=id> may name it; treated as named
                     || has_attr(&tag, "title");
@@ -189,6 +208,10 @@ pub fn review(html: &str, rules: &Rules) -> Vec<Finding> {
                 ),
             });
         }
+    }
+
+    if rules.slop {
+        out.extend(slop(&lower));
     }
 
     // Heading levels that skip (h1 then h3) — a structure, and a screen-reader,
@@ -516,6 +539,27 @@ fn contains_phrase(haystack: &str, phrase: &str) -> bool {
 // one, the same bias the rest of the tree takes.
 
 /// The text of every `<name ...>` opening tag in the html.
+/// Each `<name ...>` tag with where it starts.
+fn tags_at(lower_html: &str, name: &str) -> Vec<(usize, String)> {
+    let open = format!("<{name}");
+    let mut out = Vec::new();
+    let mut from = 0;
+    while let Some(off) = lower_html[from..].find(&open) {
+        let at = from + off;
+        let after = lower_html[at + open.len()..].chars().next();
+        let end = lower_html[at..].find('>').map_or(lower_html.len(), |e| at + e);
+        if matches!(after, Some(c) if c.is_whitespace() || c == '>' || c == '/') {
+            out.push((at, lower_html[at..end].to_string()));
+        }
+        from = end.max(at + 1);
+    }
+    out
+}
+
+fn is_hidden(tag: &str) -> bool {
+    tag.contains("type=hidden") || tag.contains("type=\"hidden\"") || tag.contains("type='hidden'")
+}
+
 fn tags(lower_html: &str, name: &str) -> Vec<String> {
     let open = format!("<{name}");
     let mut out = Vec::new();
@@ -652,6 +696,372 @@ fn first_heading_skip(lower_html: &str) -> Option<(u8, u8)> {
             }
             last = Some(level);
         }
+    }
+    None
+}
+
+// ---------------------------------------------------------------------------
+// The tells of generic, generated design (Plan E, 24 Oct 2026).
+// ---------------------------------------------------------------------------
+
+/// WCAG AA for body text.
+pub const MIN_CONTRAST: f64 = 4.5;
+/// Typefaces that, as the first choice, mark a page as a template.
+pub const STOCK_TYPEFACES: &[&str] = &["inter", "poppins", "montserrat", "space grotesk", "manrope"];
+
+/// Every slop tell in a page and the CSS it carries (`<style>` blocks
+/// included), lower-cased.
+fn slop(lower: &str) -> Vec<Finding> {
+    let mut out = Vec::new();
+    if let Some(g) = purple_blue_gradient(lower) {
+        out.push(Finding {
+            severity: Severity::Blocking,
+            rule: "generic gradient".into(),
+            detail: format!(
+                "a purple-to-blue gradient ({g}) -- the most recognisable template look; the house \
+                 colours say more"
+            ),
+        });
+    }
+    if let Some(depth) = cards_in_cards(lower) {
+        out.push(Finding {
+            severity: Severity::Blocking,
+            rule: "cards in cards".into(),
+            detail: format!(
+                "a card sits inside another card ({depth} deep) -- boxes in boxes read as clutter; \
+                 one surface, then plain rows"
+            ),
+        });
+    }
+    for (selector, theme, ratio) in low_contrast(lower) {
+        out.push(Finding {
+            severity: Severity::Blocking,
+            rule: "contrast".into(),
+            detail: format!(
+                "`{selector}` sets text and background that measure {ratio:.2}:1 in the {theme} \
+                 colours, under the {MIN_CONTRAST}:1 text needs"
+            ),
+        });
+    }
+    if let Some(face) = stock_typeface(lower) {
+        out.push(Finding {
+            severity: Severity::Advisory,
+            rule: "stock typeface".into(),
+            detail: format!(
+                "{face} as the first typeface -- the default of a thousand templates, and a \
+                 download the page needs offline"
+            ),
+        });
+    }
+    out
+}
+
+/// A `linear-gradient(...)` whose colours run purple and blue.
+fn purple_blue_gradient(lower: &str) -> Option<String> {
+    let mut rest = lower;
+    while let Some(at) = rest.find("gradient(") {
+        let body = &rest[at + 9..];
+        let end = body.find(')').map(|e| {
+            // Nested parentheses (rgb(...)) end at the gradient's own close.
+            let mut depth = 1i32;
+            for (i, c) in body.char_indices() {
+                match c {
+                    '(' => depth += 1,
+                    ')' => {
+                        depth -= 1;
+                        if depth == 0 {
+                            return i;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            e
+        });
+        let args = &body[..end.unwrap_or(body.len())];
+        let hues: Vec<f64> = colours_in(args).into_iter().filter_map(|c| hue(c)).collect();
+        let purple = hues.iter().any(|h| (260.0..=320.0).contains(h));
+        let blue = hues.iter().any(|h| (190.0..260.0).contains(h));
+        let named = (args.contains("purple") || args.contains("violet") || args.contains("indigo"))
+            && (args.contains("blue") || blue);
+        if (purple && blue) || named {
+            return Some(format!("gradient({})", args.trim()));
+        }
+        rest = &body[end.unwrap_or(0).min(body.len())..];
+        if rest.is_empty() {
+            break;
+        }
+    }
+    None
+}
+
+/// `#rgb` / `#rrggbb` colours in a stretch of CSS, as (r, g, b).
+fn colours_in(s: &str) -> Vec<(u8, u8, u8)> {
+    let mut out = Vec::new();
+    let b = s.as_bytes();
+    let mut i = 0;
+    while i < b.len() {
+        if b[i] == b'#' {
+            let hex: String = s[i + 1..]
+                .chars()
+                .take_while(|c| c.is_ascii_hexdigit())
+                .collect();
+            if let Some(c) = parse_hex(&hex) {
+                out.push(c);
+            }
+            i += 1 + hex.len();
+        } else {
+            i += 1;
+        }
+    }
+    out
+}
+
+fn parse_hex(hex: &str) -> Option<(u8, u8, u8)> {
+    let p = |s: &str| u8::from_str_radix(s, 16).ok();
+    match hex.len() {
+        3 => {
+            let d: Vec<String> = hex.chars().map(|c| format!("{c}{c}")).collect();
+            Some((p(&d[0])?, p(&d[1])?, p(&d[2])?))
+        }
+        6 | 8 => Some((p(&hex[0..2])?, p(&hex[2..4])?, p(&hex[4..6])?)),
+        _ => None,
+    }
+}
+
+/// The hue of a saturated colour, in degrees; `None` for greys.
+fn hue((r, g, b): (u8, u8, u8)) -> Option<f64> {
+    let (r, g, b) = (r as f64 / 255.0, g as f64 / 255.0, b as f64 / 255.0);
+    let max = r.max(g).max(b);
+    let min = r.min(g).min(b);
+    let d = max - min;
+    if d < 0.15 {
+        return None;
+    }
+    let h = if max == r {
+        60.0 * (((g - b) / d) % 6.0)
+    } else if max == g {
+        60.0 * ((b - r) / d + 2.0)
+    } else {
+        60.0 * ((r - g) / d + 4.0)
+    };
+    Some(if h < 0.0 { h + 360.0 } else { h })
+}
+
+/// How deep cards nest, when one sits inside another: elements whose class
+/// list has the token `card`.
+fn cards_in_cards(lower: &str) -> Option<usize> {
+    let mut stack: Vec<(String, bool)> = Vec::new();
+    let mut deepest = 0usize;
+    let mut i = 0;
+    while let Some(off) = lower[i..].find('<') {
+        let at = i + off;
+        let end = match lower[at..].find('>') {
+            Some(e) => at + e,
+            None => break,
+        };
+        let tag = &lower[at + 1..end];
+        i = end + 1;
+        if tag.starts_with('!') || tag.starts_with('?') {
+            continue;
+        }
+        if let Some(name) = tag.strip_prefix('/') {
+            let name = name.trim();
+            if let Some(pos) = stack.iter().rposition(|(n, _)| n == name) {
+                stack.truncate(pos);
+            }
+            continue;
+        }
+        let name: String = tag.chars().take_while(|c| c.is_ascii_alphanumeric()).collect();
+        if name.is_empty() || matches!(name.as_str(), "br" | "img" | "input" | "meta" | "link" | "hr" | "path" | "circle" | "rect") {
+            continue;
+        }
+        if name == "style" || name == "script" {
+            // Skip their contents: CSS text is not markup.
+            if let Some(close) = lower[i..].find(&format!("</{name}")) {
+                i += close;
+            }
+            continue;
+        }
+        let is_card = class_tokens(tag).iter().any(|c| c == "card");
+        let cards_above = stack.iter().filter(|(_, c)| *c).count();
+        if is_card && cards_above > 0 {
+            deepest = deepest.max(cards_above + 1);
+        }
+        if !tag.ends_with('/') {
+            stack.push((name, is_card));
+        }
+    }
+    (deepest > 1).then_some(deepest)
+}
+
+fn class_tokens(tag: &str) -> Vec<String> {
+    let Some(at) = tag.find("class=") else {
+        return Vec::new();
+    };
+    let v = &tag[at + 6..];
+    let (q, v) = match v.chars().next() {
+        Some(c @ ('"' | '\'')) => (Some(c), &v[1..]),
+        _ => (None, v),
+    };
+    let value = match q {
+        Some(q) => v.split(q).next().unwrap_or(""),
+        None => v.split(|c: char| c.is_whitespace() || c == '>').next().unwrap_or(""),
+    };
+    value.split_whitespace().map(str::to_string).collect()
+}
+
+/// CSS rules that set both a text colour and a background, measured in the
+/// light colours (bare `:root`) and the dark ones (`[data-theme=dark]`
+/// overrides). Values that can't be resolved to a colour (mixes, images)
+/// are left alone rather than guessed.
+fn low_contrast(lower: &str) -> Vec<(String, &'static str, f64)> {
+    let css: String = blocks(lower, "<style", "</style>").join("\n");
+    if css.is_empty() {
+        return Vec::new();
+    }
+    let light = tokens(&css, ":root{");
+    let mut dark = light.clone();
+    dark.extend(tokens(&css, ":root[data-theme=dark]{"));
+    let mut out = Vec::new();
+    for (selector, body) in rules_of(&css) {
+        if selector.starts_with(":root") || selector.starts_with('@') {
+            continue;
+        }
+        let colour = decl(&body, "color");
+        let background = decl(&body, "background").or_else(|| decl(&body, "background-color"));
+        let (Some(fg), Some(bg)) = (colour, background) else {
+            continue;
+        };
+        for (theme, map) in [("light", &light), ("dark", &dark)] {
+            let (Some(f), Some(b)) = (resolve(&fg, map), resolve(&bg, map)) else {
+                continue;
+            };
+            let r = contrast(f, b);
+            if r < MIN_CONTRAST {
+                out.push((selector.clone(), theme, r));
+            }
+        }
+    }
+    out
+}
+
+fn blocks(s: &str, open: &str, close: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut rest = s;
+    while let Some(a) = rest.find(open) {
+        let after = &rest[a..];
+        let Some(gt) = after.find('>') else { break };
+        let body = &after[gt + 1..];
+        let end = body.find(close).unwrap_or(body.len());
+        out.push(body[..end].to_string());
+        rest = &body[end..];
+    }
+    out
+}
+
+/// `--name:value` pairs in the block that opens with `opener`.
+fn tokens(css: &str, opener: &str) -> std::collections::HashMap<String, String> {
+    let mut map = std::collections::HashMap::new();
+    let mut rest = css;
+    while let Some(a) = rest.find(opener) {
+        let body = &rest[a + opener.len()..];
+        let end = body.find('}').unwrap_or(body.len());
+        for d in body[..end].split(';') {
+            if let Some((k, v)) = d.split_once(':') {
+                let k = k.trim();
+                if k.starts_with("--") {
+                    map.insert(k.to_string(), v.trim().to_string());
+                }
+            }
+        }
+        rest = &body[end..];
+    }
+    map
+}
+
+/// (selector, body) for each plain rule, outside at-rules' own braces.
+fn rules_of(css: &str) -> Vec<(String, String)> {
+    let mut out = Vec::new();
+    let mut depth = 0usize;
+    let mut start = 0usize;
+    let mut sel = String::new();
+    for (i, c) in css.char_indices() {
+        match c {
+            '{' => {
+                if depth == 0 || !css[start..i].contains('@') {
+                    sel = css[start..i].trim().to_string();
+                }
+                depth += 1;
+                start = i + 1;
+            }
+            '}' => {
+                if depth > 0 {
+                    if !sel.is_empty() && !sel.starts_with('@') {
+                        out.push((sel.clone(), css[start..i].to_string()));
+                    }
+                    depth -= 1;
+                }
+                start = i + 1;
+                sel.clear();
+            }
+            _ => {}
+        }
+    }
+    out
+}
+
+fn decl(body: &str, name: &str) -> Option<String> {
+    body.split(';').find_map(|d| {
+        let (k, v) = d.split_once(':')?;
+        (k.trim() == name).then(|| v.trim().to_string())
+    })
+}
+
+fn resolve(v: &str, map: &std::collections::HashMap<String, String>) -> Option<(u8, u8, u8)> {
+    let mut v = v.trim().to_string();
+    for _ in 0..4 {
+        if let Some(inner) = v.strip_prefix("var(").and_then(|x| x.strip_suffix(')')) {
+            let name = inner.split(',').next()?.trim();
+            v = map.get(name)?.clone();
+        } else {
+            break;
+        }
+    }
+    let v = v.trim();
+    if v == "#fff" || v == "white" {
+        return Some((255, 255, 255));
+    }
+    v.strip_prefix('#').and_then(parse_hex)
+}
+
+/// WCAG 2 contrast ratio.
+fn contrast(a: (u8, u8, u8), b: (u8, u8, u8)) -> f64 {
+    let lum = |(r, g, b): (u8, u8, u8)| {
+        let c = |v: u8| {
+            let s = v as f64 / 255.0;
+            if s <= 0.03928 { s / 12.92 } else { ((s + 0.055) / 1.055).powf(2.4) }
+        };
+        0.2126 * c(r) + 0.7152 * c(g) + 0.0722 * c(b)
+    };
+    let (x, y) = (lum(a), lum(b));
+    (x.max(y) + 0.05) / (x.min(y) + 0.05)
+}
+
+/// The first typeface named in any `font-family`, when it is a stock one.
+fn stock_typeface(lower: &str) -> Option<String> {
+    let mut rest = lower;
+    while let Some(a) = rest.find("font-family:") {
+        let v = &rest[a + 12..];
+        let first = v
+            .split([',', ';', '}', '"'])
+            .map(|s| s.trim().trim_matches('\''))
+            .find(|s| !s.is_empty())
+            .unwrap_or("");
+        if let Some(face) = STOCK_TYPEFACES.iter().find(|f| first == **f) {
+            return Some(face.to_string());
+        }
+        rest = v;
     }
     None
 }
