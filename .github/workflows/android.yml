@@ -3,8 +3,10 @@
 # Builds the Rust core for 64-bit ARM phones with the Android NDK, then the
 # app around it, and hands back an UNSIGNED release APK. Signing happens on
 # Eric's own machine (atlas/mobile/sign-android.sh), where the signing key
-# lives and never leaves: the key that proves every future update is really
-# from him is never uploaded anywhere.
+# lives -- unless Eric puts that key in the repository's secrets, when the
+# "Signed with Eric's key" step below signs it here too (24 Oct 2026). The
+# app carries its models (atlas/mobile/bundled-models.json), fetched and
+# fingerprint-checked by build-android.sh.
 #
 # Linux build minutes are the cheap kind; this needs no secrets.
 
@@ -60,6 +62,49 @@ jobs:
       - name: The app (the core, then the APK)
         working-directory: atlas/mobile
         run: ./build-android.sh
+
+      # Signed here only if Eric has put his own key in the repository's
+      # secrets (ANDROID_SIGNING_P12_B64: the .p12 from ~/Atlas/signing,
+      # base64; ANDROID_SIGNING_PASS: its password). Eric, 24 Oct 2026:
+      # "GitHub should be able to build and sign the phone app through its
+      # CI." Without them the APK stays unsigned, as before, and is signed
+      # on his machine with sign-android.sh. The key is written to the
+      # runner's temp folder only for this step and deleted after it.
+      - name: Signed with Eric's key, if he gave it
+        id: sign
+        env:
+          P12_B64: ${{ secrets.ANDROID_SIGNING_P12_B64 }}
+          PASS: ${{ secrets.ANDROID_SIGNING_PASS }}
+        run: |
+          if [ -z "$P12_B64" ] || [ -z "$PASS" ]; then
+            echo "No signing key in the repository's secrets: the APK stays unsigned."
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          umask 077
+          key="$RUNNER_TEMP/atlas-android.p12"
+          printf '%s' "$P12_B64" | base64 -d > "$key"
+          trap 'rm -f "$key"' EXIT
+          bt="$ANDROID_HOME/build-tools/35.0.0"
+          out="$RUNNER_TEMP/signed"
+          mkdir -p "$out"
+          for apk in atlas/mobile/android/app/build/outputs/apk/release/*.apk; do
+            name="$(basename "$apk" .apk | sed 's/-unsigned$//')"
+            "$bt/zipalign" -f -p 4 "$apk" "$out/$name-aligned.apk"
+            "$bt/apksigner" sign --ks "$key" --ks-type PKCS12 --ks-key-alias atlas \
+              --ks-pass env:PASS --key-pass env:PASS \
+              --out "$out/$name-signed.apk" "$out/$name-aligned.apk"
+            "$bt/apksigner" verify --print-certs "$out/$name-signed.apk" | grep -i "SHA-256 digest"
+            rm -f "$out/$name-aligned.apk"
+          done
+          echo "signed=true" >> "$GITHUB_OUTPUT"
+
+      - if: steps.sign.outputs.signed == 'true'
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: Atlas-Android-${{ env.ATLAS_VERSION_NAME }}-${{ github.run_number }}-signed
+          path: ${{ runner.temp }}/signed/*.apk
+          retention-days: 30
 
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
