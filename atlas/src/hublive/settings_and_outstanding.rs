@@ -1576,13 +1576,13 @@ mod one_count_tests {
         for page in crate::server::SNAPSHOT_PAGES {
             assert!(
                 published.iter().any(|(p, _)| *p == page),
-                "{page:?} was not published"
+                "{} was not published", page.href()
             );
         }
         for page in [Page::Settings, Page::Permissions, Page::Help, Page::Trusted] {
             let copy = &published.iter().find(|(p, _)| *p == page).unwrap().1.body;
             let live = d.hub_reply(crate::server::Action::Hub(page)).body;
-            assert_eq!(copy, &live, "{page:?}: the copy is not what the live page draws");
+            assert_eq!(copy, &live, "{}: the copy is not what the live page draws", page.href());
         }
         // A one-time line waiting for Help: Help is not published, so the
         // live page says it (and only the live page consumes it).

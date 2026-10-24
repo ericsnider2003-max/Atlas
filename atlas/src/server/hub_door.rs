@@ -1173,7 +1173,7 @@ mod readonly_tests {
         door.publish_readonly(
             SNAPSHOT_PAGES
                 .iter()
-                .map(|p| (*p, Reply::html(format!("<h1>copy of {p:?}</h1>"))))
+                .map(|p| (*p, Reply::html(format!("<h1>copy of {}</h1>", p.href()))))
                 .collect(),
             root.clone(),
             root.clone(),
@@ -1183,11 +1183,11 @@ mod readonly_tests {
             vec![("home".to_string(), Reply::ok("{\"v\":\"7\",\"busy\":false}"))],
         );
         for (path, wants) in [
-            ("/hub", "copy of Dashboard"),
-            ("/hub/settings", "copy of Settings"),
-            ("/hub/permissions", "copy of Permissions"),
-            ("/hub/help", "copy of Help"),
-            ("/hub/trusted", "copy of Trusted"),
+            ("/hub", "copy of /hub"),
+            ("/hub/settings", "copy of /hub/settings"),
+            ("/hub/permissions", "copy of /hub/permissions"),
+            ("/hub/help", "copy of /hub/help"),
+            ("/hub/trusted", "copy of /hub/trusted"),
             ("/hub/live.json", "live copy"),
             ("/hub/changed.json?p=home", "\"v\":\"7\""),
         ] {

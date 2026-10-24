@@ -287,8 +287,11 @@ fn columns_scroll_sideways_rather_than_squashing() {
     // A squashed column is unreadable.
     let live = shipped().into_iter().find(|v| v.name == "Now").unwrap();
     let html = workspace_page(&live, &[], &overview(&[], 0), &[]);
-    assert!(html.contains("overflow-x:auto"));
-    assert!(html.contains("min-width:260px"));
+    // 23 Oct 2026: the rules are in the shared stylesheet the page links,
+    // not inline in every page.
+    assert!(html.contains(".css"), "the page links its stylesheet");
+    assert_ne!(atlas::hub::STYLE.find("overflow-x:auto"), None);
+    assert!(atlas::hub::STYLE.contains("min-width:260px"));
 }
 
 #[test]
