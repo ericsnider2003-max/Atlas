@@ -23,6 +23,7 @@ Dates are UTC. The card at the top of `AGENTS.md` holds the facts; this file hol
 - `efficiency` Atlas-wide efficiency and device adaptation: tiers T0-T3, processing, memory, storage, learning budgets, acting ahead with guardrails, any-device platform record — home: [docs/ATLAS_EFFICIENCY_AND_ADAPTATION_DESIGN_2026-10-20.md](ATLAS_EFFICIENCY_AND_ADAPTATION_DESIGN_2026-10-20.md) — open since 2026-10-21 (claude)
 - `model-training` Train Atlas's own model: data from Eric's own messages, clean open datasets, REA/Replica/Atlas repo; stages, cost, first 3 steps — home: [docs/ATLAS_MODEL_TRAINING_PLAN_2026-10-21.md](ATLAS_MODEL_TRAINING_PLAN_2026-10-21.md) — open since 2026-10-21 (claude)
 - `completion-path` One completion path + context-before-asking: built in owned files; wiring in run_command/spoken_steps/tasks/floor/brain and the approval contract handed off — home: [docs/HANDOFF_ONE_COMPLETION_PATH_2026-10-21.md](HANDOFF_ONE_COMPLETION_PATH_2026-10-21.md) — doing since 2026-10-22 (claude-items)
+- `i018b` crypto-bigint-advisory RUSTSEC-2026-0387 via p256 0.13 (Apple JWT signing): owner decision on p256 0.14 major bump — open since 2026-10-24 (claude)
 
 ## Last session
 
