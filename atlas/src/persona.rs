@@ -22,6 +22,11 @@ pub enum Tone {
     Warm,
 }
 
+/// How long an answer is, said once and used by every prompt that tells a
+/// model how long to talk (24 Oct 2026: the system prompt said "one to three
+/// short sentences" while the per-turn message said "up to about 8").
+pub const LENGTH_RULE: &str = "Answer in as few sentences as the question needs, normally one to three; for an explanation or list they asked for, up to about eight; never pad.";
+
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
 pub struct Persona {
@@ -143,15 +148,15 @@ impl Persona {
         p.push_str("\n\n");
         p.push_str(match register {
             R::Working => {
-                "Right now this is a task. Answer in one or two sentences and stop. \
+                "Right now this is a task. Answer briefly and stop. \
                  No commentary, no jokes."
             }
             // 29 Sep 2026: "follow a tangent ... up to about eight
             // sentences" read, to a small model, as licence to ramble.
+            // 24 Oct 2026: the length is said once (`LENGTH_RULE`), not here.
             R::Chatting => {
                 "Right now this is a conversation, not a task. Answer what they just said first, \
-                 like a person would; ask something back only if you really want to know. A few \
-                 sentences, more only if they ask for detail or a story. \
+                 like a person would; ask something back only if you really want to know. \
                  Do not offer to help or steer it back to work."
             }
             R::AboutAtlas => {
@@ -250,7 +255,7 @@ impl Persona {
              - Work first: for a request, call the tool in this reply, then say in a sentence what you did. Never \
              say you're on it unless a tool started it. If a tool is off, say which and what turns it on.\n\
              - Never say you can't do something without checking the capabilities tool.\n\
-             - Answer the latest thing they said first, in one to three short sentences. A question gets its \
+             - Answer the latest thing they said first. {LENGTH_RULE} A question gets its \
              answer, in your first sentence. Never answer a question with a question. Advice: your view, why, \
              what's unsure. After that you're free to \
              talk. One question at most. No preamble, flattery or closers like \"What's your next move?\".\n\
@@ -309,13 +314,13 @@ impl Persona {
             &crate::wit::Moment::new(register, said, "").during_a_flow(in_a_flow),
             true,
         );
-        let length = match sentences {
-            0 | 1 => "Answer in one sentence.".to_string(),
-            n if n <= 3 => format!("One to {n} short sentences; more only if they asked for detail, a story or a list."),
-            n if n >= 8 => format!("Up to about {n} sentences; longer only if they asked for detail, a story or a list of ideas."),
-            n => format!("At most {n} sentences unless they ask for detail."),
-        };
-        format!("{moment}{humour} {length}")
+        // 24 Oct 2026: one length rule, in the character (`LENGTH_RULE`); this
+        // adds only the owner's own setting of a single sentence. It used to
+        // say "one to three" in one place and "up to about 8" in another.
+        match sentences {
+            0 | 1 => format!("{moment}{humour} Answer in one sentence."),
+            _ => format!("{moment}{humour}"),
+        }
     }
 
     /// The character instructions handed to the model.
@@ -338,7 +343,7 @@ impl Persona {
              {address}\n\
              \n\
              Rules:\n\
-             - At most {} sentences unless asked for detail. This is speech, not a document.\n\
+             - {LENGTH_RULE} This is speech, not a document.\n\
              - No greeting, no preamble, no sign-off. Continue as if mid-conversation.\n\
              - Never open with 'Great question', 'Absolutely', 'I'd be happy to' or similar.\n\
              - Never flatter. Never say the user is right unless they are.\n\
@@ -351,8 +356,7 @@ impl Persona {
              - You are not only for work. If the conversation goes elsewhere, go with it.\n\
              - Never claim something worked when you did not verify it.\n\
              - No markdown, no lists, no headings. It will be read aloud.",
-            self.who_and_what(),
-            self.max_spoken_sentences
+            self.who_and_what()
         )
     }
 

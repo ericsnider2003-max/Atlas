@@ -47,6 +47,8 @@ const BUDGET_CHARS: usize = PROMPT_BASELINE_CHARS * 11 / 10;
 /// contradicts itself -- "one to three short sentences" in the system
 /// prompt, "up to about 8 sentences" in the user message. About 80 tokens
 /// of every turn; trimming them waits on a quality check (charter s5).
+/// 24 Oct 2026: the length rule is now one sentence in one place
+/// (`persona::LENGTH_RULE`), and this baseline is unchanged: it holds.
 const PROMPT_BASELINE_CHARS: usize = 2238;
 
 fn measured() -> (usize, Vec<(String, usize)>) {
@@ -92,4 +94,49 @@ fn one_ordinary_question_costs_what_it_costs_and_no_more() {
         total <= BUDGET_CHARS,
         "one question now costs {total} chars, over the budget of {BUDGET_CHARS}: say what was added and why"
     );
+}
+
+/// 24 Oct 2026 (hand-off from Plan G): the length rule was said twice and
+/// disagreed -- "one to three short sentences" in the system prompt, "up to
+/// about 8 sentences" in the user message. It is now one sentence in one
+/// place (`persona::LENGTH_RULE`). Whatever a model is handed, that rule
+/// appears once, and no other text names a count of sentences.
+#[test]
+fn the_prompts_never_hold_two_length_rules() {
+    use atlas::persona::{Persona, LENGTH_RULE};
+    use atlas::register::Register;
+    let mut texts: Vec<(String, String)> = Vec::new();
+    // What the model gets on one ordinary question.
+    {
+        let c = Config::load(Path::new("config")).unwrap();
+        let p = MockPlatform::new(vec![Monitor { id: 1, x: 0, y: 0, width: 1920, height: 1040, primary: true }]);
+        let root = std::env::temp_dir().join(format!("atlas-prompt-length-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let llm: Arc<dyn Llm> = Arc::new(Records(seen.clone()));
+        let mut d = Daemon::new(&c, &p, Some(llm), Store::new(&root), Proactive::new(ProactiveConfig::default()));
+        d.turn("why is the sky blue?", atlas::store::now());
+        let first = seen.lock().unwrap().first().cloned().expect("reached the model");
+        let all: Vec<String> = first.messages.iter().map(|m| m.content.clone()).collect();
+        texts.push(("the first request".into(), all.join("\n")));
+    }
+    // The prompts built for each register, and the per-turn line.
+    let persona = Persona::default();
+    for r in [Register::Working, Register::Chatting, Register::AboutAtlas, Register::Rough] {
+        let both = format!("{}\n{}", persona.prompt_for(r), persona.for_this_turn_on(r, 3, "why is the sky blue?", false));
+        texts.push((format!("{r:?} prompt plus turn line"), both));
+    }
+    for (what, t) in &texts {
+        assert!(t.matches(LENGTH_RULE).count() <= 1, "{what}: the length rule is said more than once");
+        let rest = t.replace(LENGTH_RULE, "");
+        let lower = rest.to_lowercase();
+        assert!(
+            !lower.contains("sentences"),
+            "{what}: a second length rule outside LENGTH_RULE: {:?}",
+            lower.split("sentences").next().map(|s| s.chars().rev().take(60).collect::<String>().chars().rev().collect::<String>())
+        );
+    }
+    // The system prompt and the character both carry the one rule.
+    assert!(persona.system_prompt().contains(LENGTH_RULE));
+    assert!(persona.character().contains(LENGTH_RULE));
 }
