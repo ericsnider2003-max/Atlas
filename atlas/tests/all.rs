@@ -346,6 +346,8 @@ mod nothing_from_any_version_was_lost;
 mod one_way_to_do_each_small_thing;
 #[path = "other_programs_tools.rs"]
 mod other_programs_tools;
+#[path = "prompt_economy.rs"]
+mod prompt_economy;
 #[path = "q4_a_save_that_fails_is_not_a_success.rs"]
 mod q4_a_save_that_fails_is_not_a_success;
 #[path = "reading_a_module_wherever_it_lives.rs"]
