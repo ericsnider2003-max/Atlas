@@ -157,6 +157,7 @@ pub mod meaning;
 #[cfg(feature = "onnx")]
 pub mod meaningnative;
 pub mod needs_you;
+pub mod preflight;
 pub mod teachmode;
 pub mod meaningroute;
 pub mod mend;

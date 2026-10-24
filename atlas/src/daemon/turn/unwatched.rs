@@ -40,6 +40,10 @@ impl<'a> Daemon<'a> {
         if let Some(reply) = self.teach_mode_turn(said, t) {
             return reply;
         }
+        // What this computer can run, tier by tier (Plan C, 24 Oct 2026).
+        if let Some(reply) = self.preflight_turn(said) {
+            return reply;
+        }
         // What needs you, and "not now" (Plan A, 24 Oct 2026).
         if let Some(reply) = self.needs_you_turn(said, t) {
             return reply;
