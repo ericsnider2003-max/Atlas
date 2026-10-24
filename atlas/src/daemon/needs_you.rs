@@ -48,7 +48,7 @@ impl Daemon<'_> {
     }
 
     /// Everything that needs you now, best first, minus what you put off.
-    fn needs_you_now(&self, t: u64) -> Vec<crate::needs_you::Need> {
+    pub(crate) fn needs_you_now(&self, t: u64) -> Vec<crate::needs_you::Need> {
         let open = self.open_work(t);
         let soon: Vec<crate::needs_you::Soon> = self
             .calendar

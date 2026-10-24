@@ -1557,6 +1557,55 @@ mod one_count_tests {
             .any(|k| k.as_deref().is_some_and(|k| k.starts_with("j:approval:"))));
     }
 
+    /// 24 Oct 2026 (Plan A hand-off, one truth): "what needs me" and the
+    /// Outstanding page both read `open_work`, so every open item needs_you
+    /// names is on the page, and the counts agree. `open_work` is
+    /// `pub(crate)` for exactly this reader (it lives in `daemon`, outside
+    /// `hublive`); it is the one work record, not a second copy.
+    #[test]
+    fn what_needs_me_and_outstanding_name_the_same_open_items() {
+        let store = scratch("needs-agree");
+        let config = crate::config::Config::load(std::path::Path::new("config")).unwrap();
+        let platform = crate::platform::mock::MockPlatform::new(Vec::new());
+        let d = Daemon::new(
+            &config,
+            &platform,
+            None,
+            store.clone(),
+            crate::proactive::Proactive::new(crate::proactive::ProactiveConfig::default()),
+        );
+        let now = crate::store::now();
+        crate::job::sync_approvals(
+            &store,
+            &[(
+                crate::job::approval_key("chat", "Send the invoice to Harbor Lane?"),
+                "Send the invoice to Harbor Lane?".into(),
+            )],
+        )
+        .unwrap();
+        let mut bad = crate::job::Record::planned("chat:9:9", "open the ledger");
+        bad.transition(crate::job::State::Running, "started").unwrap();
+        bad.finish(crate::job::State::Failed, "the file is locked", "t").unwrap();
+        crate::job::upsert(&store, bad).unwrap();
+
+        let needs = d.needs_you_now(now);
+        let page = d.outstanding_page_live(now);
+        let counts = d.counts(now);
+        assert_eq!(
+            needs.len(),
+            counts.waiting + counts.blocked + counts.failed + counts.interrupted,
+            "needs_you and Outstanding count different things"
+        );
+        assert!(needs.len() >= 2, "{needs:?}");
+        for n in &needs {
+            assert!(
+                page.contains(&hub::esc(n.what.trim_end_matches(['?', '.']))),
+                "needs_you names {:?} but Outstanding doesn't show it",
+                n.what
+            );
+        }
+    }
+
     /// 23 Oct 2026: the published copies are the same pages the live path
     /// draws, the reading pages are among them, and a page that owes a
     /// one-time notice is left out so the live page can say it.
