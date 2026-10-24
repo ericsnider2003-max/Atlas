@@ -1557,6 +1557,117 @@ mod one_count_tests {
             .any(|k| k.as_deref().is_some_and(|k| k.starts_with("j:approval:"))));
     }
 
+    /// 23 Oct 2026: the published copies are the same pages the live path
+    /// draws, the reading pages are among them, and a page that owes a
+    /// one-time notice is left out so the live page can say it.
+    #[test]
+    fn published_pages_are_the_live_pages_and_leave_out_one_time_notices() {
+        let store = scratch("published");
+        let config = crate::config::Config::load(std::path::Path::new("config")).unwrap();
+        let platform = crate::platform::mock::MockPlatform::new(Vec::new());
+        let mut d = Daemon::new(
+            &config,
+            &platform,
+            None,
+            store,
+            crate::proactive::Proactive::new(crate::proactive::ProactiveConfig::default()),
+        );
+        let published = crate::hublive::readonly_pages(&mut d);
+        for page in crate::server::SNAPSHOT_PAGES {
+            assert!(
+                published.iter().any(|(p, _)| *p == page),
+                "{page:?} was not published"
+            );
+        }
+        for page in [Page::Settings, Page::Permissions, Page::Help, Page::Trusted] {
+            let copy = &published.iter().find(|(p, _)| *p == page).unwrap().1.body;
+            let live = d.hub_reply(crate::server::Action::Hub(page)).body;
+            assert_eq!(copy, &live, "{page:?}: the copy is not what the live page draws");
+        }
+        // A one-time line waiting for Help: Help is not published, so the
+        // live page says it (and only the live page consumes it).
+        d.flash_once.push((
+            Page::Help,
+            crate::hubjobs::Flash::Said("Sent.".into()),
+            crate::store::now() + 60,
+        ));
+        let published = crate::hublive::readonly_pages(&mut d);
+        assert!(!published.iter().any(|(p, _)| *p == Page::Help));
+        assert!(published.iter().any(|(p, _)| *p == Page::Settings));
+        let live = d.hub_reply(crate::server::Action::Hub(Page::Help)).body;
+        assert!(live.contains("Sent."), "the live page says it");
+        assert!(crate::hublive::readonly_pages(&mut d)
+            .iter()
+            .any(|(p, _)| *p == Page::Help));
+    }
+
+    #[test]
+    fn the_kept_settings_are_read_again_when_the_files_change() {
+        let dir = std::env::temp_dir().join(format!("atlas-kept-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        for f in ["apps.yaml", "layouts.yaml", "commands.yaml", "tools.yaml", "policy.yaml"] {
+            std::fs::copy(std::path::Path::new("config").join(f), dir.join(f)).unwrap();
+        }
+        let before = crate::hublive::kept_settings(&dir).expect("readable");
+        let was = before.changed().len();
+        // Chosen the way the Settings page chooses.
+        let mut p = crate::preferences::Preferences::default();
+        let flip = before
+            .items
+            .iter()
+            .find(|i| matches!(i.value, crate::settings::Value::Toggle(_)))
+            .expect("some switch");
+        let crate::settings::Value::Toggle(on) = flip.value else {
+            unreachable!()
+        };
+        p.set(&flip.key, if on { "off" } else { "on" });
+        p.save(&dir).unwrap();
+        let after = crate::hublive::kept_settings(&dir).expect("readable");
+        assert_eq!(
+            after.changed().len(),
+            was + 1,
+            "a setting chosen after the first reading was not read"
+        );
+        // Unchanged files are not read again: the same answer, and the cache
+        // is what gave it (a file edited back to the same bytes at the same
+        // moment would not be noticed, which is the price of not reading).
+        assert_eq!(
+            crate::hublive::kept_settings(&dir).unwrap().changed().len(),
+            was + 1
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// 23 Oct 2026: a development build ran out of stack drawing
+    /// `/hub/settings` (a release build did not). Atlas's loop runs on the
+    /// program's own thread, which on Windows has 1 MiB, not the 2 MiB a test
+    /// thread gets, so the page is drawn here on a thread of exactly that size.
+    #[test]
+    fn the_settings_page_is_drawn_within_the_main_threads_stack() {
+        let handle = std::thread::Builder::new()
+            .stack_size(1024 * 1024)
+            .spawn(|| {
+                let store = scratch("stack");
+                let config =
+                    crate::config::Config::load(std::path::Path::new("config")).unwrap();
+                let platform = crate::platform::mock::MockPlatform::new(Vec::new());
+                let mut d = Daemon::new(
+                    &config,
+                    &platform,
+                    None,
+                    store,
+                    crate::proactive::Proactive::new(crate::proactive::ProactiveConfig::default()),
+                );
+                let page = d.hub_reply(crate::server::Action::Hub(Page::Settings)).body;
+                assert!(page.contains("Settings"));
+                let all = crate::hublive::readonly_pages(&mut d);
+                assert!(all.len() >= 7);
+            })
+            .unwrap();
+        handle.join().expect("the page was drawn within 1 MiB of stack");
+    }
+
     #[test]
     fn activity_leaves_out_atlas_working_on_its_own_code_and_marks_the_rest() {
         let store = scratch("activity");

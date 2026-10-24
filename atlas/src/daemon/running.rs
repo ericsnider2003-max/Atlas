@@ -1419,16 +1419,30 @@ impl<'a> Daemon<'a> {
                 install_state.clone(),
                 self.store.root().to_path_buf(),
             );
+            let (live, changed) = crate::hublive::readonly_live(self);
+            server.publish_live(live, changed);
             self.publish_hub_pause(&server);
         }
         if !self.handed_over_now() && active == self.store.root() {
             self.publish_hub_pause(&server);
         }
         let mut handle = |action| {
+            // Looking at a page changes nothing the published copy shows, so
+            // it stays (23 Oct 2026: every look used to throw the copy away,
+            // and the next requests, answered by the loop, waited for it).
+            // Anything that can change something does throw it away.
+            let only_looking = matches!(
+                action,
+                crate::server::Action::Hub(_)
+                    | crate::server::Action::LiveJson
+                    | crate::server::Action::Changed(_)
+            );
             // Caught: a panic answering the hub would otherwise take the
             // whole of Atlas down with the page.
             let reply = self.reply_hub_for_owner(&install_state, action);
-            server.invalidate_readonly();
+            if !only_looking {
+                server.invalidate_readonly();
+            }
             if self.attention.is_paused() || !self.sound_allows_speaking() {
                 if self.attention.is_paused() {
                     self.cancel_brief_preparation();
@@ -1452,6 +1466,8 @@ impl<'a> Daemon<'a> {
                 install_state,
                 self.store.root().to_path_buf(),
             );
+            let (live, changed) = crate::hublive::readonly_live(self);
+            server.publish_live(live, changed);
             self.publish_hub_pause(&server);
         }
         // The door's own news (its port taken, where it opened instead:

@@ -588,24 +588,106 @@ fn readonly_pages_drawn(daemon: &mut Daemon) -> Vec<(Page, Reply)> {
         daemon.waiting_count(now),
         &daemon.deck(now, crate::localclock::offset_secs()),
     );
-    [
+    let mut pages = vec![
         (Page::Dashboard, home),
         (Page::Now, daemon.now_page_live()),
         (Page::Outstanding, daemon.outstanding_page_live(now)),
-    ]
-    .into_iter()
-    .map(|(page, html)| {
-        let html = hub::with_palette(html, &crate::palette::catalogue(), &daemon.palette);
-        let (waiting, stopped) = daemon.pill_counts(now);
-        let html = hub::with_counts(html, waiting, &stopped);
-        let html = daemon.with_sidebar_names(html);
-        let html = daemon.with_handover_banner(html);
-        (
-            page,
-            Reply::html(hub::with_appearance(html, &daemon.appearance())),
-        )
-    })
+    ];
+    // 23 Oct 2026: the pages that only read state, so a request for one never
+    // waits for whatever the loop is doing. Left out while the live page still
+    // owes a notice (a finished job's answer, a one-time line, a file set
+    // aside): those are said by the live page, once, and a copy must not
+    // take them or hide them.
+    let owes_a_notice = !crate::store::set_aside_since(&daemon.store, now.saturating_sub(86_400))
+        .is_empty();
+    for page in crate::server::SNAPSHOT_PAGES {
+        if pages.iter().any(|(p, _)| *p == page) {
+            continue;
+        }
+        let one_time = daemon.hub_jobs.has_unseen_for(page)
+            || daemon
+                .flash_once
+                .iter()
+                .any(|(p, _, until)| *p == page && *until > now);
+        if owes_a_notice || one_time {
+            continue;
+        }
+        let html = daemon.hub_page(page);
+        pages.push((page, html));
+    }
+    let catalogue = crate::palette::catalogue();
+    let (waiting, stopped) = daemon.pill_counts(now);
+    pages
+        .into_iter()
+        .map(|(page, html)| {
+            let html = hub::with_palette(html, &catalogue, &daemon.palette);
+            let html = hub::with_counts(html, waiting, &stopped);
+            let html = daemon.with_sidebar_names(html);
+            let html = daemon.with_handover_banner(html);
+            (
+                page,
+                Reply::html(hub::with_appearance(html, &daemon.appearance())),
+            )
+        })
     .collect()
+}
+
+/// What is kept in the settings files, read again only when those files
+/// change (23 Oct 2026). Reading them means parsing every shipped and local
+/// layer, 16 ms on a quiet machine and the bulk of building the Settings page,
+/// and the page is drawn from it on every request and on every refresh of the
+/// published copy. The files are identified by name, size and time of last
+/// change, so a setting changed anywhere (the page, a text editor) is read on
+/// the next request. `None`: they could not be read, and the caller says what
+/// it always said.
+fn kept_settings(dir: &std::path::Path) -> Option<crate::settings::Settings> {
+    use std::hash::{Hash, Hasher};
+    static KEPT: std::sync::Mutex<Option<(u64, crate::settings::Settings)>> =
+        std::sync::Mutex::new(None);
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    dir.hash(&mut h);
+    for folder in [dir.to_path_buf(), dir.join("local")] {
+        let mut files: Vec<_> = std::fs::read_dir(&folder)
+            .into_iter()
+            .flatten()
+            .flatten()
+            .filter_map(|e| Some((e.path(), e.metadata().ok()?)))
+            .filter(|(_, m)| m.is_file())
+            .collect();
+        files.sort_by(|a, b| a.0.cmp(&b.0));
+        for (path, m) in files {
+            path.hash(&mut h);
+            m.len().hash(&mut h);
+            m.modified().ok().hash(&mut h);
+        }
+    }
+    let key = h.finish();
+    let mut held = KEPT.lock().unwrap_or_else(|p| p.into_inner());
+    if let Some((k, s)) = held.as_ref() {
+        if *k == key {
+            return Some(s.clone());
+        }
+    }
+    let fresh = crate::settingswin::current_settings(dir).ok()?;
+    *held = Some((key, fresh.clone()));
+    Some(fresh)
+}
+
+/// The phone's live status and the "did it change" checks, built for the
+/// loop to publish beside the pages (23 Oct 2026). Same answers as the live
+/// requests give; nothing in them is consumed by being read.
+pub(crate) fn readonly_live(daemon: &mut Daemon) -> (Reply, Vec<(String, Reply)>) {
+    let live = daemon.hub_reply(Action::LiveJson);
+    let changed = ["home", "now", "talk"]
+        .into_iter()
+        .map(|which| {
+            (
+                which.to_string(),
+                daemon.hub_reply(Action::Changed(which.to_string())),
+            )
+        })
+        .collect();
+    (live, changed)
 }
 
 impl Daemon<'_> {
@@ -1387,8 +1469,8 @@ impl Daemon<'_> {
                 // the switch you had just flipped back where it was — every
                 // toggle looked like it hadn't taken. The same reading the
                 // Atlas window's Settings page uses.
-                let kept = crate::settingswin::current_settings(&crate::roots::config_dir())
-                    .unwrap_or_else(|_| crate::settings::registry(&self.tools_cfg()));
+                let kept = kept_settings(&crate::roots::config_dir())
+                    .unwrap_or_else(|| crate::settings::registry(&self.tools_cfg()));
                 hub::settings_page(&kept)
             }
             // By where this device stands (`hubvault`, 27 Sep 2026).

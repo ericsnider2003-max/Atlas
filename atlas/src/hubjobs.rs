@@ -266,6 +266,15 @@ impl Jobs {
         self.held().1.values().rev().cloned().collect()
     }
 
+    /// Whether `page` has an answer not shown yet. Reads only: nothing is
+    /// marked shown (23 Oct 2026, so a published copy of a page can tell
+    /// when the live page still owes its owner a notice).
+    pub fn has_unseen_for(&self, page: Page) -> bool {
+        self.held().1.values().any(|j| {
+            j.page == page && !j.seen && matches!(j.state, State::Done(_) | State::Failed(_))
+        })
+    }
+
     /// Answers for `page` not shown yet, marked shown.
     pub fn unseen_for(&self, page: Page) -> Vec<String> {
         let mut g = self.held();

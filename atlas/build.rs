@@ -35,6 +35,16 @@ fn main() {
     println!("cargo:rerun-if-env-changed=RC");
     println!("cargo:rerun-if-env-changed=WINDRES");
 
+    // A development build overflowed the program's own stack drawing
+    // `/hub/settings` (and at start, once the loop publishes it): Atlas's loop
+    // runs on the main thread, which on Windows has 1 MiB, and an unoptimised
+    // build gives its frames several times the room an optimised one needs.
+    // Eight is what the loop gets in every build now; a release build is
+    // unaffected in behaviour. (23 Oct 2026)
+    if std::env::var("CARGO_CFG_TARGET_ENV").as_deref() == Ok("msvc") {
+        println!("cargo:rustc-link-arg-bins=/STACK:8388608");
+    }
+
     let number = std::env::var("ATLAS_BUILD_NUMBER")
         .ok()
         .and_then(|n| n.trim().parse::<u32>().ok());

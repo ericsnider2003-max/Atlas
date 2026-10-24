@@ -657,6 +657,10 @@ struct ReadOnlySnapshot {
     owner_state: std::path::PathBuf,
     permissions: Vec<Option<Vec<u8>>>,
     pages: Vec<(crate::hub::Page, Reply)>,
+    /// The phone's live status and the "did this page change" answers, built
+    /// by the loop with the pages (23 Oct 2026) and read from here.
+    live: Option<Reply>,
+    changed: Vec<(String, Reply)>,
     pause: Option<std::sync::Arc<dyn Fn(bool) + Send + Sync>>,
     pause_requested: std::sync::Arc<std::sync::atomic::AtomicU8>,
     cancellations: Vec<(FastCancel, std::sync::Arc<dyn Fn() + Send + Sync>)>,
