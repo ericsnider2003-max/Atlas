@@ -117,6 +117,7 @@ One line per doc. "Last true" is the date the doc declares (`Last updated: YYYY-
 | [docs/OUTSTANDING_2026-10-18.md](OUTSTANDING_2026-10-18.md) | Outstanding work — 2026-10-18 | — |
 | [docs/OWNER_READINESS_RESET_2026-10-16.md](OWNER_READINESS_RESET_2026-10-16.md) | Owner readiness reset — Atlas | 2026-10-20 |
 | [docs/OWN_LANGUAGE_MODEL_OPTIONS_2026-10-20.md](OWN_LANGUAGE_MODEL_OPTIONS_2026-10-20.md) | Building Atlas's own language model: options and recommendation | 2026-10-20 |
+| [docs/OWN_MODEL_INTENT_BASELINE_2026-10-25.md](OWN_MODEL_INTENT_BASELINE_2026-10-25.md) | Own model: the intent baseline to beat (25 Oct 2026) | 2026-10-25 |
 | [docs/PLAN_COVERAGE_REGISTER_2026-10-18.md](PLAN_COVERAGE_REGISTER_2026-10-18.md) | Atlas plan coverage register — 2026-10-18 | 2026-10-20 |
 | [docs/PLATFORM.md](PLATFORM.md) | PLATFORM — Atlas | — |
 | [docs/PROGRAM_COPIES_CLEANUP_PROPOSAL_2026-10-21.md](PROGRAM_COPIES_CLEANUP_PROPOSAL_2026-10-21.md) | Old program copies: cleanup proposal, 2026-10-21 | — |
