@@ -1395,8 +1395,11 @@ fn the_persona_says_work_first_and_banter_second() {
     .for_this_turn_on(Register::Chatting, 3, "my bank account was hacked", false);
     assert!(serious.contains("No jokes"), "{serious}");
     // The stable part is short: what every turn pays for.
+    // 24 Oct 2026: 1,500 -> 1,620. The owner's one length rule (a hundred and
+    // forty characters, said once) replaced "one to three short sentences"
+    // (thirty-one), so the stable part is about a hundred characters longer.
     assert!(
-        ch.chars().count() < 1_500,
+        ch.chars().count() < 1_620,
         "{} characters",
         ch.chars().count()
     );

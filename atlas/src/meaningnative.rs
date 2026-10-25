@@ -30,12 +30,12 @@ pub const VOCAB: &str = "models/understanding/vocab.txt";
 /// Measured against the full one on 26 texts: mean cosine 1.0000, the same
 /// nearest meaning 14 of 14. Used when it's there and the full one isn't.
 /// (The 8-bit export ran only once its shape notes were dropped,
-/// `read_model`; it was not the one chosen.)
+/// `read_onnx`; it was not the one chosen.)
 pub const MODEL_SMALL: &str = crate::bundled::MEANING_MODEL;
 
 /// The model file to load: the full-size one if it's installed, else the
 /// 8-bit one, else none.
-pub(crate) fn model_path(root: &Path) -> Option<std::path::PathBuf> {
+fn model_path(root: &Path) -> Option<std::path::PathBuf> {
     [MODEL, MODEL_SMALL]
         .iter()
         .map(|m| root.join(m))
@@ -47,7 +47,7 @@ pub(crate) fn model_path(root: &Path) -> Option<std::path::PathBuf> {
 /// batch and sequence sizes symbolically there, which contradicts the fixed
 /// lengths this encoder compiles for ("Impossible to unify Sym(batch_size)
 /// with Val(1)", 24 Oct 2026). tract works the shapes out itself.
-fn read_model(path: &Path) -> Option<InferenceModel> {
+fn read_onnx(path: &Path) -> Option<InferenceModel> {
     let onnx = tract_onnx::onnx();
     let mut proto = onnx.proto_model_for_path(path).ok()?;
     if let Some(g) = proto.graph.as_mut() {
@@ -101,7 +101,7 @@ impl Native {
             .enumerate()
             .map(|(i, w)| (w.to_string(), i as i64))
             .collect();
-        let proto = read_model(&m)?;
+        let proto = read_onnx(&m)?;
         // A model that reads but can't be compiled would answer every text
         // with nothing (24 Oct 2026: the 8-bit export failed tract's analysis
         // at its first Unsqueeze). Prove the smallest length compiles, or

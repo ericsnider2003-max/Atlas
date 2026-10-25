@@ -92,7 +92,7 @@ pub enum Adopted {
 }
 
 /// Where a piece belongs.
-pub(crate) fn place(p: &Piece, home: &Path, models_dir: &Path) -> PathBuf {
+fn place(p: &Piece, home: &Path, models_dir: &Path) -> PathBuf {
     match p.into {
         Into::Models => models_dir.join(p.file),
         Into::Home => home.join(p.file),

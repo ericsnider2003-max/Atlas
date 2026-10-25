@@ -342,7 +342,10 @@ fn a_normal_turn_is_under_nine_hundred_tokens_and_starts_the_same_every_time() {
         "DIET average ~{avg} tokens over {} turns (before the diet: ~2,820)",
         rows.len()
     );
-    assert!(avg <= 900, "the average turn is ~{avg} tokens");
+    // 24 Oct 2026: 900 -> 915, the same change as the character's
+    // budget (the one length rule is about 27 tokens longer than the phrase
+    // it replaced; the per-turn line it made redundant gave some back).
+    assert!(avg <= 915, "the average turn is ~{avg} tokens");
 
     // The start of the prompt is the same bytes every turn -- the system
     // message and the one tool that is always offered -- so the model
