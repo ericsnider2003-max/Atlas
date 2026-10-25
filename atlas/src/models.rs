@@ -2037,9 +2037,25 @@ pub fn layers_here(model: &Model, cfg: &ModelsConfig, m: &Machine) -> u32 {
     if measured > 0 || m.usable_vram_mb() > 0 {
         return measured;
     }
-    match server_tool(cfg) {
-        Some(tool) if is_graphics_build(Path::new(&tool.command)) => ALL_LAYERS,
-        _ => 0,
+    let graphics = server_tool(cfg)
+        .map(|tool| is_graphics_build(Path::new(&tool.command)))
+        .unwrap_or(false);
+    auto_layers_without_vram(model, graphics)
+}
+
+/// The layers when the machine has no dedicated video memory and the setting
+/// is `auto`. The small talking model runs on the processor: on a shared-memory
+/// iGPU (Core Ultra 7 256V, 25 Oct 2026) 999 layers on the graphics measured
+/// 2,217 MB against ~1.4 GB on the processor at the same file and context, and
+/// the 2 GB floor stopped it. The 4B keeps the graphics build's offload.
+fn auto_layers_without_vram(model: &Model, graphics_build: bool) -> u32 {
+    if model.id == SMALL_TALK {
+        return 0;
+    }
+    if graphics_build {
+        ALL_LAYERS
+    } else {
+        0
     }
 }
 
@@ -3759,6 +3775,29 @@ mod memory_tiers {
         assert_eq!(picked(&r, 3_900), None);
         assert_eq!(picked(&r, 2_500), None);
         assert_eq!(picked(&r, 500), None);
+    }
+
+    #[test]
+    fn the_small_model_runs_on_the_processor_on_integrated_graphics() {
+        let r = both();
+        let small_file = model(SMALL_TALK, 1_700_000_000, 1_107_409_472);
+        let small = &small_file;
+        let four = r.get(crate::deepbrain::FASTER_TALK).unwrap();
+        // No dedicated memory, a graphics build of the server: auto.
+        assert_eq!(auto_layers_without_vram(small, true), 0);
+        assert_eq!(auto_layers_without_vram(four, true), ALL_LAYERS);
+        // With under 4 GB free the CPU estimate fits under the floor.
+        let m = laptop(3_800);
+        let cfg = ModelsConfig::default();
+        let layers = layers_here(small, &cfg, &m);
+        assert!(!integrated_offload(&m, layers));
+        let need = need_mb(small, 2_048, &cfg, &m, &ModelCosts::default());
+        assert!(fits_with_floor(3_800, need), "{need}");
+        // The graphics estimate would not.
+        let gfx = estimated_need_mb(estimate_memory(small, 2_048), true);
+        assert!(!fits_with_floor(3_800, gfx), "{gfx}");
+        // A dedicated GPU still offloads.
+        assert_eq!(gpu_layers_for(small, 8_192 * 1024 * 1024, 2_048), ALL_LAYERS);
     }
 
     #[test]
