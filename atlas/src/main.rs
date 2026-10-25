@@ -279,6 +279,11 @@ fn main() {
         .cloned()
         .collect();
 
+    if flag("--watchdog") {
+        let exe = std::env::current_exe().expect("Atlas executable path");
+        atlas::watchdog::run(exe, atlas::roots::state_dir());
+    }
+
     if flag("--help") || flag("-h") {
         print!("{USAGE}");
         return;

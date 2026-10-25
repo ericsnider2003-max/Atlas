@@ -248,6 +248,7 @@ pub mod voiceid;
 pub mod voicelat;
 pub mod voiceover;
 pub mod voicepick;
+pub mod watchdog;
 pub mod watchvideo;
 pub mod weather;
 pub mod webpush;
