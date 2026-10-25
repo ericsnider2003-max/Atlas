@@ -64,7 +64,7 @@ mod tests {
         let mut runs = Runs::default();
         runs.start(10, None);
         runs.stop(20, crate::goodbye::Why::YouClosedIt);
-        assert!(!should_restart(&runs, spawned_at));
+        assert!(!should_restart(&runs, 5));
     }
 
     #[test]
