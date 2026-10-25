@@ -189,7 +189,15 @@ jobs:
           xcodebuild -project Atlas.xcodeproj -scheme Atlas -configuration Release \
             -destination 'generic/platform=iOS' -archivePath "$RUNNER_TEMP/Atlas.xcarchive" \
             DEVELOPMENT_TEAM="$TEAM" CURRENT_PROJECT_VERSION="$GITHUB_RUN_NUMBER" MARKETING_VERSION="$ATLAS_VERSION" \
+            CODE_SIGN_IDENTITY="Apple Distribution" \
             "${AUTH[@]}" archive
+          # 24 Oct 2026: archive with the distribution identity. Left to
+          # automatic signing, a Release archive signs as "Apple
+          # Development", and a fresh runner has no development key, so
+          # every run minted a new Development certificate through the API
+          # key until the account hit Apple's limit (10 found and 9 revoked
+          # today). The distribution certificate is cloud-managed, so it's
+          # reused across runs and no key lives on the runner.
           cat > "$RUNNER_TEMP/ExportOptions.plist" <<PLIST
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
