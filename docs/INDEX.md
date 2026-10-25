@@ -55,15 +55,11 @@ One line per doc. "Last true" is the date the doc declares (`Last updated: YYYY-
 
 | Doc | Summary | Last true |
 |---|---|---|
-| [02_SESSION_2026-09-20.md](../02_SESSION_2026-09-20.md) | Wiring session — 20 September 2026 | — |
-| [04_SESSION_2026-09-20_grants_cloudflare_and_a_clearout.md](../04_SESSION_2026-09-20_grants_cloudflare_and_a_clearout.md) | Grants, a Cloudflare delegation backend, dead settings, and a clear-out — 20 Sep 2026 | — |
 | [05_SESSION_2026-09-20_coding_and_auto_delegation.md](../05_SESSION_2026-09-20_coding_and_auto_delegation.md) | Coding from a description, auto-delegation, and a clear-out — 20 Sep 2026 | — |
-| [08_MERGE_COMPLETED_2026-09-22.md](../08_MERGE_COMPLETED_2026-09-22.md) | Merge completed — 22 September 2026 | — |
 | [12_LOCAL_LLM_2026-09-22.md](../12_LOCAL_LLM_2026-09-22.md) | Local generative model — install path, proven — 22 September 2026 | — |
 | [13_ARCHITECTURE_DECISIONS_2026-09-23.md](../13_ARCHITECTURE_DECISIONS_2026-09-23.md) | Architecture decisions — reach, isolation, and single-errand control | — |
 | [14_SESSION_2026-09-23_decisions_wired.md](../14_SESSION_2026-09-23_decisions_wired.md) | Session — 23 September 2026: the decision list, wired | — |
 | [15_SESSION_2026-09-23_remainder_wired.md](../15_SESSION_2026-09-23_remainder_wired.md) | Session — 23 September 2026 (later): the rest of the decision list | — |
-| [17_SESSION_2026-09-23_wireguard_to_your_server.md](../17_SESSION_2026-09-23_wireguard_to_your_server.md) | Session — 23 September 2026 (night): your own server, over WireGuard | — |
 | [18_SETUP_READINESS_2026-09-23.md](../18_SETUP_READINESS_2026-09-23.md) | Setup readiness: will anything unwired stop Atlas being set up? | — |
 | [19_SESSION_2026-09-23_double_click_setup.md](../19_SESSION_2026-09-23_double_click_setup.md) | Session — 23 September 2026: setup you can hand to someone | — |
 | [20_PHONE_AS_PEER_2026-09-24.md](../20_PHONE_AS_PEER_2026-09-24.md) | Atlas on the phone — a full peer, on or offline | — |
@@ -73,14 +69,12 @@ One line per doc. "Last true" is the date the doc declares (`Last updated: YYYY-
 | [21_TAILNET_SYNC_MOBILE_CORE_2026-09-24.md](../21_TAILNET_SYNC_MOBILE_CORE_2026-09-24.md) | Tailnet sync, a mobile-compilable core, and a guard audit | — |
 | [22_SESSION_2026-09-24_round7_moving_3d.md](../22_SESSION_2026-09-24_round7_moving_3d.md) | Round 7: moving 3-D, and the renderer rebuilt | — |
 | [23_SESSION_2026-09-24_finished_call_notes_delegation_envelope.md](../23_SESSION_2026-09-24_finished_call_notes_delegation_envelope.md) | Session, 24 September 2026 (later): what was left half-done, finished | — |
-| [23_SESSION_2026-09-25_round8_models_materials_voices.md](../23_SESSION_2026-09-25_round8_models_materials_voices.md) | Round 8: real objects, real materials, and people who speak once | — |
 | [24_SESSION_2026-09-24_the_gaps_the_audit_found.md](../24_SESSION_2026-09-24_the_gaps_the_audit_found.md) | Session, 24 September 2026 (last): the gaps an audit found, fixed | — |
 | [24_SESSION_2026-09-25_round9_a_working_day.md](../24_SESSION_2026-09-25_round9_a_working_day.md) | Round 9: a working day, not just a conversation | — |
 | [25_SESSION_2026-09-25_round10_gaps_and_ideas.md](../25_SESSION_2026-09-25_round10_gaps_and_ideas.md) | Round 10: the gaps a second look found, closed, and what to build next | — |
 | [25_SESSION_2026-09-25_window_work_is_an_errand.md](../25_SESSION_2026-09-25_window_work_is_an_errand.md) | Session, 25 September 2026: working a window is an errand, like the rest | — |
 | [26_SESSION_2026-09-25_new_work_through_the_crew.md](../26_SESSION_2026-09-25_new_work_through_the_crew.md) | Session, 25 September 2026 (later): the new work goes through the systems Atlas already has | — |
 | [26_SESSION_2026-09-25_round11_the_seventeen_built.md](../26_SESSION_2026-09-25_round11_the_seventeen_built.md) | Round 11: the seventeen ideas, built | — |
-| [28_HANDOFF_2026-09-26_main_chat_full_accounting.md](../28_HANDOFF_2026-09-26_main_chat_full_accounting.md) | Atlas — full handoff and accounting for the main chat (24–26 September 2026) | — |
 | [28_SESSION_2026-09-25_a_no_comes_with_a_way_to_yes.md](../28_SESSION_2026-09-25_a_no_comes_with_a_way_to_yes.md) | Session, 25 September 2026 (last): a no comes with a way to yes, and the four calls, thought through | — |
 | [29_SESSION_2026-09-25_your_answers_and_the_laptop.md](../29_SESSION_2026-09-25_your_answers_and_the_laptop.md) | Session, 25 September 2026: your answers, and what the laptop showed | — |
 | [30_SESSION_2026-09-25_everything_that_could_be_worked.md](../30_SESSION_2026-09-25_everything_that_could_be_worked.md) | Session, 25 September 2026 (evening): everything that could be worked without you | — |
@@ -89,24 +83,18 @@ One line per doc. "Last true" is the date the doc declares (`Last updated: YYYY-
 | [32_SESSION_2026-09-25_the_rulings_built.md](../32_SESSION_2026-09-25_the_rulings_built.md) | Session, 25 September 2026 (night): your rulings, built | — |
 | [32b_SESSION_2026-09-26_answers_not_documents.md](../32b_SESSION_2026-09-26_answers_not_documents.md) | Session, 26 September 2026: Atlas answers, instead of replying with documents | — |
 | [34_SESSION_2026-09-26_the_hub_design_and_25k.md](../34_SESSION_2026-09-26_the_hub_design_and_25k.md) | Session — 26 Sep 2026: the hub design, and 25k | — |
-| [35_SESSION_2026-09-26_the_whole_hub_phones_and_accessibility.md](../35_SESSION_2026-09-26_the_whole_hub_phones_and_accessibility.md) | Session — 26 Sep 2026: the whole hub, Atlas on phones, and accessibility | — |
 | [39_SESSION_2026-09-27_tor_ships_voice_and_the_phones_own_model.md](../39_SESSION_2026-09-27_tor_ships_voice_and_the_phones_own_model.md) | Session 27 Sep 2026 (second): Tor ships, friends pass releases on, updates and feedback by voice, an | — |
 | [40_SESSION_2026-09-27_the_hub_catches_up.md](../40_SESSION_2026-09-27_the_hub_catches_up.md) | Session 27 Sep 2026 (second, part two): the hub catches up | — |
 | [41_SESSION_2026-09-27_before_the_sandbox.md](../41_SESSION_2026-09-27_before_the_sandbox.md) | Session 27 Sep 2026 (second, part three): everything before the Sandbox test | — |
 | [42_THE_MARK_2026-09-27.md](../42_THE_MARK_2026-09-27.md) | The mark: the Folded A (27 Sep 2026) | — |
 | [43_SENDING_AN_UPDATE_FROM_THE_HUB_2026-09-27.md](../43_SENDING_AN_UPDATE_FROM_THE_HUB_2026-09-27.md) | Sending an update from the hub (27 Sep 2026) | — |
-| [44_TESTING_DAY_2026-09-27.md](../44_TESTING_DAY_2026-09-27.md) | Testing day (27 Sep 2026, evening) | — |
 | [45_TESTING_DAY_ROUND_TWO_2026-09-27.md](../45_TESTING_DAY_ROUND_TWO_2026-09-27.md) | Testing day, round two (27 Sep 2026, night) | — |
 | [46_SPEED_CONVERSATION_AND_TWO_SCANS_2026-09-28.md](../46_SPEED_CONVERSATION_AND_TWO_SCANS_2026-09-28.md) | Speed, free conversation, and two deep scans (27–28 Sep 2026) | — |
 | [MASTER_BUILD_PLAN.md](../MASTER_BUILD_PLAN.md) | Atlas — Master Build Plan & Completeness Map | — |
-| [OUTSTANDING_2026-09-27.md](../OUTSTANDING_2026-09-27.md) | Outstanding: everything not done, and what each waits on | — |
-| [OUTSTANDING_2026-09-27b.md](../OUTSTANDING_2026-09-27b.md) | Outstanding: everything not done, and what each waits on | — |
 | [SOURCE_OF_TRUTH.md](../SOURCE_OF_TRUTH.md) | SOURCE OF TRUTH — read this before trusting anything in this repo | 2026-10-03 |
 | [atlas-clean-pass-checklist.md](../atlas-clean-pass-checklist.md) | One-Pass Clean-Up Checklist for Code Written Fast, With AI, or by Small Teams | — |
 | [docs/ATLAS_DISPOSABLE_RESTORE_2026-10-17.md](ATLAS_DISPOSABLE_RESTORE_2026-10-17.md) | Atlas disposable restore evidence — 2026-10-17 | — |
 | [docs/ATLAS_EFFICIENCY_AND_ADAPTATION_DESIGN_2026-10-20.md](ATLAS_EFFICIENCY_AND_ADAPTATION_DESIGN_2026-10-20.md) | Atlas efficiency and device adaptation: design | 2026-10-20 |
-| [docs/ATLAS_FULL_HANDOFF_2026-10-17.md](ATLAS_FULL_HANDOFF_2026-10-17.md) | Atlas full handoff — singular candidate and complete workspace accounting | — |
-| [docs/ATLAS_FULL_HANDOFF_2026-10-18.md](ATLAS_FULL_HANDOFF_2026-10-18.md) | Atlas full handoff — singular candidate, installed proof, and filed work | — |
 | [docs/ATLAS_FULL_VALIDATION_PLAN.md](ATLAS_FULL_VALIDATION_PLAN.md) | Atlas full validation plan | — |
 | [docs/ATLAS_MODEL_TRAINING_PLAN_2026-10-21.md](ATLAS_MODEL_TRAINING_PLAN_2026-10-21.md) | Building and training Atlas's own model: the breakdown | 2026-10-21 |
 | [docs/ATLAS_NEXT_CHAT_HANDOFF_2026-10-17.md](ATLAS_NEXT_CHAT_HANDOFF_2026-10-17.md) | Atlas next-chat handoff — full operational context | — |
@@ -114,24 +102,17 @@ One line per doc. "Last true" is the date the doc declares (`Last updated: YYYY-
 | [docs/ATLAS_VERIFICATION_HARNESS.md](ATLAS_VERIFICATION_HARNESS.md) | Atlas verification harness | — |
 | [docs/CAPABILITIES.md](CAPABILITIES.md) | What Atlas can do | — |
 | [docs/CAPABILITY_EVIDENCE_AUDIT_2026-10-15.md](CAPABILITY_EVIDENCE_AUDIT_2026-10-15.md) | Capability evidence audit — 2026-10-15 | 2026-10-20 |
-| [docs/CHAT_HANDOFF_2026-10-18.md](CHAT_HANDOFF_2026-10-18.md) | Atlas chat handoff — 2026-10-18 | — |
 | [docs/CLAUDE_DESKTOP_ATLAS_ACCEPTANCE_HANDOFF_2026-10-20.md](CLAUDE_DESKTOP_ATLAS_ACCEPTANCE_HANDOFF_2026-10-20.md) | Atlas desktop acceptance handoff — 2026-10-20 | — |
 | [docs/CREATIVE_WORKSPACE_CORE_SCOPE_2026-10-18.md](CREATIVE_WORKSPACE_CORE_SCOPE_2026-10-18.md) | Creative Workspace Core — scope and acceptance | — |
 | [docs/CURRENT_STATE_2026-10-21.md](CURRENT_STATE_2026-10-21.md) | Current state, 21 October 2026 | 2026-10-21 |
 | [docs/EXECUTION_EFFICIENCY_PLAN.md](EXECUTION_EFFICIENCY_PLAN.md) | Atlas execution-efficiency plan | — |
-| [docs/F0_SHARED_RECORD_WIRING_2026-10-15.md](F0_SHARED_RECORD_WIRING_2026-10-15.md) | F0 shared capability record wiring — 2026-10-15 | — |
-| [docs/F1_DURABLE_JOB_COMPILE_FIX_2026-10-15.md](F1_DURABLE_JOB_COMPILE_FIX_2026-10-15.md) | F1 durable job compile fix — 2026-10-15 | — |
 | [docs/FILING_CANDIDATE_CLASSIFICATION_2026-10-18.md](FILING_CANDIDATE_CLASSIFICATION_2026-10-18.md) | Singular-candidate classification — 2026-10-18 | 2026-10-20 |
 | [docs/FILING_SYSTEM_REVIEW_2026-10-16.md](FILING_SYSTEM_REVIEW_2026-10-16.md) | Filing system review and singular-candidate refactor | — |
-| [docs/FOUNDATION_FAILURES_2026-10-14.md](FOUNDATION_FAILURES_2026-10-14.md) | Foundation pass failure record — 2026-10-14 | — |
-| [docs/FOUNDATION_IMPLEMENTATION_2026-10-15.md](FOUNDATION_IMPLEMENTATION_2026-10-15.md) | Foundation implementation handoff — 2026-10-15 | — |
 | [docs/GOALS_AND_VERIFICATION_2026-10-18.md](GOALS_AND_VERIFICATION_2026-10-18.md) | Atlas goals and verification order — 2026-10-18 | — |
 | [docs/HANDOFF_2026-10-19_CREATIVE_WORKSPACE.md](HANDOFF_2026-10-19_CREATIVE_WORKSPACE.md) | Atlas Creative Workspace Handoff — 2026-10-19 | — |
 | [docs/HANDOFF_ONE_COMPLETION_PATH_2026-10-21.md](HANDOFF_ONE_COMPLETION_PATH_2026-10-21.md) | Hand-off: finishing "one completion path" (item 6) | 2026-10-21 |
 | [docs/HUB_REDESIGN_2026-10-22.md](HUB_REDESIGN_2026-10-22.md) | Hub redesign — 22 Oct 2026 | — |
-| [docs/INTEGRATION_REVIEW_2026-10-15.md](INTEGRATION_REVIEW_2026-10-15.md) | Canonical integration review — 2026-10-15 | — |
 | [docs/OFFLINE_ASSISTANT_DESIGN_2026-10-20.md](OFFLINE_ASSISTANT_DESIGN_2026-10-20.md) | Atlas as a full offline assistant that keeps the PC usable | 2026-10-20 |
-| [docs/OPEN_WORK_AUDIT_2026-10-15.md](OPEN_WORK_AUDIT_2026-10-15.md) | Atlas open-work audit — 2026-10-15 | 2026-10-20 |
 | [docs/OPERATING_FOUNDATION_TRACE_2026-10-18.md](OPERATING_FOUNDATION_TRACE_2026-10-18.md) | Operating-foundation trace — 2026-10-18 | — |
 | [docs/OUTSTANDING_2026-10-18.md](OUTSTANDING_2026-10-18.md) | Outstanding work — 2026-10-18 | — |
 | [docs/OWNER_READINESS_RESET_2026-10-16.md](OWNER_READINESS_RESET_2026-10-16.md) | Owner readiness reset — Atlas | 2026-10-20 |
@@ -140,11 +121,8 @@ One line per doc. "Last true" is the date the doc declares (`Last updated: YYYY-
 | [docs/PLATFORM.md](PLATFORM.md) | PLATFORM — Atlas | — |
 | [docs/PROGRAM_COPIES_CLEANUP_PROPOSAL_2026-10-21.md](PROGRAM_COPIES_CLEANUP_PROPOSAL_2026-10-21.md) | Old program copies: cleanup proposal, 2026-10-21 | — |
 | [docs/PROJECT_FILE_INVENTORY_2026-10-17.md](PROJECT_FILE_INVENTORY_2026-10-17.md) | Atlas project file inventory — 2026-10-17 | — |
-| [docs/Q25_STARTUP_BACKUP_FIX_2026-10-15.md](Q25_STARTUP_BACKUP_FIX_2026-10-15.md) | Startup backup contention fix — 2026-10-15 | — |
 | [docs/REA_REPLICA_ADAPTATION_2026-10-16.md](REA_REPLICA_ADAPTATION_2026-10-16.md) | REA and replica adaptation notes — 2026-10-16 | — |
-| [docs/STALE_RECONCILIATION_2026-10-15.md](STALE_RECONCILIATION_2026-10-15.md) | Filing stale-reference reconciliation — 2026-10-15 | 2026-10-20 |
-| [docs/START_HERE.md](START_HERE.md) | Atlas — current starting point | 2026-10-20 |
-| [docs/STATUS.md](STATUS.md) | Status | 2026-10-21 |
+| [docs/STATUS.md](STATUS.md) | Status | 2026-10-25 |
 | [docs/TEST_COUNT_RECONCILIATION_2026-10-18.md](TEST_COUNT_RECONCILIATION_2026-10-18.md) | Test-count reconciliation — 2026-10-18 | — |
 | [docs/UGC_WORKFLOW_NORTH_STAR_2026-10-24.md](UGC_WORKFLOW_NORTH_STAR_2026-10-24.md) | North star: Atlas runs the faceless-UGC workflow, end to end (24 Oct 2026) | — |
 | [docs/VERIFICATION_CAMPAIGN_2026-10-18.md](VERIFICATION_CAMPAIGN_2026-10-18.md) | Verification campaign — 2026-10-18 | — |

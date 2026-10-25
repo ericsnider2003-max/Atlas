@@ -5,7 +5,7 @@ Every answer is here or in ONE file named here. All docs, one line each, open it
 
 ### Status
 
-- **Current** (owner, `docs/STATUS.md`, 2026-10-21): Canonical Atlas foundation work is active on `atlas/`; F0 evidence paths, F1 durable jobs, restart reconciliation, Hub artifact visibility for stale/uncertain work, bounded artifact/dependency envelopes, research/task-loop/local-coding/kept-media/self-audit receipt edges, and F5 local-knowledge/file safety paths are source-verified. The installed build is B0CA6B2F (merged candidate, 21 Oct); the installed verifier is green at 14/14 substantive contracts; the newest all-target run is 9,155 passed / 20 failed under load (3 need a system ffmpeg, the other 17 pass alone), and the full current picture is in `docs/CURRENT_STATE_2026-10-21.md`. An earlier independent serialized lean all-target campaign (19 Oct) completed with 7,005 passed, 16 failed, and 8 ignored; its source-owned creative wiring/catalogue/deadness/silent-discard failures are now resolved, and the filing check is now warning-free. Goal 2 is not complete and owner acceptance is not claimed. Feature expansion remains paused.
+- **Current** (owner, `docs/STATUS.md`, 2026-10-25): Canonical Atlas foundation work is active on `atlas/`. On 25 Oct every outstanding branch was integrated into candidate `46df31e6` (plans A-G, phone standalone, hand-offs: one length rule, Plan A check-ins in the tick, the focus guard, one work record) and installed as `0821F16A` (rollback `11135EC4`); the installed verifier is 14/14. Tests: 7,268 passed in `all`, 3 environment failures (camera/ffmpeg), 3 timing failures that passed on re-run; there is no single clean one-pass full run on the final tree yet. Not verified: anything on a real screen or phone, check-ins firing from the live tick, local-model answer length. Still not merged: the iOS certificate fix `f593b452` on `feat/phone-standalone-2026-10-23` (made after the merge point), `fix/crash1-watchdog` (owner decision). Android signing waits on Eric's `android-signing-setup.sh`. The filing check carries stale-doc warnings, being worked. Goal 2 is not complete and owner acceptance is not claimed. Feature expansion remains paused.
 - **In progress** (from `docs/STATUS.md`):
   - Ordered completion goal — `docs/GOALS_AND_VERIFICATION_2026-10-18.md` — active; one authoritative candidate is established and the installed verifier is green. Next command: run the installed operating-foundation journey from `docs/OWNER_READINESS_RESET_2026-10-16.md`, then choose the first product capability only after owner acceptance.
   - Desktop acceptance handoff — `docs/CLAUDE_DESKTOP_ATLAS_ACCEPTANCE_HANDOFF_2026-10-20.md` — prepared for Claude because this session has no native desktop-control surface; it contains the exact installed candidate, evidence, test sequence, evidence requirements, and repair rules.
@@ -46,15 +46,15 @@ Every answer is here or in ONE file named here. All docs, one line each, open it
 
 ### Superseded docs
 
-- `36_PHONES_WITHOUT_A_MAC_2026-09-26.md` → `docs/archive/36_PHONES_WITHOUT_A_MAC_2026-09-26_ARCHIVED_2026-10-19.md`, superseded by docs/STATUS.md
-- `37_MERGE_2026-09-27_26b_and_friends.md` → `docs/archive/37_MERGE_2026-09-27_26b_and_friends_ARCHIVED_2026-10-19.md`, superseded by docs/STATUS.md
-- `38_HANDOFF_2026-09-27_windows_ios_android.md` → `docs/archive/38_HANDOFF_2026-09-27_windows_ios_android_ARCHIVED_2026-10-19.md`, superseded by docs/STATUS.md
-- `NEW_CHAT_START_HERE.md` → `docs/archive/NEW_CHAT_START_HERE_ARCHIVED_2026-10-19.md`, superseded by docs/STATUS.md
-- `OPEN_GAPS.md` → `docs/archive/OPEN_GAPS_ARCHIVED_2026-10-19.md`, superseded by docs/STATUS.md
-- `OUTSTANDING_2026-09-26.md` → `docs/archive/OUTSTANDING_2026-09-26_ARCHIVED_2026-10-19.md`, superseded by docs/STATUS.md
-- `WINDOWS_SIGNING_TODAY.md` → `docs/archive/WINDOWS_SIGNING_TODAY_ARCHIVED_2026-10-19.md`, superseded by docs/STATUS.md
-- `docs/PLATFORM.md` → `docs/archive/PLATFORM_ARCHIVED_2026-10-22.md`, superseded by docs/PLATFORM.md (22 Oct 2026: phone standalone-first, owner decision)
-- +13 more in `docs/archive/INDEX.tsv`
+- `02_SESSION_2026-09-20.md` → `docs/archive/02_SESSION_2026-09-20_ARCHIVED_2026-10-24.md`, superseded by docs/STATUS.md and verification/runs/20261025T000000Z-claude-one-clean-atlas/RESULTS.md (25 Oct: one clean candidate 46df31e6, installed 0821F16A)
+- `04_SESSION_2026-09-20_grants_cloudflare_and_a_clearout.md` → `docs/archive/04_SESSION_2026-09-20_grants_cloudflare_and_a_clearout_ARCHIVED_2026-10-24.md`, superseded by docs/STATUS.md and verification/runs/20261025T000000Z-claude-one-clean-atlas/RESULTS.md (25 Oct: one clean candidate 46df31e6, installed 0821F16A)
+- `17_SESSION_2026-09-23_wireguard_to_your_server.md` → `docs/archive/17_SESSION_2026-09-23_wireguard_to_your_server_ARCHIVED_2026-10-24.md`, superseded by docs/STATUS.md and verification/runs/20261025T000000Z-claude-one-clean-atlas/RESULTS.md (25 Oct: one clean candidate 46df31e6, installed 0821F16A)
+- `23_SESSION_2026-09-25_round8_models_materials_voices.md` → `docs/archive/23_SESSION_2026-09-25_round8_models_materials_voices_ARCHIVED_2026-10-24.md`, superseded by docs/STATUS.md and verification/runs/20261025T000000Z-claude-one-clean-atlas/RESULTS.md (25 Oct: one clean candidate 46df31e6, installed 0821F16A)
+- `28_HANDOFF_2026-09-26_main_chat_full_accounting.md` → `docs/archive/28_HANDOFF_2026-09-26_main_chat_full_accounting_ARCHIVED_2026-10-24.md`, superseded by docs/STATUS.md and verification/runs/20261025T000000Z-claude-one-clean-atlas/RESULTS.md (25 Oct: one clean candidate 46df31e6, installed 0821F16A)
+- `35_SESSION_2026-09-26_the_whole_hub_phones_and_accessibility.md` → `docs/archive/35_SESSION_2026-09-26_the_whole_hub_phones_and_accessibility_ARCHIVED_2026-10-24.md`, superseded by docs/STATUS.md and verification/runs/20261025T000000Z-claude-one-clean-atlas/RESULTS.md (25 Oct: one clean candidate 46df31e6, installed 0821F16A)
+- `44_TESTING_DAY_2026-09-27.md` → `docs/archive/44_TESTING_DAY_2026-09-27_ARCHIVED_2026-10-24.md`, superseded by docs/STATUS.md and verification/runs/20261025T000000Z-claude-one-clean-atlas/RESULTS.md (25 Oct: one clean candidate 46df31e6, installed 0821F16A)
+- `docs/START_HERE.md` → `docs/archive/START_HERE_ARCHIVED_2026-10-24.md`, superseded by AGENTS.md project card and docs/INDEX.md (generated, always current)
+- +35 more in `docs/archive/INDEX.tsv`
 
 ### Standing corrections
 
