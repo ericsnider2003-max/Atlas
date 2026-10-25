@@ -9,8 +9,19 @@ use std::time::Duration;
 pub const MAX_RESTARTS: usize = 3;
 pub const WINDOW_SECS: u64 = 600;
 
-pub fn should_restart(runs: &Runs) -> bool {
-    runs.now.as_ref().is_some_and(|run| run.ended.is_none())
+/// Restart only when the child we just ran began a run of its own and never
+/// said goodbye. A child that was refused (another Atlas holds the lock) or
+/// died before beginning a run leaves an older record behind; that is not a
+/// crash of ours, so it is not restarted.
+pub fn should_restart(runs: &Runs, spawned_at: u64) -> bool {
+    runs.now
+        .as_ref()
+        .is_some_and(|run| run.ended.is_none() && run.started >= spawned_at)
+}
+
+/// Waits longer after each recent restart: 2s, 4s, 8s.
+pub fn backoff_secs(recent_restarts: usize) -> u64 {
+    2u64 << recent_restarts.min(4)
 }
 
 pub fn recent_restart_allowed(restarts: &[u64], now: u64) -> bool {
@@ -24,13 +35,14 @@ pub fn recent_restart_allowed(restarts: &[u64], now: u64) -> bool {
 pub fn run(exe: PathBuf, state_dir: PathBuf) -> ! {
     let mut restarts = Vec::new();
     loop {
+        let spawned_at = crate::store::now();
         let mut child = match Command::new(&exe).arg("--daemon").spawn() {
             Ok(child) => child,
             Err(_) => std::process::exit(1),
         };
         let _status = child.wait();
         let runs = Runs::load(&state_dir);
-        if !should_restart(&runs) {
+        if !should_restart(&runs, spawned_at) {
             std::process::exit(0);
         }
         let now = crate::store::now();
@@ -38,8 +50,8 @@ pub fn run(exe: PathBuf, state_dir: PathBuf) -> ! {
         if !recent_restart_allowed(&restarts, now) {
             std::process::exit(1);
         }
+        thread::sleep(Duration::from_secs(backoff_secs(restarts.len())));
         restarts.push(now);
-        thread::sleep(Duration::from_secs(2));
     }
 }
 
@@ -52,14 +64,31 @@ mod tests {
         let mut runs = Runs::default();
         runs.start(10, None);
         runs.stop(20, crate::goodbye::Why::YouClosedIt);
-        assert!(!should_restart(&runs));
+        assert!(!should_restart(&runs, spawned_at));
     }
 
     #[test]
     fn an_unannounced_exit_is_restartable() {
         let mut runs = Runs::default();
         runs.start(10, None);
-        assert!(should_restart(&runs));
+        assert!(should_restart(&runs, 5));
+    }
+
+    #[test]
+    fn a_refused_or_early_dead_child_is_not_restarted() {
+        // The record is the running daemon's (or an older crash's), begun
+        // before this child was spawned.
+        let mut runs = Runs::default();
+        runs.start(10, None);
+        assert!(!should_restart(&runs, 11));
+        assert!(!should_restart(&Runs::default(), 0));
+    }
+
+    #[test]
+    fn back_off_grows_and_is_bounded() {
+        assert_eq!(backoff_secs(0), 2);
+        assert_eq!(backoff_secs(2), 8);
+        assert_eq!(backoff_secs(50), 32);
     }
 
     #[test]
