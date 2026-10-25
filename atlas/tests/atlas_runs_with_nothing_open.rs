@@ -192,7 +192,7 @@ fn the_fallback_sign_in_entry_runs_atlas_itself_quoted() {
     assert_eq!(add.program, "reg");
     assert!(
         add.args
-            .contains(&r#""C:\Program Files\Atlas\atlas.exe" --daemon"#.to_string()),
+            .contains(&r#""C:\Program Files\Atlas\atlas.exe" --watchdog"#.to_string()),
         "{:?}",
         add.args
     );

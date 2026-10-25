@@ -2019,7 +2019,7 @@ pub fn claimed_modules() -> std::collections::BTreeSet<&'static str> {
 // 24 Oct 2026: + `needs_you`, `preflight`, `teachmode`, `whatif` (plans A-F
 // proof slices, each a thing a person asks for) = 507.
 // 24 Oct 2026: + `bundled` (the models that ship inside the phone app) = 508.
-pub const MODULES_IN_TREE: usize = 508;
+pub const MODULES_IN_TREE: usize = 509;
 
 /// Every module no capability claims, and why it is not one.
 ///
@@ -2077,6 +2077,7 @@ pub const PLUMBING: &[(&str, &str)] = &[
     ("onnxfix", "writes fixed input sizes into a copy of a model, which the NPU needs"),
     ("npu", "runs the search and voice-ID models on the laptop's NPU when it has one, checked against the processor (`atlas npu-check`)"),
     ("whystopped", "writes down when Atlas started and why each run ended, and asks Windows to start it again after an update restart"),
+    ("watchdog", "supervises the background Atlas: starts it again if it dies without saying goodbye, never after a clean stop, three tries in ten minutes"),
     ("look", "the palette and catenary constants the native windows are painted from"),
     ("look_paint", "paints Atlas's own windows natively from that palette"),
     ("mark", "Atlas's logo, drawn in code"),
