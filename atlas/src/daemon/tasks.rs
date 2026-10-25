@@ -1247,7 +1247,7 @@ impl<'a> Daemon<'a> {
                     let outcome = if tl.stop.load(std::sync::atomic::Ordering::SeqCst) {
                         crate::taskloop::Outcome::Failed("Stopped before this step.".into())
                     } else {
-                        self.act_on_call(&call, &tl.said, &mut tl.tainted)
+                        self.unless_owner_idle(|d| d.act_on_call(&call, &tl.said, &mut tl.tainted))
                     };
                     // The handoff's exact id also identifies a queued or joined
                     // job. Counting workers cannot distinguish those cases.

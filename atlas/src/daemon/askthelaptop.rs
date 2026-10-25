@@ -331,7 +331,7 @@ impl Daemon<'_> {
                     // Judged whole by `needs_your_yes` above, so it runs
                     // whole: not cut into parts the judgement never saw.
                     let relayed = RelayedGuard::set(&self.relayed_from_phone);
-                    let reply = self.turn_from(&a.what, t, Arrival::Directed);
+                    let reply = self.unless_owner_idle(|d| d.turn_from(&a.what, t, Arrival::Directed));
                     drop(relayed);
                     let watch = self
                         .last_crew_handoff
@@ -860,5 +860,68 @@ mod relayed_tests {
         });
         assert!(caught.is_err());
         assert!(!flag.load(Ordering::SeqCst), "left set after a panic");
+    }
+}
+
+/// 24 Oct 2026 (review of the focus guard): a request from the phone is run
+/// while the owner is away, and someone else may be at the laptop. It uses the
+/// screen only in a gap; with a person typing, input is refused.
+#[cfg(test)]
+mod phone_requests_and_a_person_at_the_laptop {
+    use super::*;
+    use crate::platform::mock::{Action, MockPlatform};
+    use crate::platform::Platform;
+
+    fn focus_from_the_phone(idle_secs: u64, tag: &str) -> usize {
+        let root = std::env::temp_dir().join(format!(
+            "atlas-phone-guard-{tag}-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let store = crate::store::Store::new(root);
+        let mut cfg = crate::config::Config::load(std::path::Path::new("config")).unwrap();
+        cfg.tools.as_mut().unwrap().phone = Default::default();
+        let platform = MockPlatform::new(vec![]);
+        let mut daemon = Daemon::new(
+            &cfg,
+            &platform,
+            None,
+            store.clone(),
+            crate::proactive::Proactive::new(Default::default()),
+        );
+        platform.launch(cfg.apps.get("notepad").unwrap()).unwrap();
+        let opened = platform.log.borrow().len();
+        *platform.input_idle.borrow_mut() = Some(idle_secs);
+        let request = FromThePhone {
+            device: "fixture-phone".into(),
+            n: 1,
+            what: "focus notepad".into(),
+            at: 100,
+            held: true,
+            phase: PhonePhase::Authorized,
+            watch: None,
+            worker: None,
+            reply: None,
+            reply_sent: false,
+        };
+        store.save(ASKED_KEY, &vec![request]).unwrap();
+        daemon.answer_requests_from_the_phone(101);
+        let focused = platform
+            .log
+            .borrow()
+            .iter()
+            .skip(opened)
+            .filter(|a| matches!(a, Action::Focus(_)))
+            .count();
+        focused
+    }
+
+    #[test]
+    fn a_phone_request_cannot_take_the_front_from_someone_typing_but_can_in_a_gap() {
+        assert_eq!(focus_from_the_phone(0, "typing"), 0, "it took the front from a person typing");
+        assert_eq!(focus_from_the_phone(60, "away"), 1, "it never ran, so the check above proves nothing");
     }
 }

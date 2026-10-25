@@ -881,7 +881,7 @@ impl<'a> Daemon<'a> {
             // it isn't tried a third time.
             self.redoing = Some(u.redone + 1);
             let said_before = self.last_said.clone();
-            let reply = self.turn(&u.asked, t);
+            let reply = self.unless_owner_idle(|d| d.turn(&u.asked, t));
             self.redoing = None;
             self.last_said = said_before;
             if !reply.trim().is_empty() {

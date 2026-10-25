@@ -2489,7 +2489,7 @@ impl<'a> Brain<'a> {
 
 /// What a reply caught looping is asked again with (`converse_with_tools`).
 pub const ANSWER_AFRESH: &str = "Your last replies kept saying the same things. Answer only what they just said, \
-directly, in one or two short sentences, in words you haven't used yet. If it's a request you can't carry out, \
+directly, in words you haven't used yet. If it's a request you can't carry out, \
 say what you can do instead and ask one short question. No closing question otherwise.";
 
 /// How the model is asked when it should just talk.

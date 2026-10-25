@@ -417,6 +417,13 @@ fn cost(s: &Spec) -> u64 {
 
 /// Shared between the daemon (which opens and closes background scopes) and
 /// the guarded platform (which checks).
+///
+/// The depth is one count for the whole program, not one per thread, on
+/// purpose and on an assumption: scopes are opened and closed on the daemon's
+/// own thread, and the platform's input calls are made from it. If another
+/// thread used the daemon's platform while a scope was open its input would
+/// be refused too -- the safe way to be wrong. (Hand tracking holds its own
+/// pointer handle, started by you, and does not go through the guard.)
 #[derive(Clone, Default)]
 pub struct HandsGuard {
     depth: std::sync::Arc<std::sync::atomic::AtomicUsize>,
@@ -457,7 +464,7 @@ impl HandsGuard {
             return Ok(());
         }
         let line = format!(
-            "kept my hands off your screen: background work asked to {what}, which only you can ask for"
+            "kept my hands off your screen: background work asked to {what}; that waits until you ask for it yourself or stop using the screen"
         );
         let mut r = self.refused.lock().unwrap_or_else(|p| p.into_inner());
         if r.len() < 50 {

@@ -156,3 +156,89 @@ fn a_persona_tells_the_model_the_length_it_is_cut_at() {
     assert!(with(2).contains("at most 2 sentences"), "{}", with(2));
     assert!(with(1).contains("one sentence"), "{}", with(1));
 }
+
+/// Every prompt that tells a model how long to talk, across the source: a
+/// count of sentences in a line of text. The owner's one rule
+/// (`persona::LENGTH_RULE`) is the only place an answer's length is said; what
+/// is left here is a different job (a one-sentence call summary, a caption of
+/// a webcam frame, a post for LinkedIn), named with why. A new one fails this
+/// until it is either built from the rule or named here.
+#[test]
+fn no_prompt_in_the_source_states_its_own_answer_length() {
+    // (file, a fragment of the line, what the job is)
+    const OTHER_JOBS: &[(&str, &str, &str)] = &[
+        ("src/callnotes.rs", "in one sentence", "a field of a call summary"),
+        ("src/camera_ask.rs", "plain sentences", "describing a webcam picture"),
+        ("src/camwatch.rs", "In one short sentence", "a caption for a watched frame"),
+        ("src/capability.rs", "the few tools a sentence needs", "prose, not a prompt"),
+        ("src/council.rs", "in one sentence", "a question a reviewer asks of a product"),
+        ("src/explain.rs", "short sentences", "the depth the owner chose for explaining code"),
+        ("src/online.rs", "one sentence naming", "a one-line verdict"),
+        ("src/operate.rs", "in one sentence", "fields of a step record"),
+        ("src/persona.rs", "sentence", "the rule itself"),
+        ("src/picture_talk.rs", "plain sentences", "describing a picture to someone who can't see it"),
+        ("src/voiceid.rs", "a sentence or two", "asking the owner to speak, not a model"),
+        ("src/stance.rs", "in one sentence", "a coaching line"),
+        ("src/studio.rs", "sentences, for posting", "a video description"),
+        ("src/watchvideo.rs", "sentences", "describing a video frame and a video"),
+        ("src/daemon/execute.rs", "short sentences. X:", "a LinkedIn post"),
+        ("src/daemon/making.rs", "plain sentences. Use only", "a written summary"),
+        ("src/social/analysis.rs", "plain sentences: what stands out", "a written analysis"),
+    ];
+    fn files(dir: &Path, out: &mut Vec<std::path::PathBuf>) {
+        for e in std::fs::read_dir(dir).unwrap().flatten() {
+            let p = e.path();
+            if p.is_dir() {
+                files(&p, out);
+            } else if p.extension().is_some_and(|x| x == "rs") {
+                out.push(p);
+            }
+        }
+    }
+    let mut all = Vec::new();
+    files(Path::new("src"), &mut all);
+    let counts = [
+        "one", "two", "three", "four", "five", "six", "seven", "eight", "a few", "few",
+    ];
+    let mut found = Vec::new();
+    for f in all {
+        let name = f.to_string_lossy().replace(std::path::MAIN_SEPARATOR, "/");
+        let text = std::fs::read_to_string(&f).unwrap_or_default();
+        for (n, line) in text.lines().enumerate() {
+            let t = line.trim_start();
+            if t.starts_with("//") {
+                continue;
+            }
+            let code = line.split(" // ").next().unwrap_or("");
+            let in_text = code.contains('"') || code.trim_end().ends_with('\\');
+            // Only the text inside quotes: a line that is code has no prompt.
+            let code_text = match code.find('"') {
+                Some(i) => &code[i..],
+                None => code,
+            };
+            let lower = code_text.to_lowercase();
+            // "<count> [to/or <count>] [adjective]* sentence(s)"
+            let words: Vec<&str> = lower
+                .split(|c: char| !c.is_alphanumeric() && c != '\'')
+                .filter(|w| !w.is_empty())
+                .collect();
+            let states_a_count = words.iter().enumerate().any(|(i, w)| {
+                ((*w == "sentence" || *w == "sentences") && words.get(i + 1) != Some(&"gap"))
+                    && words[i.saturating_sub(4)..i]
+                        .iter()
+                        .any(|p| counts.contains(p) || p.parse::<u32>().is_ok())
+            });
+            if in_text && states_a_count {
+                let named = OTHER_JOBS.iter().any(|(file, frag, _)| name == *file && code.contains(frag));
+                if !named {
+                    found.push(format!("{name}:{}: {}", n + 1, code.trim()));
+                }
+            }
+        }
+    }
+    assert!(
+        found.is_empty(),
+        "a prompt states its own answer length -- build it from persona::LENGTH_RULE, or name it in OTHER_JOBS with why:\n  {}",
+        found.join("\n  ")
+    );
+}

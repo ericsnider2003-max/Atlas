@@ -154,6 +154,24 @@ impl<'a> Daemon<'a> {
         r
     }
 
+    /// Is the owner's keyboard and mouse quiet, so a background step may use
+    /// the screen? The same two-second rule operate and work-for-you use;
+    /// where the platform can't say, nobody is assumed to be there.
+    pub(super) fn owner_is_idle(&self) -> bool {
+        self.plat.input_idle_secs().map(|s| s >= 2).unwrap_or(true)
+    }
+
+    /// Work that isn't the owner's live turn but is theirs in spirit (a phone
+    /// request, a step of a task loop): free to use the screen in a gap, and
+    /// with the guard up when someone is using it.
+    pub(super) fn unless_owner_idle<R>(&mut self, f: impl FnOnce(&mut Self) -> R) -> R {
+        if self.owner_is_idle() {
+            f(self)
+        } else {
+            self.unattended(f)
+        }
+    }
+
     pub(super) fn execute_unattended(&mut self, intent: &Intent) -> String {
         self.unattended(|d| d.execute(intent))
     }
@@ -945,7 +963,21 @@ impl<'a> Daemon<'a> {
             .as_ref()
             .is_some_and(|r| r.state == crate::flow::RunState::Running)
         {
-            if let Some(line) = self.drive_flow(t) {
+            // A flow started by a schedule has nobody behind it: every step
+            // runs with the guard up. One you started waits for a gap in
+            // your typing before its next step (the operate rule).
+            let scheduled = self
+                .current_flow
+                .as_ref()
+                .is_some_and(|r| r.scheduled_claim.is_some());
+            let line = if scheduled {
+                self.unattended(|d| d.drive_flow(t))
+            } else if self.owner_is_idle() {
+                self.drive_flow(t)
+            } else {
+                None
+            };
+            if let Some(line) = line {
                 out.push(line);
             }
         }
@@ -4731,5 +4763,120 @@ mod quiet_unless_asked {
         assert_eq!(d.looked_at, 0, "it never decided to look");
         assert!(d.look_in_flight.is_none());
         let _ = std::fs::remove_dir_all(&root);
+    }
+}
+
+/// 24 Oct 2026 (review of the focus guard): a flow that a schedule started is
+/// unattended at every step, not only the first. Driven from the tick with the
+/// owner typing, its later step is refused; one the owner started waits.
+#[cfg(test)]
+mod flow_steps_and_the_owner {
+    use super::*;
+    use crate::platform::mock::{Action, MockPlatform};
+    use crate::platform::Platform;
+
+    const ADDON: &str = "plugin_api: 1\nid: wind-down\nname: Wind down\nauthor: a friend\npermissions: [basics, desktop]\nflows:\n  - name: wind down\n    triggers: [\"wind things down\"]\n    steps:\n      - command: what can you do\n      - command: focus notepad\n";
+
+    fn run_the_second_step(scheduled: bool, owner_idle: bool, tag: &str) -> (usize, Option<usize>) {
+        let c = crate::config::Config::load(std::path::Path::new("config")).unwrap();
+        let p = MockPlatform::new(Vec::new());
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        let root = std::env::temp_dir().join(format!("atlas-flow-guard-{tag}-{}-{stamp}", std::process::id()));
+        std::fs::create_dir_all(root.join("plugins/wind-down")).unwrap();
+        std::fs::write(root.join("plugins/wind-down/plugin.yaml"), ADDON).unwrap();
+        let store = crate::store::Store::new(root.join("state"));
+        let dir = root.join("plugins");
+        let found = crate::plugins::scan(&dir, &c.commands, &crate::plugins::Approvals::default());
+        crate::plugins::approve(&store, &dir, &c.commands, "wind-down", &found[0].sha256).unwrap();
+        let mut d = Daemon::new(
+            &c,
+            &p,
+            None,
+            store.clone(),
+            crate::proactive::Proactive::new(crate::proactive::ProactiveConfig::default()),
+        );
+        d.plugins_dir = dir;
+        p.launch(c.apps.get("notepad").unwrap()).unwrap();
+        let opened = p.log.borrow().len();
+        *p.input_idle.borrow_mut() = Some(if owner_idle { 60 } else { 0 });
+
+        let workflow = crate::flow::Workflow {
+            name: "wind down".into(),
+            triggers: Vec::new(),
+            steps: vec![
+                crate::flow::Step::new("what can you do"),
+                crate::flow::Step::new("focus notepad"),
+            ],
+        };
+        let mut run = crate::flow::Run::start_for_plugin(&workflow, "wind-down");
+        run.position = 1;
+        if scheduled {
+            let token = "claim-1".to_string();
+            run.scheduled_claim = Some(token.clone());
+            let mut runs = crate::plugins::ScheduleRuns::default();
+            runs.claims.insert(
+                token,
+                crate::plugins::ScheduleClaim {
+                    schedule_key: "wind-down/wind down".into(),
+                    plugin: "wind-down".into(),
+                    approved_sha256: found[0].sha256.clone(),
+                    workflow: workflow.clone(),
+                    reserved_at: 1,
+                    phase: crate::plugins::SchedulePhase::Reserved,
+                    run: None,
+                },
+            );
+            runs.save(&store).unwrap();
+        }
+        d.current_flow = Some(run);
+        d.tick(1_000);
+        let focused = p.log.borrow().iter().skip(opened).filter(|a| matches!(a, Action::Focus(_))).count();
+        (focused, d.current_flow.as_ref().map(|r| r.position))
+    }
+
+    #[test]
+    fn a_scheduled_flows_later_step_is_refused_while_you_type_and_yours_waits_for_a_gap() {
+        // Scheduled, owner at the keyboard: the focus step is refused.
+        let (focused, _) = run_the_second_step(true, false, "sched-busy");
+        assert_eq!(focused, 0, "a scheduled flow's later step took the front");
+        // The control: scheduled, but the owner is away and the guard is up
+        // anyway (a schedule is never the owner's live turn) -- still refused.
+        let (focused, _) = run_the_second_step(true, true, "sched-idle");
+        assert_eq!(focused, 0, "a scheduled flow's later step took the front");
+        // A flow the owner started: not driven at all while they type...
+        let (focused, position) = run_the_second_step(false, false, "own-busy");
+        assert_eq!((focused, position), (0, Some(1)), "it ran over your typing");
+        // ...and it proceeds in a gap, so the test can fail the other way.
+        let (focused, _) = run_the_second_step(false, true, "own-idle");
+        assert_eq!(focused, 1, "your own flow never ran in a gap");
+    }
+
+    /// The helper the task loop's steps, replayed requests and phone requests
+    /// run under: input only in a gap.
+    #[test]
+    fn work_that_is_not_your_live_turn_uses_the_screen_only_in_a_gap() {
+        let c = crate::config::Config::load(std::path::Path::new("config")).unwrap();
+        let p = MockPlatform::new(Vec::new());
+        let root = std::env::temp_dir().join(format!("atlas-gap-helper-{}", std::process::id()));
+        let mut d = Daemon::new(
+            &c,
+            &p,
+            None,
+            crate::store::Store::new(&root),
+            crate::proactive::Proactive::new(crate::proactive::ProactiveConfig::default()),
+        );
+        p.launch(c.apps.get("notepad").unwrap()).unwrap();
+        let win = p.find_window(c.apps.get("notepad").unwrap()).unwrap().expect("a window");
+        *p.input_idle.borrow_mut() = Some(0);
+        assert!(d.unless_owner_idle(|d| d.plat.focus(win)).is_err(), "typed over a person");
+        assert!(d.unless_owner_idle(|d| d.plat.type_text("x")).is_err());
+        *p.input_idle.borrow_mut() = Some(30);
+        assert!(d.unless_owner_idle(|d| d.plat.focus(win)).is_ok(), "refused in a gap");
+        // And your own turn is never wrapped at all.
+        *p.input_idle.borrow_mut() = Some(0);
+        assert!(d.plat.focus(win).is_ok(), "the owner's live turn was refused");
     }
 }

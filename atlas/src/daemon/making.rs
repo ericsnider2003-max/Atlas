@@ -2687,7 +2687,8 @@ impl<'a> Daemon<'a> {
                 // model's choice (1 Oct 2026 model ranking): it's a question,
                 // so it's answered as one rather than refused as not-code.
                 if let Some(llm) = self.llm.clone() {
-                    let system = "Answer the question plainly in two or three spoken sentences. No lists, no markdown, no follow-up question.";
+                    let system = format!("Answer the question plainly, out loud. {} No lists, no markdown, no follow-up question.", crate::persona::LENGTH_RULE);
+                    let system = system.as_str();
                     if let Ok(text) = llm.complete(system, &format!("Explain {arg}")) {
                         let text = crate::phonemodel::without_thinking(&text)
                             .trim()

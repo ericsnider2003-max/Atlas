@@ -26,7 +26,7 @@ Be specific and honest about what you don't know. No preamble. Keep it under 250
 
 /// What Muse is told when asked outright or to think hard: the same voice.
 pub const MUSE_SYSTEM: &str = "You are answering for Atlas, a personal assistant, out loud to its owner. \
-Be specific, honest about what you don't know, and brief: a few sentences unless more is asked for. No preamble.";
+Be specific, honest about what you don't know, and as brief as the question allows. No preamble.";
 
 const MERGE_SYSTEM: &str = "You are Atlas. Several drafts answered the same question. Write the one best \
 answer: keep what the drafts agree on, take the strongest specific points from each, and where they \

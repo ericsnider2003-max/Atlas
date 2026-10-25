@@ -852,3 +852,51 @@ fn with_a_folder_chosen_your_devices_carry_each_other_by_themselves() {
         "nothing crossed without being asked"
     );
 }
+
+/// 24 Oct 2026 (review): a scheduled add-on's later steps are as unattended as
+/// its first. With the owner at the keyboard, step two of a scheduled flow
+/// ("focus notepad") is refused; the same flow, started by the owner's own
+/// words, goes through.
+#[test]
+fn a_scheduled_add_ons_later_steps_cannot_take_the_front_while_you_are_typing() {
+    use atlas::platform::mock::Action;
+    use atlas::platform::Platform;
+    let (c, p) = (cfg(), plat());
+    let text = ADDON
+        .replace(
+            "    triggers: [\"wind things down\"]\n",
+            "    triggers: [\"wind things down\"]\n    schedule: every 15 minutes\n",
+        )
+        .replace("close chrome", "focus notepad");
+    let rig = Rig::new("scheduled-later-steps", &text);
+    rig.approve(&c);
+    let mut d = rig.daemon(&c, &p);
+    // Notepad is already open, so "focus" is a focus and not a launch.
+    p.launch(c.apps.get("notepad").unwrap()).unwrap();
+    let opened = p.log.borrow().len();
+    let focused = |p: &MockPlatform| {
+        p.log.borrow().iter().skip(opened).filter(|a| matches!(a, Action::Focus(_))).count()
+    };
+    // You are typing.
+    *p.input_idle.borrow_mut() = Some(0);
+
+    d.tick(100_000);
+    let mut said = String::new();
+    for _ in 0..200 {
+        said.push_str(&d.tick(100_000 + 15 * 60).join(" "));
+        if scheduled_actions(&d) >= 1 && d.mind.focus().is_none() {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(25));
+    }
+    assert_eq!(focused(&p), 0, "a scheduled step took the front while you were typing: {said}");
+    let saved = plugins::ScheduleRuns::load_checked(&rig.store()).unwrap();
+    assert!(
+        saved.claims.values().any(|c| c.run.as_ref().is_some_and(|r| r.position >= 1)),
+        "the flow never got past its first step, so this proved nothing: {said}"
+    );
+
+    // Your own words, the same flow, you at the keyboard: it proceeds.
+    d.turn("wind things down", 200_000);
+    assert!(focused(&p) > 0, "your own request was refused too");
+}
