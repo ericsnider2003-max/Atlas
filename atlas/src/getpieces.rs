@@ -280,18 +280,19 @@ pub fn pictures() -> Vec<Piece> {
 }
 
 /// The small talking model (`models::SMALL_TALK`, 21 Oct 2026): Qwen3-1.7B at
-/// 8-bit, from Qwen's own repository (`Qwen/Qwen3-1.7B-GGUF`, which publishes
-/// only Q8_0 for this size), pinned to that repository's commit. Size and
-/// SHA-256 are Hugging Face's LFS record of the file, read 21 Oct 2026. It is
+/// 4-bit (Q4_K_M, ~1.4 GB working set at 2K context, so it clears the 2 GB
+/// floor the 8-bit file does not). Qwen's own `Qwen/Qwen3-1.7B-GGUF` publishes
+/// only Q8_0, so this is Unsloth's `unsloth/Qwen3-1.7B-GGUF`, pinned to its
+/// commit. Size and SHA-256 are Hugging Face's LFS record, read 25 Oct 2026. It is
 /// what talks when the 4B does not fit the memory free (`models::memory_tier`).
 pub fn small_talk_model() -> Piece {
     Piece {
         name: "the small language model",
         for_what: "answering you when there is not memory for the 4B",
-        url: "https://huggingface.co/Qwen/Qwen3-1.7B-GGUF/resolve/90862c4b9d2787eaed51d12237eafdfe7c5f6077/Qwen3-1.7B-Q8_0.gguf",
-        sha256: "061b54daade076b5d3362dac252678d17da8c68f07560be70818cace6590cb1a",
-        bytes: 1_834_426_016,
-        lands: Lands::File("models/Qwen3-1.7B-Q8_0.gguf"),
+        url: "https://huggingface.co/unsloth/Qwen3-1.7B-GGUF/resolve/d7f544eead698dbd1f15126ef60b45a1e1933222/Qwen3-1.7B-Q4_K_M.gguf",
+        sha256: "b139949c5bd74937ad8ed8c8cf3d9ffb1e99c866c823204dc42c0d91fa181897",
+        bytes: 1_107_409_472,
+        lands: Lands::File("models/Qwen3-1.7B-Q4_K_M.gguf"),
     }
 }
 
@@ -1716,12 +1717,12 @@ mod asking_first {
         let small = small_talk_model();
         assert!(small
             .url
-            .starts_with("https://huggingface.co/Qwen/Qwen3-1.7B-GGUF/resolve/"));
-        assert_eq!(small.bytes, 1_834_426_016);
+            .starts_with("https://huggingface.co/unsloth/Qwen3-1.7B-GGUF/resolve/"));
+        assert_eq!(small.bytes, 1_107_409_472);
         assert!(core.iter().any(|p| p == &small));
         // The 1.7B is on the list of what Atlas may fetch once asked.
         assert!(everything_else().iter().any(|p| p == &small));
         let gb = total_bytes(&core) as f64 / 1e9;
-        assert!((4.5..5.5).contains(&gb), "{gb}");
+        assert!((4.0..5.5).contains(&gb), "{gb}");
     }
 }

@@ -716,6 +716,10 @@ pub fn server_args(model: &Model, cfg: &ModelsConfig, gpu_layers: u32) -> Vec<St
         "q8_0".into(),
         "-ctv".into(),
         "q8_0".into(),
+        // Said outright rather than left to `auto`: a quantised value cache
+        // needs it, and this llama-server takes `-fa on` (checked 25 Oct 2026).
+        "-fa".into(),
+        "on".into(),
     ]
     .into_iter()
     // After the graphics reset under it (`gpulost`): no graphics device at
@@ -1381,15 +1385,17 @@ pub fn pick<'a>(
 }
 
 /// The small talking model beside the 4B (`getpieces::small_talk_model`):
-/// Qwen3-1.7B at 8-bit, the file name without its extension.
-pub const SMALL_TALK: &str = "Qwen3-1.7B-Q8_0";
+/// Qwen3-1.7B at 4-bit, the file name without its extension. The 8-bit file
+/// needs ~2.0-2.4 GB working set and the 2 GB free floor refuses it; the
+/// 4-bit one measured ~1.4 GB at 2048 context (training/llm/RECOMMENDATION.md).
+pub const SMALL_TALK: &str = "Qwen3-1.7B-Q4_K_M";
 
 /// Memory Atlas leaves free for the PC whatever it loads (the owner's 2 GB
 /// floor rule, `docs/OFFLINE_ASSISTANT_DESIGN_2026-10-20.md`).
 pub const FLOOR_FREE_MB: u64 = 2048;
 
 /// Context for the small model when memory is comfortable, and when tight.
-pub const SMALL_CONTEXT: u64 = 4096;
+pub const SMALL_CONTEXT: u64 = 2048;
 pub const SMALL_TIGHT_CONTEXT: u64 = 2048;
 
 /// What the memory available right now allows (21 Oct 2026, the design's RAM
@@ -3761,7 +3767,7 @@ mod memory_tiers {
         let small = r.get(SMALL_TALK).unwrap();
         let four = r.get(crate::deepbrain::FASTER_TALK).unwrap();
         let cfg = ModelsConfig::default();
-        assert_eq!(tuned_for(small, &cfg, &laptop(5_500)).context, 4_096);
+        assert_eq!(tuned_for(small, &cfg, &laptop(5_500)).context, 2_048);
         assert_eq!(tuned_for(small, &cfg, &laptop(4_300)).context, 2_048);
         // The 4B is left as configured.
         assert_eq!(tuned_for(four, &cfg, &laptop(8_000)).context, cfg.context);
@@ -3992,7 +3998,7 @@ mod memory_tiers {
         assert_eq!(cost_to_record(6_400, 1_160, None), 5_240);
         // A cost settled cleanly earlier stands against a later dip.
         assert_eq!(cost_to_record(6_400, 1_160, Some(2_500)), 2_500);
-        let line = guard_line("Qwen3-1.7B-Q8_0", 6_400, 1_160, 5_240, "stopped it");
+        let line = guard_line("Qwen3-1.7B-Q4_K_M", 6_400, 1_160, 5_240, "stopped it");
         for part in ["6400 MB", "1160 MB", "5240 MB", "2048 MB", "stopped it"] {
             assert!(line.contains(part), "{line}");
         }
