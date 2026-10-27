@@ -1,4 +1,6 @@
-use atlas::private_models::{PrivateModelKind, PrivateModelManifest, PrivateModelRuntime};
+use atlas::private_models::{
+    validate_reasoning_action, PrivateModelKind, PrivateModelManifest, PrivateModelRuntime,
+};
 
 #[test]
 fn private_manifest_requires_supported_kind_and_runtime() {
@@ -51,4 +53,16 @@ fn private_manifest_rejects_unknown_runtime() {
         "dataset_version": "voice-001"
     });
     assert!(PrivateModelManifest::from_value(&value).is_err());
+}
+
+#[test]
+fn reasoning_provider_output_must_be_a_structured_action() {
+    let valid = serde_json::json!({
+        "action": "create_reminder",
+        "arguments": {"text": "call mum"},
+        "requires_confirmation": false
+    });
+    assert!(validate_reasoning_action(&valid).is_ok());
+    let invalid = serde_json::json!({"action": "create_reminder", "arguments": []});
+    assert!(validate_reasoning_action(&invalid).is_err());
 }

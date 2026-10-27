@@ -2,6 +2,33 @@ use serde::Deserialize;
 use serde_json::Value;
 use std::path::{Path, PathBuf};
 
+pub fn validate_reasoning_action(value: &Value) -> Result<(), String> {
+    let object = value
+        .as_object()
+        .ok_or_else(|| "reasoning output must be a JSON object".to_string())?;
+    let action = object
+        .get("action")
+        .and_then(Value::as_str)
+        .filter(|s| !s.trim().is_empty())
+        .ok_or_else(|| "reasoning output needs a non-empty action".to_string())?;
+    if !action
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '_')
+    {
+        return Err("reasoning action contains unsupported characters".into());
+    }
+    if !object.get("arguments").is_some_and(Value::is_object) {
+        return Err("reasoning output arguments must be an object".into());
+    }
+    if !object
+        .get("requires_confirmation")
+        .is_some_and(Value::is_boolean)
+    {
+        return Err("reasoning output requires_confirmation must be boolean".into());
+    }
+    Ok(())
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum PrivateModelKind {
