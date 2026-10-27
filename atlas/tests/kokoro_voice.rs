@@ -190,7 +190,10 @@ fn nothing_downloaded_is_found_missing_in_words() {
 fn falling_back_is_said_once_not_every_sentence() {
     let why = format!("a reason only this test gives {}", std::process::id());
     let first = kokoro::note_once(&why).expect("the first time is said");
-    assert!(first.starts_with("Speaking in the usual voice"), "{first}");
+    assert_eq!(
+        first,
+        "Kokoro isn't available, so I'm using the usual voice."
+    );
     assert!(
         kokoro::note_once(&why).is_none(),
         "the same reason was said twice"

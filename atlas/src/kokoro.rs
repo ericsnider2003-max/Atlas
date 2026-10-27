@@ -731,7 +731,12 @@ pub fn note_once(why: &str) -> Option<String> {
         return None;
     }
     *n = Some(why.to_string());
-    Some(format!("Speaking in the usual voice: {why}."))
+    // The loader's detail is useful on the Sound page, but repeating it in
+    // the live conversation makes a recoverable fallback sound like a fatal
+    // failure (especially for messages such as "wouldn't load"). Keep the
+    // user-facing line stable and calm; `last_note` still exposes `why` for
+    // diagnostics.
+    Some("Kokoro isn't available, so I'm using the usual voice.".to_string())
 }
 
 /// Why Atlas last fell back, if it has, for the Sound page.
