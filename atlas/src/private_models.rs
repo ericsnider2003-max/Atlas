@@ -15,6 +15,7 @@ pub enum PrivateModelRuntime {
     F5Tts,
     #[serde(rename = "llama_cpp")]
     LlamaCpp,
+    #[serde(rename = "command")]
     Command,
 }
 
