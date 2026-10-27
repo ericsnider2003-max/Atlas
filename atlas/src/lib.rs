@@ -47,6 +47,7 @@ pub mod handover;
 pub mod imap;
 pub mod job;
 pub mod measure;
+pub mod private_models;
 pub mod msoauth;
 pub mod onion;
 pub mod orders;

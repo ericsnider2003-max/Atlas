@@ -28,6 +28,8 @@ mod common;
 
 #[path = "a_backup_that_holds_everything.rs"]
 mod a_backup_that_holds_everything;
+#[path = "private_model_contract.rs"]
+mod private_model_contract;
 #[path = "a_bar_knows_when_it_opened_and_closed.rs"]
 mod a_bar_knows_when_it_opened_and_closed;
 #[path = "a_brief_without_an_inbox.rs"]
