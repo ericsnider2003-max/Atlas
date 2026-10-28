@@ -1288,6 +1288,22 @@ impl crate::brain::Llm for WaitsForServer {
         self.ready()?;
         self.noting(self.inner.chat(req, on_text))
     }
+
+    /// Preserve the caller's cancellation/deadline contract when Atlas wraps
+    /// its own server. The old wrapper inherited `Llm::chat_until`, which
+    /// called `self.chat(...)` and silently discarded `keep_going`; the same
+    /// model therefore behaved differently when Atlas launched it versus when
+    /// a server was already present. Forward the bounded call after the same
+    /// readiness check so long generations can be stopped consistently.
+    fn chat_until(
+        &self,
+        req: &crate::brain::ChatRequest,
+        on_text: &mut dyn FnMut(&str) -> bool,
+        keep_going: &dyn Fn() -> bool,
+    ) -> Result<crate::brain::ChatReply> {
+        self.ready()?;
+        self.noting(self.inner.chat_until(req, on_text, keep_going))
+    }
 }
 
 // ---------------------------------------------------------------------------
