@@ -99,6 +99,22 @@ mod teach_mode;
 mod turn;
 mod whatif;
 
+/// Select a ready free gateway before constructing a paid or otherwise
+/// metered fallback. The fallback is lazy because constructing it may read a
+/// separate credential and can itself be an observable provider choice.
+pub(crate) fn prefer_free_gateway<T>(
+    free: Option<T>,
+    fallback: impl FnOnce() -> Option<T>,
+) -> (Option<T>, bool) {
+    if free.is_some() {
+        (free, false)
+    } else {
+        let selected = fallback();
+        let used_fallback = selected.is_some();
+        (selected, used_fallback)
+    }
+}
+
 /// What Atlas is allowed to do on its own.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Autonomy {
@@ -161,6 +177,12 @@ pub trait Ears {
 
 pub trait Mouth {
     fn speak(&self, text: &str) -> Result<()>;
+    /// Engines that actually delivered audio since the last turn receipt.
+    /// Implementations that cannot prove delivery return an empty list rather
+    /// than reporting their configured engine as fact.
+    fn take_speech_engines(&self) -> Vec<String> {
+        Vec::new()
+    }
     /// A whole reply, before `speak` is given its sentences one by one: a
     /// voice that can make the next sentence while this one plays (Kokoro,
     /// `kokoro::Ahead`) starts on it. Nothing by default.
@@ -594,6 +616,9 @@ pub struct Daemon<'a> {
     /// The index as it is read from disk at start, off this thread
     /// (`index::Loading`, 28 Sep 2026). `settle_index` takes it in.
     index_load: crate::index::Loading,
+    /// Startup-task migration runs off the control loop, but must finish
+    /// before shutdown persistence touches the same state directory.
+    startup_worker: Option<std::thread::JoinHandle<()>>,
     pub awareness: Awareness,
     pub proactive: Proactive,
     /// Whether each connection is still working. Shown on the hub's
@@ -1922,6 +1947,7 @@ impl<'a> Daemon<'a> {
             operating: None,
             index,
             index_load,
+            startup_worker: None,
             awareness: Awareness::default(),
             proactive,
             connections: crate::integrations::dependencies(),
@@ -2275,7 +2301,9 @@ impl<'a> Daemon<'a> {
                     .unwrap_or_default(),
                 keep_resident,
             )),
-            crew: Crew::with_limits(crew_limits).with_room(Box::new(plat.crew_room())),
+            crew: Crew::with_limits(crew_limits)
+                .with_strict_shutdown(std::env::var_os("ATLAS_TEST_STRICT_SHUTDOWN").is_some())
+                .with_room(Box::new(plat.crew_room())),
             last_persist: 0,
             tools_resolved,
             long_work: watching::Watcher::load(&store_for_load),
@@ -2876,6 +2904,49 @@ pub(crate) struct LookDone {
     pub opened_camera: bool,
     pub looking: Option<crate::vision::Looking>,
     pub last_sight: Option<(Vec<u8>, std::time::Instant, crate::vision::Sight)>,
+}
+
+#[cfg(test)]
+mod library_reload_queue_tests {
+    use super::{crew_job, SpeakPolicy};
+
+    #[test]
+    fn library_reload_generations_do_not_join_in_the_crew_queue() {
+        let first = crew_job("research-library", Some("7"), &SpeakPolicy::ViaWatcher);
+        let second = crew_job("research-library", Some("8"), &SpeakPolicy::ViaWatcher);
+        assert_ne!(
+            first.key, second.key,
+            "each library generation needs its own deduplication key"
+        );
+
+        let mut crew = crate::crew::Crew::new(1);
+        let first_taken = crew
+            .hand_job(
+                first,
+                0,
+                Box::new(|_| {
+                    std::thread::sleep(std::time::Duration::from_millis(100));
+                    Ok("generation 7".into())
+                }),
+            )
+            .expect("the first library rebuild is admitted");
+        assert!(matches!(first_taken, crate::crew::Taken::Started(_)));
+
+        let second_taken = crew
+            .hand_job(second, 0, Box::new(|_| Ok("generation 8".into())))
+            .expect("the newer library rebuild is admitted");
+        assert!(
+            !matches!(second_taken, crate::crew::Taken::Joined(_)),
+            "a newer library generation must not join the older worker"
+        );
+
+        for tick in 1..=40 {
+            if !crew.settle(tick).is_empty() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+    }
 }
 
 // The rest of this module, by what it does (audit Q6, 6 Oct 2026).

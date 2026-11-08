@@ -107,6 +107,9 @@ pub struct ToolCall {
 pub struct ChatReply {
     pub text: String,
     pub tool_calls: Vec<ToolCall>,
+    /// The adapter identity for this reply. Unknown is explicit when the
+    /// adapter cannot prove one of the fields.
+    pub execution: crate::execution::ExecutionDescriptor,
 }
 
 impl ChatReply {
@@ -115,7 +118,11 @@ impl ChatReply {
     /// format write calls this way when the server does not parse them.
     pub fn from_text(text: &str) -> ChatReply {
         let (text, tool_calls) = inline_tool_calls(text);
-        ChatReply { text, tool_calls }
+        ChatReply {
+            text,
+            tool_calls,
+            execution: Default::default(),
+        }
     }
 }
 
@@ -237,6 +244,18 @@ fn chat_by_flattening<L: Llm + ?Sized>(
 
 pub trait Llm: Send + Sync {
     fn complete(&self, system: &str, user: &str) -> Result<String>;
+
+    /// Describes the execution context without inventing provider facts.
+    /// Adapters with stronger local knowledge override this default.
+    fn execution_descriptor(&self) -> crate::execution::ExecutionDescriptor {
+        Default::default()
+    }
+
+    /// Non-sensitive routing facts from the most recent completed request.
+    /// Providers that do not expose such facts return `None`.
+    fn execution_metadata(&self) -> Option<crate::execution::ExecutionMetadata> {
+        None
+    }
 
     /// Does this connection take real messages and tools (an OpenAI-shaped
     /// chat endpoint), rather than one flattened prompt? `false` by default:
@@ -400,6 +419,36 @@ impl Scrubbed {
 }
 
 impl Llm for Scrubbed {
+    fn execution_descriptor(&self) -> crate::execution::ExecutionDescriptor {
+        self.0.execution_descriptor()
+    }
+
+    fn execution_metadata(&self) -> Option<crate::execution::ExecutionMetadata> {
+        self.0.execution_metadata()
+    }
+
+    fn supports_bounded_chat(&self) -> bool {
+        self.0.supports_bounded_chat()
+    }
+
+    fn chat_until(
+        &self,
+        req: &ChatRequest,
+        on_text: &mut dyn FnMut(&str) -> bool,
+        keep_going: &dyn Fn() -> bool,
+    ) -> Result<ChatReply> {
+        let (system, user) = flatten_messages(&req.messages);
+        let (scrub, system, user) = Scrubbed::scrubbed(&system, &user);
+        let mut scrubbed = req.clone();
+        scrubbed.messages = vec![Msg::system(system), Msg::user(user)];
+        let mut raw_reply = self.0.chat_until(&scrubbed, &mut |_| true, keep_going)?;
+        raw_reply.text = scrub.put_back(&raw_reply.text);
+        if !on_text(&raw_reply.text) || !keep_going() {
+            return Err(AtlasError::Platform("scrubbed response stopped".into()));
+        }
+        Ok(raw_reply)
+    }
+
     fn complete(&self, system: &str, user: &str) -> Result<String> {
         let (scrub, s, u) = Scrubbed::scrubbed(system, user);
         self.0.complete(&s, &u).map(|r| scrub.put_back(&r))
@@ -600,6 +649,20 @@ fn now_ms() -> u64 {
 }
 
 impl Llm for FallbackLlm {
+    fn execution_descriptor(&self) -> crate::execution::ExecutionDescriptor {
+        // `chat` is deliberately pinned to the primary; preserve that
+        // adapter's identity rather than attributing a possible complete()
+        // fallback to the wrong provider.
+        self.primary.execution_descriptor()
+    }
+
+    fn execution_metadata(&self) -> Option<crate::execution::ExecutionMetadata> {
+        self.secondary
+            .as_ref()
+            .and_then(|llm| llm.execution_metadata())
+            .or_else(|| self.primary.execution_metadata())
+    }
+
     fn supports_bounded_chat(&self) -> bool {
         self.primary.supports_bounded_chat()
     }
@@ -908,6 +971,18 @@ pub struct ShellLlm {
 }
 
 impl Llm for ShellLlm {
+    fn execution_descriptor(&self) -> crate::execution::ExecutionDescriptor {
+        crate::execution::ExecutionDescriptor::new(
+            "shell-external",
+            crate::trace::model_name(&self.cfg.request),
+            "external-tool",
+            "unknown",
+            "unknown",
+            "unknown",
+        )
+        .unwrap_or_default()
+    }
+
     /// A llama-server reached over plain http has a chat endpoint beside its
     /// `/completion`; anything else (Ollama, a hosted API) keeps the
     /// one-prompt path. A chat address that failed lately is left alone.
@@ -2409,29 +2484,31 @@ pub fn decision_from_chat(reply: &ChatReply, said: &str) -> Decision {
     decision_from_chat_noting(reply, said, &[], &mut Vec::new())
 }
 
-/// `decision_from_chat`, checked against the tools the model was offered,
-/// with the other things it asked for in the same reply put in `also`.
+/// `decision_from_chat`, checked against the tools the model was offered.
 ///
 /// - A call missing an argument its tool requires (arguments that didn't
 ///   parse arrive as `{}`) is not run with nothing -- `research` of "" --
 ///   but asked about (28 Sep 2026).
-/// - Only the first call runs. The others, when they are different things,
-///   are named in `also` so the person hears what wasn't done, rather than
-///   it vanishing.
+/// - Multiple actionable calls are rejected before any one of them becomes an
+///   intent. Running the first and merely naming the rest would create a
+///   partial side effect with no correlated settlement for the remaining
+///   calls.
 fn decision_from_chat_noting(
     reply: &ChatReply,
     said: &str,
     tools: &[Value],
-    also: &mut Vec<String>,
+    _also: &mut Vec<String>,
 ) -> Decision {
     let spoken = spoken_text(&reply.text);
     let mut chosen: Option<Decision> = None;
+    let mut actionable_calls = 0usize;
+    let mut multiple_actionable = false;
     for call in &reply.tool_calls {
-        if let Some(missing) = missing_required_arg(&call.name, &call.arguments, tools) {
+        if let Some(problem) = tool_argument_problem(&call.name, &call.arguments, tools) {
             if chosen.is_none() {
                 chosen = Some(Decision {
-                    intent: Intent::Ask(missing.clone()),
-                    say: missing,
+                    intent: Intent::Ask(problem.clone()),
+                    say: problem,
                     model: Reached::Yes,
                 });
             }
@@ -2448,16 +2525,22 @@ fn decision_from_chat_noting(
         if made_up_action(&d, said) {
             continue;
         }
+        actionable_calls += 1;
         match &chosen {
             None => chosen = Some(d),
-            Some(first) if first.intent != d.intent => {
-                let what = d.intent.plain();
-                if !also.contains(&what) {
-                    also.push(what);
-                }
-            }
-            Some(_) => {}
+            Some(first) if first.intent != d.intent => multiple_actionable = true,
+            Some(_) => multiple_actionable = true,
         }
+    }
+    if actionable_calls > 1 || multiple_actionable {
+        let question =
+            "I received more than one operation in that reply. Which one should I do first?"
+                .to_string();
+        return Decision {
+            intent: Intent::Ask(question.clone()),
+            say: question,
+            model: Reached::Yes,
+        };
     }
     if let Some(d) = chosen {
         return d;
@@ -2479,34 +2562,101 @@ fn decision_from_chat_noting(
     }
 }
 
-/// The question to ask when a tool call left out an argument its tool
-/// requires, or `None` when nothing required is missing.
-fn missing_required_arg(name: &str, args: &Value, tools: &[Value]) -> Option<String> {
+/// Validate a live tool call against the schema Atlas actually offered.
+///
+/// The model's `from_tool` boundary remains useful for callers that only have
+/// a command name, but a live call also has a concrete JSON schema. Checking
+/// that schema here prevents an arbitrary string under the wrong key (or a
+/// wrong JSON type) from being treated as the command's argument.
+fn tool_argument_problem(name: &str, args: &Value, tools: &[Value]) -> Option<String> {
     let spec = tools
         .iter()
         .find(|t| t.pointer("/function/name").and_then(|n| n.as_str()) == Some(name.trim()))?;
-    let required: Vec<&str> = spec
-        .pointer("/function/parameters/required")
-        .and_then(|r| r.as_array())
-        .map(|r| r.iter().filter_map(|v| v.as_str()).collect())
-        .unwrap_or_default();
-    if required.is_empty() {
-        return None;
-    }
-    let given = match args {
-        Value::String(s) => !s.trim().is_empty(),
-        Value::Object(m) => m
-            .values()
-            .any(|v| v.as_str().is_some_and(|s| !s.trim().is_empty())),
-        _ => false,
-    };
-    if given {
-        return None;
-    }
     let what = name.trim().replace('_', " ");
-    Some(format!(
-        "I didn't catch the details for that -- what should I {what}?"
-    ))
+    let parameters = spec.pointer("/function/parameters")?;
+    let properties = parameters
+        .get("properties")
+        .and_then(Value::as_object)
+        .cloned()
+        .unwrap_or_default();
+    let required: Vec<&str> = parameters
+        .get("required")
+        .and_then(Value::as_array)
+        .map(|values| values.iter().filter_map(Value::as_str).collect())
+        .unwrap_or_default();
+    let additional_properties = parameters
+        .get("additionalProperties")
+        .and_then(Value::as_bool)
+        .unwrap_or(true);
+
+    let invalid = |reason: &str| {
+        Some(format!(
+            "I couldn't use those details for {what} ({reason}). What should I {what}?"
+        ))
+    };
+    let missing = || {
+        Some(format!(
+            "I didn't catch the details for that -- what should I {what}?"
+        ))
+    };
+
+    let check_value = |key: &str, value: &Value| {
+        let Some(schema) = properties.get(key) else {
+            return additional_properties;
+        };
+        match schema.get("type").and_then(Value::as_str) {
+            Some("string") => value.is_string(),
+            Some("object") => value.is_object(),
+            Some("array") => value.is_array(),
+            Some("number") => value.is_number(),
+            Some("integer") => value.as_i64().is_some() || value.as_u64().is_some(),
+            Some("boolean") => value.is_boolean(),
+            Some("null") => value.is_null(),
+            Some(_) | None => false,
+        }
+    };
+
+    match args {
+        Value::String(value) => {
+            if !properties.contains_key("arg") {
+                return if value.trim().is_empty() {
+                    None
+                } else {
+                    invalid("the tool accepts no arguments")
+                };
+            }
+            if required.contains(&"arg") && value.trim().is_empty() {
+                return missing();
+            }
+            if value.trim().is_empty() || check_value("arg", &Value::String(value.clone())) {
+                None
+            } else {
+                invalid("the argument has the wrong type")
+            }
+        }
+        Value::Object(values) => {
+            for key in values.keys() {
+                if !properties.contains_key(key) && !additional_properties {
+                    return invalid("the argument name is not in the tool schema");
+                }
+            }
+            for required_key in required {
+                let Some(value) = values.get(required_key) else {
+                    return missing();
+                };
+                if value.is_null() || (value.as_str().is_some_and(|s| s.trim().is_empty())) {
+                    return missing();
+                }
+            }
+            for (key, value) in values {
+                if !check_value(key, value) {
+                    return invalid("an argument has the wrong type");
+                }
+            }
+            None
+        }
+        _ => invalid("the arguments are not a JSON object"),
+    }
 }
 
 impl<'a> Brain<'a> {
@@ -3656,5 +3806,111 @@ mod secondary_context_tests {
         assert!(safe.contains("Answer only what is known"));
         assert!(!safe.contains("Resource tier"));
         assert!(!safe.contains("Background worker ceiling"));
+    }
+}
+
+#[cfg(test)]
+mod tool_dispatch_safety {
+    use super::{decision_from_chat, ChatReply, Intent, ToolCall};
+    use serde_json::json;
+
+    fn required_string_tool(name: &str) -> serde_json::Value {
+        json!({
+            "type": "function",
+            "function": {
+                "name": name,
+                "parameters": {
+                    "type": "object",
+                    "properties": {"arg": {"type": "string"}},
+                    "required": ["arg"],
+                    "additionalProperties": false
+                }
+            }
+        })
+    }
+
+    #[test]
+    fn multiple_actionable_tool_calls_are_not_partially_executed() {
+        let reply = ChatReply {
+            text: String::new(),
+            tool_calls: vec![
+                ToolCall {
+                    name: "find_file".into(),
+                    arguments: json!({"arg": "report"}),
+                },
+                ToolCall {
+                    name: "clock".into(),
+                    arguments: json!({}),
+                },
+            ],
+            execution: Default::default(),
+        };
+
+        let decision = decision_from_chat(&reply, "find the report and tell me the time");
+
+        assert!(
+            matches!(decision.intent, Intent::Ask(question) if question.contains("more than one"))
+        );
+    }
+
+    #[test]
+    fn one_actionable_tool_call_keeps_the_existing_dispatch_path() {
+        let reply = ChatReply {
+            text: String::new(),
+            tool_calls: vec![ToolCall {
+                name: "find_file".into(),
+                arguments: json!({"arg": "report"}),
+            }],
+            execution: Default::default(),
+        };
+
+        let decision = decision_from_chat(&reply, "find the report");
+
+        // `find_file` is one of the commands that consumes the original
+        // sentence, because its downstream search needs the surrounding
+        // wording rather than only the model's short argument.
+        assert!(matches!(decision.intent, Intent::FindFile(path) if path == "find the report"));
+    }
+
+    #[test]
+    fn live_tool_arguments_must_match_the_offered_schema() {
+        let tools = vec![required_string_tool("find_file")];
+        let wrong_name = ChatReply {
+            text: String::new(),
+            tool_calls: vec![ToolCall {
+                name: "find_file".into(),
+                arguments: json!({"query": "report"}),
+            }],
+            execution: Default::default(),
+        };
+        let wrong_type = ChatReply {
+            text: String::new(),
+            tool_calls: vec![ToolCall {
+                name: "find_file".into(),
+                arguments: json!({"arg": 7}),
+            }],
+            execution: Default::default(),
+        };
+        let valid = ChatReply {
+            text: String::new(),
+            tool_calls: vec![ToolCall {
+                name: "find_file".into(),
+                arguments: json!({"arg": "report"}),
+            }],
+            execution: Default::default(),
+        };
+
+        for reply in [wrong_name, wrong_type] {
+            let decision = super::decision_from_chat_noting(
+                &reply,
+                "find the report",
+                &tools,
+                &mut Vec::new(),
+            );
+            assert!(matches!(decision.intent, Intent::Ask(_)), "{decision:?}");
+        }
+        let decision =
+            super::decision_from_chat_noting(&valid, "find the report", &tools, &mut Vec::new());
+        assert!(matches!(decision.intent, Intent::FindFile(path) if path == "find the report"));
     }
 }
