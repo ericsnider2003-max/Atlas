@@ -40,8 +40,4 @@ Updated: 2026-11-08
   in parallel work. No speculative schema change was made without a
   deterministic reproducer.
 
-## Release rule
-
-Do not commit or push until the private-model live evidence exists, the E2E
-workflow has a live receipt, and the intended release paths are isolated from
-the unrelated worktree changes.
+## Release result`r`n`r`nRelease commit `6bd4240c` was merged with the remote branch and pushed as`r`n`3631be8f`. Roll back by deploying the prior remote commit `a77e0d9e` if needed.`r`nThe optional private-manifest adapter and duplicate-identical approval correlation`r`nremain follow-up work and are not claimed as release-proven.`r`n
