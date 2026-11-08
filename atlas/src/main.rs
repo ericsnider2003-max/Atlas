@@ -1484,6 +1484,14 @@ fn main() {
         return run_daemon(&cfg, plat.as_ref(), flag("--unattended"));
     }
 
+    if flag("--watchdog") {
+        let exe = std::env::current_exe().unwrap_or_else(|error| {
+            eprintln!("Atlas watchdog could not locate its executable: {error}");
+            std::process::exit(1);
+        });
+        atlas::watchdog::Watchdog::run(exe, atlas::roots::data_dir());
+    }
+
     if flag("--voice") || flag("--wake") {
         return voice_loop(
             &cfg,
