@@ -1,0 +1,5 @@
+# Written by Atlas when you change something in Settings.
+# Safe to edit by hand, and safe to delete -- deleting it puts
+# every setting back to what config/tools.yaml says.
+# This file survives `atlas update`; tools.yaml does not.
+mail.enabled: 'true'

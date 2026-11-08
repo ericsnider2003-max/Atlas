@@ -83,6 +83,7 @@ There is one build of Atlas, and it is the Windows one. Every other column is wh
 | open your workspace or a named mode -- trading, writing, a call -- each app on its screen, and close it all again; 'two hours on the edit' starts a work session that holds interruptions, checks in once, and says how it went | built, never run for real | `workspace` `modes` `worksession` | ready | would | catch | **no** | **no** | **no** |
 | show you what it would do -- every window, file and message -- without doing any of it | working | `rehearse` | ready | ready | ready | ready | ready | ready |
 | do things in your apps -- click through them, fill in boxes, choose options, use their menus -- a step at a time, asking before anything that can't be taken back | built, never run for real | `operate` | ready | catch | catch | **no** | catch | **no** |
+| learn a mode from your own words -- 'when I say focus mode, close Slack and open my to-do list' -- read it back, and keep it only on your yes | built, never run for real | `teachmode` | ready | ready | ready | ready | ready | ready |
 
 ## Your files
 
@@ -114,7 +115,7 @@ There is one build of Atlas, and it is the Windows one. Every other column is wh
 
 | | state | lives in | Windows | macOS | Linux | iOS | Android | the web |
 |---|---|---|---|---|---|---|---|---|
-| look something up, and save the write-up as a Word or PDF file with its sources as links | built, never run for real | `research` `readable` `report` | ready | ready | ready | ready | ready | ready |
+| look something up, and save the write-up as a Word or PDF file with its sources as links | built, never run for real | `research` `readable` `report` `research_route` `freellmapi` | ready | ready | ready | ready | ready | ready |
 | hand heavy background work to an online worker and check what comes back | waiting on a Cloudflare account and token | `online` | ready | would | would | catch | would | **no** |
 | drive a browser | built, never run for real | `browser` `cdp` | ready | catch | would | **no** | catch | **no** |
 | post something, with approval | built, never run for real | `publish` `publishing` `delivery` | ready | ready | ready | ready | ready | ready |
@@ -161,6 +162,7 @@ There is one build of Atlas, and it is the Windows one. Every other column is wh
 | keep a receipt off the screen or the clipboard -- merchant, date, total, asked about when unsure -- and say what you spent where | built, never run for real | `receipts` | ready | catch | catch | **no** | catch | **no** |
 | audit your spending from your bank's exports -- read-only by construction, with no way to move money | switched off | `finance` | ready | ready | ready | catch | would | catch |
 | keep a hosted model cheap -- the smallest one that will do, a yes before a big job, never a surprise bill | switched off | `budget` | ready | ready | ready | ready | ready | ready |
+| replay a hypothetical position -- in at 100, stop 95, target 110 -- over every past stretch in a file of bars and say how often the target, the stop or neither came first; a simulation over past prices, never advice | built, never run for real | `whatif` | ready | ready | ready | catch | would | catch |
 
 ## Email
 
@@ -181,6 +183,7 @@ There is one build of Atlas, and it is the Windows one. Every other column is wh
 
 | | state | lives in | Windows | macOS | Linux | iOS | Android | the web |
 |---|---|---|---|---|---|---|---|---|
+| run an explicitly installed private reasoning or voice provider through Atlas's model and speech seams without silently downgrading | working | `private_models` | ready | would | would | would | would | would |
 | write code from your description and check it against the compiler and tests before trusting it -- in Python unless you name Rust, Go, JavaScript, TypeScript or C++, with the checkers Atlas downloads itself; a coding model (Qwen2.5-Coder, 7B or 1.5B by what this computer has room for) first, the talking model stepping aside while it works, then your stronger models; a change to your project written against the files and pieces it points at, checked by the project's own tests, and never written over your file until you say so; room for a whole file, and a coding agent (Claude Code, Codex) used when one is installed and you say yes; saved where you say, and run when you ask | built, never run for real | `build_it` `craft` `goal` `codetools` `coding_agent` `coder` `projectread` | ready | would | would | catch | would | **no** |
 | review a page's design against a house style — spacing, colour tokens, accessibility — and say what's off, honestly not claiming to judge whether it looks good; also gate a page it builds against the same rules | working | `taste` | ready | ready | ready | ready | ready | ready |
 | draw a self-contained SVG animation from your description, check it renders and moves to the size and length you asked for, and iterate until it does | built, never run for real | `motion` | ready | would | would | catch | would | **no** |
@@ -197,11 +200,12 @@ There is one build of Atlas, and it is the Windows one. Every other column is wh
 | learn how you work | working | `person` | ready | ready | ready | ready | ready | ready |
 | reason properly rather than following rules | waiting on a language model | `brain` `infer` `models` `deepbrain` `freeonline` `muse` `contemplate` | ready | ready | ready | ready | ready | ready |
 | learn the words you use for things from being corrected -- "no, I meant open Spotify" -- and do what you meant next time without guessing; "what have you learned about how I talk" lists them and "forget that phrase" drops one | built, never run for real | `phrasebook` | ready | ready | ready | ready | ready | ready |
+| keep a private log on this laptop of what you corrected, undid, approved, refused and answered when it asked -- redacted, never sent anywhere, never backed up -- for its own training; "forget that", "forget what I said about X" and "forget everything" take lines out, "stop learning from me" turns it off | built, never run for real | `corrlog` | ready | ready | ready | catch | would | catch |
 | catch a thought in one step -- said, or a key chord on whatever's selected -- dated when it said a time so it comes up that day, and gone back over once a week | built, never run for real | `capture` | ready | ready | ready | catch | would | catch |
 | remember what you'd want to about the people you deal with, who you meant to keep in touch with, and their birthdays | built, never run for real | `people` | ready | ready | ready | catch | would | catch |
 | flashcards that come back just before you'd forget them (FSRS) | built, never run for real | `srs` | ready | ready | ready | catch | would | catch |
 | use tools from other programs you connect -- your folders, a separate browser, Windows apps -- found by what you ask, and asked about before each use; and `atlas mcp` lets your other AI tools see what Atlas is doing and ask it things, never approve | built, never run for real | `mcp` `mcpserve` | ready | would | would | catch | would | **no** |
-| think on the phone itself: a small language model inside the phone app (the right size for the phone's memory), fetched when you ask, with nothing you say leaving the phone | built, never run for real | `phonemodel` | ready | ready | ready | catch | would | catch |
+| think on the phone itself: a small language model inside the phone app (the right size for the phone's memory), carried in the app from the first minute or fetched when you ask, with nothing you say leaving the phone | built, never run for real | `phonemodel` `bundled` | ready | ready | ready | catch | would | catch |
 | turn a correction you give it into a change to what it keeps, so you don't have to make it twice | working | `revise` | ready | ready | ready | catch | would | catch |
 | read code for the hollow kind -- compiles, passes, does nothing -- and for dependencies that don't exist | working | `hollowcode` | ready | ready | ready | catch | would | catch |
 | earn the right to act on its own, one kind of work at a time, business and personal kept apart | working | `earned` | ready | ready | ready | ready | ready | ready |
@@ -244,6 +248,7 @@ There is one build of Atlas, and it is the Windows one. Every other column is wh
 | hear about new versions in your release channel, check them against your release key, fetch the file in checked pieces from whoever announced it or any friend who already has it, install it (by itself at a quiet moment on your own devices, asking on friends'), go back a version when you say so, let friends tell you when something's wrong and hear your answer -- all of it by voice too -- and keep your own edits through every update | built, never run for real | `update_courier` `update_apply` `feedback` `release` `upgrade` `yourchanges` | ready | ready | ready | catch | would | catch |
 | take add-ons you or a friend made -- new things to say that put together what it already does -- and let each do only what you approved, checked at every step | built, never run for real | `plugins` | ready | ready | ready | catch | would | catch |
 | say what it can do, what's waiting on what, and what would work on another device -- counted by area, or item by item when you ask | working | `capability` `portable` | ready | ready | ready | ready | ready | ready |
+| do the everyday things with no language model loaded and even offline -- open and close an app, make, read and move a file, back up a folder, say what is using the memory -- each checked afterwards and kept as a job; and when a question needs the model and the memory to load it isn't there, say so at once and offer an online answer or closing an app | working | `floor` | ready | ready | ready | catch | would | catch |
 | tell you what it did, across files, settings, mail and posts, and take it back where it can | working | `undo` | ready | ready | ready | catch | would | catch |
 | tell you what it's working on right now, show how it got to an answer, and say why it did what it did | working | `mind` `why` | ready | ready | ready | ready | ready | ready |
 | keep each turn's timing and a record of every model call -- what was asked, how long it took -- and say which part was slow | working | `trace` `timing` | ready | ready | ready | catch | would | catch |
@@ -258,6 +263,8 @@ There is one build of Atlas, and it is the Windows one. Every other column is wh
 | keep every switch on one page, and keep what you change -- sound and voice too: when it speaks, how loud, when it may pop up | built, never run for real | `settings` `preferences` `sound` | ready | ready | ready | catch | would | catch |
 | arrange the hub's home the way you want it -- which parts, in what order, how big | built, never run for real | `dash` `layout_prefs` | ready | ready | ready | catch | would | catch |
 | look the way you choose -- light, dark, or following this computer's own settings -- everywhere at once | built, never run for real | `appearance` `oslook` | ready | ready | ready | catch | would | catch |
+| say what needs you right now, soonest first, each with why it is on the list -- on request, and on its own every half hour when something new needs you -- and put off what you say 'not now' to | built, never run for real | `needs_you` | ready | ready | ready | ready | ready | ready |
+| say what this computer can run -- the memory free right now, each quality tier against it, and what it would take to reach the next one | built, never run for real | `preflight` | ready | ready | ready | ready | ready | ready |
 
 ## Looking at your screen and at the room
 
@@ -302,7 +309,7 @@ There is one build of Atlas, and it is the Windows one. Every other column is wh
 | add a friend with one link they open -- no codes sent back and forth, nobody waiting to confirm -- or with a request through a group you share | built, never run for real | `friends` | ready | ready | ready | catch | would | catch |
 | reach a friend's Atlas from anywhere with nothing in the middle -- through Tor, fetched by setup and started by Atlas itself, everything sealed with the keys you swapped; switching to Tor's own bridges when a network blocks it; each friend's connection kept open between messages; straight across when you're on the same wifi; and when their Atlas is off, yours keeps the message and sends it when theirs is back | built, never run for real | `wire` `onion` `kin` | ready | would | would | catch | would | **no** |
 | put Atlas on your phone with a code to scan, as an app on your home screen | built, never run for real | `phonelink` `phoneadd` `ota` | ready | would | would | catch | would | **no** |
-| ask before anything that changes your things or leaves this machine, and before using an app it doesn't know -- and remember when you say it may | working | `policy` `categories` `grants` | ready | ready | ready | ready | ready | ready |
+| ask before anything that changes your things or leaves this machine, and before using an app it doesn't know -- and remember when you say it may | working | `policy` `categories` `grants` `resource_policy` | ready | ready | ready | ready | ready | ready |
 | talk with the people you work with inside the hub -- one-to-one or in groups, with no company in the middle | built, never run for real | `chat` | ready | ready | ready | catch | would | catch |
 | ask your other Atlas about something, finding it on your network without typing an address | built, never run for real | `elsewhere` `nearby` | ready | ready | ready | ready | ready | ready |
 | hand your laptop to someone else and take it back -- your things out of their reach until you type your passphrase | built, never run for real | `handover` `typed` | ready | would | catch | catch | would | **no** |
@@ -366,4 +373,4 @@ There is one build of Atlas, and it is the Windows one. Every other column is wh
 
 ---
 
-247 things, across 440 of 495 source files. The other 55 are plumbing — config, storage, the platform layer — each named in `capability::PLUMBING` with the reason it is not a capability. `tests/catalogue.rs` fails for a module that is neither, so nothing built can go unlisted here.
+254 things, across 451 of 518 source files. The other 67 are plumbing — config, storage, the platform layer — each named in `capability::PLUMBING` with the reason it is not a capability. `tests/catalogue.rs` fails for a module that is neither, so nothing built can go unlisted here.
