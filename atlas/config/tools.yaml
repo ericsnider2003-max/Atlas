@@ -422,6 +422,25 @@ cloudflare:
            "--data", '{"url":"{url}"}',
            "https://api.cloudflare.com/client/v4/accounts/{account_id}/browser-rendering/content"]
 
+# Optional FreeLLMAPI local gateway for background research and code workers.
+# OFF by default. FreeLLMAPI is kept as a separate local service: Atlas does
+# not copy its router or provider catalog. Its loopback API may still forward
+# prompts to remote free-tier providers, so enabling this block is explicit
+# consent to that boundary. The unified key is read from Atlas's vault, never
+# stored in this file or placed in a checked-in command line.
+#
+# Before enabling: keep FreeLLMAPI bound to a numeric loopback address, choose a model in its
+# catalog, save its unified key in the vault under `token_vault`, and leave
+# verify enabled so Atlas's local model checks delegated research results.
+freellmapi:
+  enabled: false
+  # FreeLLMAPI's Windows desktop router uses 31415. Source/Docker installs
+  # may override this with their chosen loopback port (often 3001).
+  endpoint: "http://127.0.0.1:31415/v1/chat/completions"
+  model: "auto"                       # let the gateway use its healthy fallback chain
+  token_vault: "freellmapi unified key"
+  verify: true                       # local model checks each research result
+
 # The morning run: one pass that says what needs you and what Atlas already
 # handled. It reads what is already on this machine -- handoffs waiting at the
 # door, requests it could not finish, scheduled work that failed or is due,
