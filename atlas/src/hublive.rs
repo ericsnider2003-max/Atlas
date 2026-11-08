@@ -1425,11 +1425,12 @@ impl Daemon<'_> {
                 // Ways Atlas can get better on the hardware he already has.
                 // `improve` listed them and nothing ever asked.
                 let free = self.free_wins();
+                let automatic_cost_mb = crate::improve::automatic_cost_mb();
                 // How you talk, and what went wrong this week (2 Oct 2026,
                 // `learning`).
                 // What you've asked it to be able to do (`growth`).
                 let page = with_block(
-                    hub::recommendations_page(&recs, None, &free),
+                    hub::recommendations_page(&recs, None, &free, automatic_cost_mb),
                     &crate::growth::section(&self.store.load(crate::growth::STORE)),
                 );
                 with_block(page, &self.how_you_talk_block(now))

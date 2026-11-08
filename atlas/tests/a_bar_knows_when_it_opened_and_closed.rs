@@ -52,7 +52,7 @@ fn series(last_open: i64, step: i64, n: usize) -> Bars {
         c.push(px);
         t.push(last_open - ((n - 1 - i) as i64) * step);
     }
-    Bars::new(o, h, l, c, t).expect("bars")
+    Bars::new(o, h, l, c, t).unwrap_or_else(|error| panic!("build bars fixture: {error}"))
 }
 
 #[test]

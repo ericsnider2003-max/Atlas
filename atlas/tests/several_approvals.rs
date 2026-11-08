@@ -71,6 +71,7 @@ impl Llm for Rules {
             .unwrap_or(ChatReply {
                 text: "Sure.".into(),
                 tool_calls: vec![],
+                execution: Default::default(),
             }))
     }
 }
@@ -82,6 +83,7 @@ fn calls(name: &str, arg: &str) -> ChatReply {
             name: name.into(),
             arguments: json!({ "arg": arg }),
         }],
+        execution: Default::default(),
     }
 }
 

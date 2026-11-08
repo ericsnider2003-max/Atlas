@@ -9,7 +9,7 @@
 use crate::error::{AtlasError, Result};
 use crate::gguf::Gguf;
 use crate::tools::{ExternalTool, Vars};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -716,10 +716,6 @@ pub fn server_args(model: &Model, cfg: &ModelsConfig, gpu_layers: u32) -> Vec<St
         "q8_0".into(),
         "-ctv".into(),
         "q8_0".into(),
-        // Said outright rather than left to `auto`: a quantised value cache
-        // needs it, and this llama-server takes `-fa on` (checked 25 Oct 2026).
-        "-fa".into(),
-        "on".into(),
     ]
     .into_iter()
     // After the graphics reset under it (`gpulost`): no graphics device at
@@ -1401,17 +1397,15 @@ pub fn pick<'a>(
 }
 
 /// The small talking model beside the 4B (`getpieces::small_talk_model`):
-/// Qwen3-1.7B at 4-bit, the file name without its extension. The 8-bit file
-/// needs ~2.0-2.4 GB working set and the 2 GB free floor refuses it; the
-/// 4-bit one measured ~1.4 GB at 2048 context (training/llm/RECOMMENDATION.md).
-pub const SMALL_TALK: &str = "Qwen3-1.7B-Q4_K_M";
+/// Qwen3-1.7B at 8-bit, the file name without its extension.
+pub const SMALL_TALK: &str = "Qwen3-1.7B-Q8_0";
 
 /// Memory Atlas leaves free for the PC whatever it loads (the owner's 2 GB
 /// floor rule, `docs/OFFLINE_ASSISTANT_DESIGN_2026-10-20.md`).
 pub const FLOOR_FREE_MB: u64 = 2048;
 
 /// Context for the small model when memory is comfortable, and when tight.
-pub const SMALL_CONTEXT: u64 = 2048;
+pub const SMALL_CONTEXT: u64 = 4096;
 pub const SMALL_TIGHT_CONTEXT: u64 = 2048;
 
 /// What the memory available right now allows (21 Oct 2026, the design's RAM
@@ -2071,25 +2065,9 @@ pub fn layers_here(model: &Model, cfg: &ModelsConfig, m: &Machine) -> u32 {
     if measured > 0 || m.usable_vram_mb() > 0 {
         return measured;
     }
-    let graphics = server_tool(cfg)
-        .map(|tool| is_graphics_build(Path::new(&tool.command)))
-        .unwrap_or(false);
-    auto_layers_without_vram(model, graphics)
-}
-
-/// The layers when the machine has no dedicated video memory and the setting
-/// is `auto`. The small talking model runs on the processor: on a shared-memory
-/// iGPU (Core Ultra 7 256V, 25 Oct 2026) 999 layers on the graphics measured
-/// 2,217 MB against ~1.4 GB on the processor at the same file and context, and
-/// the 2 GB floor stopped it. The 4B keeps the graphics build's offload.
-fn auto_layers_without_vram(model: &Model, graphics_build: bool) -> u32 {
-    if model.id == SMALL_TALK {
-        return 0;
-    }
-    if graphics_build {
-        ALL_LAYERS
-    } else {
-        0
+    match server_tool(cfg) {
+        Some(tool) if is_graphics_build(Path::new(&tool.command)) => ALL_LAYERS,
+        _ => 0,
     }
 }
 
@@ -2960,7 +2938,7 @@ pub struct ChatStream {
 /// that read its whole prompt again (a cache miss) from one that read a
 /// little and wrote a lot, or one that waited behind other work: Eric's
 /// laptop took 26-40 seconds a turn and nothing Atlas logged could say which.
-#[derive(Debug, Clone, Copy, PartialEq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize)]
 pub struct ServerTimings {
     /// Prompt tokens reused from the slot's cache.
     pub cached: u64,
@@ -2973,6 +2951,29 @@ pub struct ServerTimings {
 }
 
 impl ServerTimings {
+    /// Add provider timing payloads without pretending that a missing payload
+    /// is zero. Callers decide completeness separately, then use this only
+    /// for the payloads they actually received.
+    pub fn aggregate<I>(items: I) -> Option<ServerTimings>
+    where
+        I: IntoIterator<Item = ServerTimings>,
+    {
+        let mut total: Option<ServerTimings> = None;
+        for item in items {
+            total = Some(match total {
+                None => item,
+                Some(previous) => ServerTimings {
+                    cached: previous.cached.saturating_add(item.cached),
+                    read: previous.read.saturating_add(item.read),
+                    read_ms: previous.read_ms.saturating_add(item.read_ms),
+                    wrote: previous.wrote.saturating_add(item.wrote),
+                    wrote_ms: previous.wrote_ms.saturating_add(item.wrote_ms),
+                },
+            });
+        }
+        total
+    }
+
     /// From the `timings` object, when it has the counts.
     fn from_json(t: &serde_json::Value) -> Option<ServerTimings> {
         let n = |k: &str| {
@@ -3101,6 +3102,7 @@ impl ChatStream {
         crate::brain::ChatReply {
             text,
             tool_calls: calls,
+            execution: Default::default(),
         }
     }
 }
@@ -3908,6 +3910,50 @@ mod bounded_chat_cancellation {
         assert!(second.is_ok());
         assert_eq!(take_last_timings(), None);
     }
+
+    #[test]
+    fn provider_timings_aggregate_without_overflowing() {
+        let first = ServerTimings {
+            cached: 3,
+            read: 5,
+            read_ms: 7,
+            wrote: 11,
+            wrote_ms: 13,
+        };
+        let second = ServerTimings {
+            cached: 17,
+            read: 19,
+            read_ms: 23,
+            wrote: 29,
+            wrote_ms: 31,
+        };
+        assert_eq!(
+            ServerTimings::aggregate([first, second]),
+            Some(ServerTimings {
+                cached: 20,
+                read: 24,
+                read_ms: 30,
+                wrote: 40,
+                wrote_ms: 44,
+            })
+        );
+        assert_eq!(ServerTimings::aggregate(std::iter::empty()), None);
+        assert_eq!(
+            ServerTimings::aggregate([
+                ServerTimings {
+                    cached: u64::MAX,
+                    ..Default::default()
+                },
+                ServerTimings {
+                    cached: 1,
+                    ..Default::default()
+                },
+            ])
+            .unwrap()
+            .cached,
+            u64::MAX
+        );
+    }
     #[test]
     fn stopped_resolver_mailbox_drops_late_result_without_transport() {
         let (send, reply) = std::sync::mpsc::sync_channel(1);
@@ -4058,35 +4104,12 @@ mod memory_tiers {
     }
 
     #[test]
-    fn the_small_model_runs_on_the_processor_on_integrated_graphics() {
-        let r = both();
-        let small_file = model(SMALL_TALK, 1_700_000_000, 1_107_409_472);
-        let small = &small_file;
-        let four = r.get(crate::deepbrain::FASTER_TALK).unwrap();
-        // No dedicated memory, a graphics build of the server: auto.
-        assert_eq!(auto_layers_without_vram(small, true), 0);
-        assert_eq!(auto_layers_without_vram(four, true), ALL_LAYERS);
-        // With under 4 GB free the CPU estimate fits under the floor.
-        let m = laptop(3_800);
-        let cfg = ModelsConfig::default();
-        let layers = layers_here(small, &cfg, &m);
-        assert!(!integrated_offload(&m, layers));
-        let need = need_mb(small, 2_048, &cfg, &m, &ModelCosts::default());
-        assert!(fits_with_floor(3_800, need), "{need}");
-        // The graphics estimate would not.
-        let gfx = estimated_need_mb(estimate_memory(small, 2_048), true);
-        assert!(!fits_with_floor(3_800, gfx), "{gfx}");
-        // A dedicated GPU still offloads.
-        assert_eq!(gpu_layers_for(small, 8_192 * 1024 * 1024, 2_048), ALL_LAYERS);
-    }
-
-    #[test]
     fn the_small_models_context_follows_the_tier() {
         let r = both();
         let small = r.get(SMALL_TALK).unwrap();
         let four = r.get(crate::deepbrain::FASTER_TALK).unwrap();
         let cfg = ModelsConfig::default();
-        assert_eq!(tuned_for(small, &cfg, &laptop(5_500)).context, 2_048);
+        assert_eq!(tuned_for(small, &cfg, &laptop(5_500)).context, 4_096);
         assert_eq!(tuned_for(small, &cfg, &laptop(4_300)).context, 2_048);
         // The 4B is left as configured.
         assert_eq!(tuned_for(four, &cfg, &laptop(8_000)).context, cfg.context);
@@ -4334,7 +4357,7 @@ mod memory_tiers {
         assert_eq!(cost_to_record(6_400, 1_160, None), 5_240);
         // A cost settled cleanly earlier stands against a later dip.
         assert_eq!(cost_to_record(6_400, 1_160, Some(2_500)), 2_500);
-        let line = guard_line("Qwen3-1.7B-Q4_K_M", 6_400, 1_160, 5_240, "stopped it");
+        let line = guard_line("Qwen3-1.7B-Q8_0", 6_400, 1_160, 5_240, "stopped it");
         for part in ["6400 MB", "1160 MB", "5240 MB", "2048 MB", "stopped it"] {
             assert!(line.contains(part), "{line}");
         }

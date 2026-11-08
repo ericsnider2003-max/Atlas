@@ -47,12 +47,10 @@ struct Scripted {
     thread: Option<std::thread::JoinHandle<()>>,
 }
 
-fn free_port() -> u16 {
-    TcpListener::bind("127.0.0.1:0")
-        .unwrap()
-        .local_addr()
-        .unwrap()
-        .port()
+fn free_listener() -> TcpListener {
+    // Ownership of the bound listener is transferred to the scripted server;
+    // probing a port and rebinding it later would reintroduce a TOCTOU race.
+    TcpListener::bind(("127.0.0.1", 0)).expect("reserve a scripted test port")
 }
 
 fn read_request(s: &mut TcpStream) -> Option<(String, String, String)> {
@@ -162,18 +160,18 @@ fn serve_one(
 
 impl Scripted {
     fn start(
-        port: u16,
+        listener: TcpListener,
         reply: Replier,
         word_ms: u64,
         load_ms: u64,
         seen: Arc<Mutex<Seen>>,
     ) -> Scripted {
-        Scripted::start_reading(port, reply, word_ms, 0, load_ms, seen)
+        Scripted::start_reading(listener, reply, word_ms, 0, load_ms, seen)
     }
 
     /// One that takes `prefill_ms` to read each prompt before its first word.
     fn start_reading(
-        port: u16,
+        listener: TcpListener,
         reply: Replier,
         word_ms: u64,
         prefill_ms: u64,
@@ -181,7 +179,7 @@ impl Scripted {
         seen: Arc<Mutex<Seen>>,
     ) -> Scripted {
         let stop = Arc::new(AtomicBool::new(false));
-        let l = TcpListener::bind(("127.0.0.1", port)).expect("bind the scripted server");
+        let l = listener;
         l.set_nonblocking(true).unwrap();
         let ready_at = Instant::now() + Duration::from_millis(load_ms);
         let (st, sn) = (stop.clone(), seen.clone());
@@ -226,6 +224,7 @@ impl Drop for Scripted {
 /// its port.
 struct ScriptedEngine {
     port: u16,
+    listener: TcpListener,
     reply: Replier,
     word_ms: u64,
     prefill_ms: u64,
@@ -239,7 +238,9 @@ impl Engine for ScriptedEngine {
     fn start(&mut self) -> Result<(), String> {
         self.starts.fetch_add(1, Ordering::SeqCst);
         self.running = Some(Scripted::start_reading(
-            self.port,
+            self.listener
+                .try_clone()
+                .expect("clone the reserved scripted listener"),
             self.reply.clone(),
             self.word_ms,
             self.prefill_ms,
@@ -323,6 +324,7 @@ impl Llm for TalkSpy {
         Ok(ChatReply {
             text: "from the talking model".into(),
             tool_calls: vec![],
+            execution: Default::default(),
         })
     }
 }
@@ -365,11 +367,13 @@ fn rig_reading(
     idle: Duration,
     free_mb: u64,
 ) -> Rig {
-    let port = free_port();
+    let listener = free_listener();
+    let port = listener.local_addr().unwrap().port();
     let seen = Arc::new(Mutex::new(Seen::default()));
     let starts = Arc::new(AtomicUsize::new(0));
     let engine = ScriptedEngine {
         port,
+        listener,
         reply,
         word_ms,
         prefill_ms,
@@ -564,7 +568,7 @@ fn a_deep_server_that_wont_start_hands_the_work_back() {
     }
     let mut deep = DeepBrain::new(
         Box::new(Broken),
-        Arc::new(HttpChat(free_port())),
+        Arc::new(HttpChat(free_listener().local_addr().unwrap().port())),
         "deep",
         100,
         Duration::from_secs(60),
@@ -755,8 +759,15 @@ fn deep_work_waits_for_a_turn_in_progress_before_it_starts() {
 fn the_talking_server_answers_at_full_speed_while_deep_work_is_under_way() {
     // Two servers on two ports, as on the laptop.
     let talk_seen = Arc::new(Mutex::new(Seen::default()));
-    let talk_port = free_port();
-    let _talk_server = Scripted::start(talk_port, fixed("Here you go."), 20, 0, talk_seen.clone());
+    let talk_listener = free_listener();
+    let talk_port = talk_listener.local_addr().unwrap().port();
+    let _talk_server = Scripted::start(
+        talk_listener,
+        fixed("Here you go."),
+        20,
+        0,
+        talk_seen.clone(),
+    );
     let talk: Arc<dyn Llm> = Arc::new(HttpChat(talk_port));
     let mut r = rig(
         continuing("a b c d e f g h i j k l m n o p q r s t"),

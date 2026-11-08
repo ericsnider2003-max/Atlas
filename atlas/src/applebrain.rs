@@ -339,6 +339,7 @@ impl Llm for AppleFirst {
                     return Ok(ChatReply {
                         text: t,
                         tool_calls: Vec::new(),
+                        execution: Default::default(),
                     });
                 }
                 // Refused, too long after all, gone, or failed: this one

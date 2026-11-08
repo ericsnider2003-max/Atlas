@@ -25,7 +25,8 @@ use std::path::{Path, PathBuf};
 fn tmp(tag: &str) -> PathBuf {
     let p = std::env::temp_dir().join(format!("atlas-note-on-{tag}"));
     let _ = std::fs::remove_dir_all(&p);
-    std::fs::create_dir_all(&p).unwrap();
+    std::fs::create_dir_all(&p)
+        .unwrap_or_else(|error| panic!("create messaging fixture {p:?}: {error}"));
     p
 }
 
@@ -41,11 +42,12 @@ fn plat() -> MockPlatform {
 }
 
 fn cfg_with_messaging() -> Config {
-    let mut c = Config::load(Path::new("config")).unwrap();
+    let mut c = Config::load(Path::new("config"))
+        .unwrap_or_else(|error| panic!("load shipped config: {error}"));
     let tools = c
         .tools
         .as_mut()
-        .expect("the shipped config has a tools section");
+        .unwrap_or_else(|| panic!("the shipped config has a tools section"));
     tools.messaging.enabled = true;
     tools.messaging.your_names = vec!["you".into()];
     c

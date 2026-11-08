@@ -397,7 +397,13 @@ impl<'a> Daemon<'a> {
         // own are "Background work: <name>".
         let job_id = {
             let (stage, at_start) = errand_stage(name);
-            let id = format!("{}{name}:{t}:{crew_id}", crate::job::ERRAND_PREFIX);
+            // Crew worker ids are process-local and restart from one. They
+            // are useful for live handoff routing, but cannot identify a
+            // durable record: a fast restart can otherwise recreate the same
+            // name/time/worker tuple and terminal fencing would preserve the
+            // prior run's outcome. The job journal already owns restart-safe
+            // identity, so use it here instead of inventing a second scheme.
+            let id = crate::job::unique_id(crate::job::ERRAND_PREFIX);
             if at_start {
                 let said = format!("{stage} started");
                 if let Err(e) =
@@ -461,7 +467,13 @@ impl<'a> Daemon<'a> {
     /// A hub errand ended: the daemon's side of it. Returns anything worth
     /// saying out loud (nothing yet: a friend's Atlas answering a retry is
     /// told as `friend_upkeep` always told it, as a note).
-    fn after_hub_errand(&mut self, after: HubAfter, ending: &crew::Ending, t: u64) -> Vec<String> {
+    fn after_hub_errand(
+        &mut self,
+        after: HubAfter,
+        ending: &crew::Ending,
+        t: u64,
+        receipt_unconfirmed: bool,
+    ) -> Vec<String> {
         let (tag, said): (String, std::result::Result<String, String>) = match ending {
             crew::Ending::Done(Ok(json)) => {
                 let v: serde_json::Value = serde_json::from_str(json).unwrap_or_default();
@@ -479,13 +491,16 @@ impl<'a> Daemon<'a> {
                 Err("That stopped partway through. It's a fault in Atlas, not something you did; try again.".into()),
             ),
         };
+        let said_with_receipt = |said: std::result::Result<String, String>| {
+            crate::job::completion_receipt_result(said, !receipt_unconfirmed)
+        };
         match after {
             HubAfter::Sent { job, doc, to } => {
                 if tag == "sent" {
                     self.tray.sent_to(doc, &to, t);
                     crate::kept!(self.tray.save(&self.store));
                 }
-                self.hub_jobs.finish(job, said, false);
+                self.hub_jobs.finish(job, said_with_receipt(said), false);
             }
             HubAfter::FriendAdd { job, keep } => {
                 let said = if tag.is_empty() {
@@ -493,7 +508,7 @@ impl<'a> Daemon<'a> {
                 } else {
                     Ok(self.after_friend_knock(&keep, &knock_of(&tag)))
                 };
-                self.hub_jobs.finish(job, said, true);
+                self.hub_jobs.finish(job, said_with_receipt(said), true);
             }
             HubAfter::FriendRetry { keep } => {
                 let outcome = knock_of(&tag);
@@ -533,11 +548,11 @@ impl<'a> Daemon<'a> {
             }
             HubAfter::AddonShare { job, name, group } => {
                 self.addon_shared_in_group(&name, group.as_ref());
-                self.hub_jobs.finish(job, said, false);
+                self.hub_jobs.finish(job, said_with_receipt(said), false);
             }
             HubAfter::PhoneCode { job, slot, stop } => {
                 self.take_phone_code(&slot, &stop);
-                self.hub_jobs.finish(job, said, false);
+                self.hub_jobs.finish(job, said_with_receipt(said), false);
             }
         }
         Vec::new()
@@ -619,14 +634,38 @@ impl<'a> Daemon<'a> {
             // otherwise it stays Running until the next restart.
             let (stage, at_start) = errand_stage(link.label);
             if let Some(job_id) = link.job_id.as_ref().filter(|_| at_start) {
-                crate::heard!(crate::job::finish(
-                    &self.store,
+                let finished = crate::evidence::crew_outcome(
                     job_id,
-                    &stage,
+                    link.label,
                     crate::job::State::Cancelled,
                     "Stopped before it started.",
-                    "crew errand",
-                ));
+                    now,
+                )
+                .and_then(|evidence| {
+                    crate::job::finish_with_evidence(
+                        &self.store,
+                        job_id,
+                        &stage,
+                        crate::job::State::Cancelled,
+                        "Stopped before it started.",
+                        "crew errand",
+                        evidence,
+                    )
+                    .map_err(|error| error.to_string())
+                });
+                if let Err(error) = finished {
+                    self.log.warn(&format!(
+                        "couldn't persist cancellation evidence for {job_id}: {error}"
+                    ));
+                    crate::heard!(crate::job::finish(
+                        &self.store,
+                        job_id,
+                        &stage,
+                        crate::job::State::Uncertain,
+                        "The crew stopped before starting, but Atlas could not persist its evidence; check before repeating.",
+                        "crew errand evidence guard",
+                    ));
+                }
             }
             self.long_work.update(
                 link.watch_id,
@@ -991,6 +1030,7 @@ impl<'a> Daemon<'a> {
                 self.last_backup = t;
             }
             // How it ended, written beside how it began (`errand_stage`).
+            let mut receipt_unconfirmed = false;
             if let Some(id) = &link.job_id {
                 let (stage, at_start) = errand_stage(link.label);
                 let (state, detail) = errand_outcome(&news.ending);
@@ -1009,13 +1049,38 @@ impl<'a> Daemon<'a> {
                             true
                         ));
                     }
-                    if let Err(e) =
-                        crate::job::finish(&self.store, id, &stage, state, &detail, "crew errand")
-                    {
+                    let finished =
+                        match crate::evidence::crew_outcome(id, link.label, state, &detail, t) {
+                            Ok(evidence) => crate::job::finish_with_evidence(
+                                &self.store,
+                                id,
+                                &stage,
+                                state,
+                                &detail,
+                                "crew errand",
+                                evidence,
+                            ),
+                            Err(error) => Err(crate::error::AtlasError::Config(error)),
+                        };
+                    if let Err(e) = finished {
+                        receipt_unconfirmed = true;
                         self.log.warn(&format!(
                             "couldn't write down how {} ended: {e}",
                             link.label
                         ));
+                        // A completion without its evidence is not a success.
+                        // Preserve the interruption boundary instead of
+                        // falling back to the legacy success writer.
+                        if state == crate::job::State::Succeeded {
+                            crate::heard!(crate::job::finish(
+                                &self.store,
+                                id,
+                                &stage,
+                                crate::job::State::Uncertain,
+                                "The crew reported success, but Atlas could not persist its evidence; check before repeating.",
+                                "crew errand evidence guard",
+                            ));
+                        }
                     }
                 }
             }
@@ -1027,7 +1092,7 @@ impl<'a> Daemon<'a> {
             if let Some(after) = self.hub_after.remove(&news.id) {
                 self.long_work
                     .update(link.watch_id, outcome_of(&news.ending), "", t);
-                out.extend(self.after_hub_errand(after, &news.ending, t));
+                out.extend(self.after_hub_errand(after, &news.ending, t, receipt_unconfirmed));
                 continue;
             }
             // The proving test's run, when it outlasted the turn that asked.
@@ -1035,7 +1100,10 @@ impl<'a> Daemon<'a> {
                 if let Some(said) = self.finish_proof_check() {
                     self.long_work
                         .update(link.watch_id, outcome_of(&news.ending), &said, t);
-                    out.push(said);
+                    out.push(crate::job::completion_receipt_text(
+                        said,
+                        !receipt_unconfirmed,
+                    ));
                 }
                 continue;
             }
@@ -1050,7 +1118,10 @@ impl<'a> Daemon<'a> {
                 };
                 self.long_work
                     .update(link.watch_id, outcome_of(&news.ending), &said, t);
-                out.push(said);
+                out.push(crate::job::completion_receipt_text(
+                    said,
+                    !receipt_unconfirmed,
+                ));
                 continue;
             }
             // The next step of a job in an app (`operate`).
@@ -1058,7 +1129,10 @@ impl<'a> Daemon<'a> {
                 self.long_work
                     .update(link.watch_id, outcome_of(&news.ending), "", t);
                 if let Some(said) = self.operate_news(news.id, &news.ending) {
-                    out.push(said);
+                    out.push(crate::job::completion_receipt_text(
+                        said,
+                        !receipt_unconfirmed,
+                    ));
                 }
                 continue;
             }
@@ -1110,15 +1184,21 @@ impl<'a> Daemon<'a> {
                             true,
                             t,
                         );
-                        out.push(said);
+                        out.push(crate::job::completion_receipt_text(
+                            said,
+                            !receipt_unconfirmed,
+                        ));
                         continue;
                     }
                 }
                 if let crew::Ending::Done(Err(e)) = &news.ending {
                     self.long_work
                         .update(link.watch_id, outcome_of(&news.ending), e, t);
-                    out.push(format!(
-                        "I couldn't write up the call: {e}. The audio is kept in data/calls."
+                    out.push(crate::job::completion_receipt_text(
+                        format!(
+                            "I couldn't write up the call: {e}. The audio is kept in data/calls."
+                        ),
+                        !receipt_unconfirmed,
                     ));
                     continue;
                 }
@@ -1142,7 +1222,10 @@ impl<'a> Daemon<'a> {
                         };
                         self.long_work
                             .update(link.watch_id, outcome_of(&news.ending), &said, t);
-                        out.push(said);
+                        out.push(crate::job::completion_receipt_text(
+                            said,
+                            !receipt_unconfirmed,
+                        ));
                         continue;
                     }
                 }
@@ -1153,7 +1236,10 @@ impl<'a> Daemon<'a> {
                     if let Ok(said) = serde_json::from_str::<String>(json) {
                         self.long_work
                             .update(link.watch_id, outcome_of(&news.ending), &said, t);
-                        out.push(said);
+                        out.push(crate::job::completion_receipt_text(
+                            said,
+                            !receipt_unconfirmed,
+                        ));
                         continue;
                     }
                 }
@@ -1166,7 +1252,10 @@ impl<'a> Daemon<'a> {
                 self.long_work
                     .update(link.watch_id, outcome_of(&news.ending), "", t);
                 if let Some(said) = self.two_factor_news(link.label, &news.ending, t) {
-                    out.push(said);
+                    out.push(crate::job::completion_receipt_text(
+                        said,
+                        !receipt_unconfirmed,
+                    ));
                 }
                 continue;
             }
@@ -1198,7 +1287,10 @@ impl<'a> Daemon<'a> {
                 self.long_work
                     .update(link.watch_id, outcome_of(&news.ending), "", t);
                 if let Some(said) = self.gesture_news(&news.ending) {
-                    out.push(said);
+                    out.push(crate::job::completion_receipt_text(
+                        said,
+                        !receipt_unconfirmed,
+                    ));
                 }
                 continue;
             }
@@ -1207,7 +1299,10 @@ impl<'a> Daemon<'a> {
                 self.long_work
                     .update(link.watch_id, outcome_of(&news.ending), "", t);
                 if let Some(said) = self.decision_news(&news.ending) {
-                    out.push(said);
+                    out.push(crate::job::completion_receipt_text(
+                        said,
+                        !receipt_unconfirmed,
+                    ));
                 }
                 continue;
             }
@@ -1227,20 +1322,23 @@ impl<'a> Daemon<'a> {
                     },
                     crew::Ending::Done(Err(e)) => Outcome::Failed(format!("I couldn't edit it: {e}. Your original is untouched.")),
                     crew::Ending::Stopped => Outcome::Failed("Stopped before the edit finished. Your original is untouched.".into()),
-                    crew::Ending::Vanished => Outcome::Failed("The edit stopped without returning a result. Your original is untouched.".into()),
+                    crew::Ending::Vanished => Outcome::Unknown("The edit stopped without returning a result. I cannot confirm whether it changed anything; inspect the result before trying again.".into()),
                 };
                 let said = completion.text().to_string();
-                let watched = if matches!(completion, Outcome::NeedsYou(_)) {
-                    crate::watching::Outcome::Finished
-                } else {
-                    crate::watching::Outcome::Failed
+                let watched = match &completion {
+                    Outcome::NeedsYou(_) => crate::watching::Outcome::Finished,
+                    Outcome::Unknown(_) => crate::watching::Outcome::Vanished,
+                    _ => crate::watching::Outcome::Failed,
                 };
                 self.long_work.update(link.watch_id, watched, &said, t);
                 self.finish_queued_worker(news.id, &completion, t);
                 if (matches!(completion, Outcome::NeedsYou(_)) && self.park_media_decision(news.id))
                     || !self.finish_background_step(news.id, completion)
                 {
-                    out.push(said);
+                    out.push(crate::job::completion_receipt_text(
+                        said,
+                        !receipt_unconfirmed,
+                    ));
                 }
                 if let Some(j) = self
                     .long_work
@@ -1284,14 +1382,14 @@ impl<'a> Daemon<'a> {
                     crew::Ending::Stopped => {
                         Outcome::Failed("Stopped -- I didn't finish with that file.".into())
                     }
-                    crew::Ending::Vanished => Outcome::Failed(
-                        "That file's reading stopped without finishing. Ask me again.".into(),
+                    crew::Ending::Vanished => Outcome::Unknown(
+                        "That file's reading stopped without finishing. I cannot confirm whether the read completed; ask me again after checking any partial output.".into(),
                     ),
                 };
-                let watched = if matches!(completion, Outcome::Done(_)) {
-                    crate::watching::Outcome::Finished
-                } else {
-                    crate::watching::Outcome::Failed
+                let watched = match &completion {
+                    Outcome::Done(_) => crate::watching::Outcome::Finished,
+                    Outcome::Unknown(_) => crate::watching::Outcome::Vanished,
+                    _ => crate::watching::Outcome::Failed,
                 };
                 self.long_work
                     .update(link.watch_id, watched, completion.text(), t);
@@ -1300,7 +1398,10 @@ impl<'a> Daemon<'a> {
                 if (matches!(completion, Outcome::NeedsYou(_)) && self.park_scan_decision(news.id))
                     || !self.finish_background_step(news.id, completion)
                 {
-                    out.push(said);
+                    out.push(crate::job::completion_receipt_text(
+                        said,
+                        !receipt_unconfirmed,
+                    ));
                 }
                 if let Some(j) = self
                     .long_work
@@ -1324,19 +1425,22 @@ impl<'a> Daemon<'a> {
                     },
                     crew::Ending::Done(Err(e)) => Outcome::Failed(format!("Preparation did not finish: {e}")),
                     crew::Ending::Stopped => Outcome::Failed("Preparation stopped; review any saved partial files before retrying.".into()),
-                    crew::Ending::Vanished => Outcome::Failed("Preparation ended without a confirmed outcome.".into()),
+                    crew::Ending::Vanished => Outcome::Unknown("Preparation ended without a confirmed outcome; inspect any saved partial work before retrying.".into()),
                 };
-                let watched = if matches!(completion, Outcome::NeedsYou(_)) {
-                    crate::watching::Outcome::Finished
-                } else {
-                    crate::watching::Outcome::Failed
+                let watched = match &completion {
+                    Outcome::NeedsYou(_) => crate::watching::Outcome::Finished,
+                    Outcome::Unknown(_) => crate::watching::Outcome::Vanished,
+                    _ => crate::watching::Outcome::Failed,
                 };
                 self.long_work
                     .update(link.watch_id, watched, completion.text(), t);
                 self.finish_queued_worker(news.id, &completion, t);
                 let said = completion.text().to_string();
                 if !self.finish_background_step(news.id, completion) {
-                    out.push(said);
+                    out.push(crate::job::completion_receipt_text(
+                        said,
+                        !receipt_unconfirmed,
+                    ));
                 }
                 if let Some(job) = self
                     .long_work
@@ -1352,7 +1456,10 @@ impl<'a> Daemon<'a> {
                 self.long_work
                     .update(link.watch_id, outcome_of(&news.ending), "", t);
                 if let Some(said) = self.moved_news(&news.ending) {
-                    out.push(said);
+                    out.push(crate::job::completion_receipt_text(
+                        said,
+                        !receipt_unconfirmed,
+                    ));
                 }
                 continue;
             }
@@ -1374,7 +1481,10 @@ impl<'a> Daemon<'a> {
                     t,
                 );
                 if let Some(said) = self.post_news(news.id, &news.ending, t) {
-                    out.push(said);
+                    out.push(crate::job::completion_receipt_text(
+                        said,
+                        !receipt_unconfirmed,
+                    ));
                 }
                 continue;
             }
@@ -1382,10 +1492,10 @@ impl<'a> Daemon<'a> {
                 let completion = self.post_approval_news(&news.ending, t);
                 self.long_work.update(
                     link.watch_id,
-                    if matches!(completion, crate::taskloop::Outcome::Failed(_)) {
-                        crate::watching::Outcome::Failed
-                    } else {
-                        crate::watching::Outcome::Finished
+                    match &completion {
+                        crate::taskloop::Outcome::Failed(_) => crate::watching::Outcome::Failed,
+                        crate::taskloop::Outcome::Unknown(_) => crate::watching::Outcome::Vanished,
+                        _ => crate::watching::Outcome::Finished,
                     },
                     completion.text(),
                     t,
@@ -1393,7 +1503,10 @@ impl<'a> Daemon<'a> {
                 self.finish_queued_worker(news.id, &completion, t);
                 let said = completion.text().to_string();
                 if !self.finish_background_step(news.id, completion) {
-                    out.push(said);
+                    out.push(crate::job::completion_receipt_text(
+                        said,
+                        !receipt_unconfirmed,
+                    ));
                 }
                 continue;
             }
@@ -1401,7 +1514,10 @@ impl<'a> Daemon<'a> {
                 self.long_work
                     .update(link.watch_id, outcome_of(&news.ending), "", t);
                 if let Some(said) = self.mail_sort_news(link.label, &news.ending) {
-                    out.push(said);
+                    out.push(crate::job::completion_receipt_text(
+                        said,
+                        !receipt_unconfirmed,
+                    ));
                 }
                 continue;
             }
@@ -1410,7 +1526,10 @@ impl<'a> Daemon<'a> {
                 self.long_work
                     .update(link.watch_id, outcome_of(&news.ending), "", t);
                 if let Some(said) = self.social_news(link.label, &news.ending, t) {
-                    out.push(said);
+                    out.push(crate::job::completion_receipt_text(
+                        said,
+                        !receipt_unconfirmed,
+                    ));
                 }
                 continue;
             }
@@ -1419,14 +1538,23 @@ impl<'a> Daemon<'a> {
                 self.long_work
                     .update(link.watch_id, outcome_of(&news.ending), "", t);
                 if let Some(said) = self.reclaim_news(&news.ending, t) {
-                    out.push(said);
+                    out.push(crate::job::completion_receipt_text(
+                        said,
+                        !receipt_unconfirmed,
+                    ));
                 }
                 continue;
             }
             if link.label == "conversation-reply" {
                 self.long_work
                     .update(link.watch_id, outcome_of(&news.ending), "", t);
-                out.extend(self.reply_written(news.id, &news.ending));
+                out.extend(
+                    self.reply_written(news.id, &news.ending)
+                        .into_iter()
+                        .map(|said| {
+                            crate::job::completion_receipt_text(said, !receipt_unconfirmed)
+                        }),
+                );
                 continue;
             }
             let (mut result, mut ok) = match &news.ending {
@@ -1711,6 +1839,8 @@ impl<'a> Daemon<'a> {
                 let complete = ok && matches!(news.ending, crew::Ending::Done(Ok(_)));
                 let outcome = if complete {
                     crate::taskloop::Outcome::Done(result.clone())
+                } else if matches!(news.ending, crew::Ending::Vanished) {
+                    crate::taskloop::Outcome::Unknown(result.clone())
                 } else {
                     crate::taskloop::Outcome::Failed(result.clone())
                 };
@@ -1725,7 +1855,10 @@ impl<'a> Daemon<'a> {
                 // asked about in the first place.
                 SpeakPolicy::Always => {
                     if !continued && !repeat {
-                        out.push(result.clone());
+                        out.push(crate::job::completion_receipt_text(
+                            result.clone(),
+                            !receipt_unconfirmed,
+                        ));
                     }
                     if let Some(j) = self
                         .long_work
@@ -2042,6 +2175,21 @@ mod every_errand_has_a_record_tests {
         let ended = records(&store);
         assert_eq!(ended[0].state, crate::job::State::Succeeded);
         assert_eq!(ended[0].receipt.as_ref().unwrap().detail, "It is done.");
+        let evidence_id = ended[0]
+            .receipt
+            .as_ref()
+            .and_then(|receipt| receipt.evidence_bundle_id.as_deref())
+            .expect("successful crew work must retain an evidence reference");
+        let evidence: Vec<crate::evidence::Bundle> = store.load("evidence");
+        let bundle = evidence
+            .iter()
+            .find(|bundle| bundle.bundle_id == evidence_id)
+            .expect("successful crew evidence must survive beside the job");
+        assert_eq!(
+            bundle.receipt_job_id.as_deref(),
+            Some(ended[0].job_id.as_str())
+        );
+        assert_eq!(bundle.state, crate::evidence::EvidenceState::Proven);
 
         // One that fails says so; one that dies without a word is uncertain,
         // not failed; Atlas's own work is kept but not shown.

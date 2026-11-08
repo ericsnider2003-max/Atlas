@@ -7,7 +7,7 @@
 
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
-use std::io::Read;
+use std::io::{Read, Write};
 use std::path::Path;
 
 pub const MAX_ASSETS: usize = 512;
@@ -17,6 +17,23 @@ pub const MAX_CAPTION_CUES: usize = 20_000;
 pub const MAX_TEXT_BYTES: usize = 64 * 1024;
 pub const MAX_RENDERS: usize = 512;
 pub const MAX_STAGED_BYTES: u64 = 512 * 1024 * 1024;
+
+fn drain_capped<R: Read>(mut reader: R) -> std::io::Result<Vec<u8>> {
+    let cap = usize::try_from(MAX_RENDER_OUTPUT_BYTES).unwrap_or(usize::MAX);
+    let mut captured = Vec::with_capacity(cap.min(8192));
+    let mut chunk = [0u8; 8192];
+    loop {
+        let read = reader.read(&mut chunk)?;
+        if read == 0 {
+            break;
+        }
+        if captured.len() < cap {
+            let keep = (cap - captured.len()).min(read);
+            captured.extend_from_slice(&chunk[..keep]);
+        }
+    }
+    Ok(captured)
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum MediaKind {
@@ -288,20 +305,8 @@ impl FfmpegCommandBuilder {
             .stderr
             .take()
             .ok_or_else(|| "ffmpeg stderr pipe was not created".to_string())?;
-        let stdout_reader = std::thread::spawn(move || {
-            let mut bytes = Vec::new();
-            let result = std::io::BufReader::new(stdout)
-                .take(MAX_RENDER_OUTPUT_BYTES)
-                .read_to_end(&mut bytes);
-            (result, bytes)
-        });
-        let stderr_reader = std::thread::spawn(move || {
-            let mut bytes = Vec::new();
-            let result = std::io::BufReader::new(stderr)
-                .take(MAX_RENDER_OUTPUT_BYTES)
-                .read_to_end(&mut bytes);
-            (result, bytes)
-        });
+        let stdout_reader = std::thread::spawn(move || drain_capped(stdout));
+        let stderr_reader = std::thread::spawn(move || drain_capped(stderr));
         let started = std::time::Instant::now();
         let mut cancelled = false;
         let timed_out = loop {
@@ -330,12 +335,14 @@ impl FfmpegCommandBuilder {
         let output_result = child
             .wait()
             .map_err(|error| format!("ffmpeg output failed: {error}"))?;
-        let (_, stdout) = stdout_reader
+        let stdout = stdout_reader
             .join()
-            .map_err(|_| "ffmpeg stdout reader panicked".to_string())?;
-        let (_, stderr) = stderr_reader
+            .map_err(|_| "ffmpeg stdout reader panicked".to_string())?
+            .map_err(|error| format!("ffmpeg stdout read failed: {error}"))?;
+        let stderr = stderr_reader
             .join()
-            .map_err(|_| "ffmpeg stderr reader panicked".to_string())?;
+            .map_err(|_| "ffmpeg stderr reader panicked".to_string())?
+            .map_err(|error| format!("ffmpeg stderr read failed: {error}"))?;
         Ok(ExternalRenderReport {
             exit_code: output_result.code(),
             stdout: String::from_utf8_lossy(&stdout)
@@ -360,30 +367,51 @@ impl FfmpegCommandBuilder {
             .stderr(std::process::Stdio::piped())
             .spawn()
             .map_err(|error| format!("ffmpeg fingerprint could not start: {error}"))?;
+        let stdout = child
+            .stdout
+            .take()
+            .ok_or_else(|| "ffmpeg fingerprint stdout pipe was not created".to_string())?;
+        let stderr = child
+            .stderr
+            .take()
+            .ok_or_else(|| "ffmpeg fingerprint stderr pipe was not created".to_string())?;
+        let stdout_reader = std::thread::spawn(move || drain_capped(stdout));
+        let stderr_reader = std::thread::spawn(move || drain_capped(stderr));
         let started = std::time::Instant::now();
-        loop {
+        let timed_out = loop {
             if child
                 .try_wait()
                 .map_err(|error| format!("ffmpeg fingerprint status failed: {error}"))?
                 .is_some()
             {
-                break;
+                break false;
             }
             if started.elapsed() >= timeout {
                 child
                     .kill()
                     .map_err(|error| format!("ffmpeg fingerprint timeout kill failed: {error}"))?;
-                return Err("ffmpeg fingerprint timed out".into());
+                break true;
             }
             std::thread::sleep(std::time::Duration::from_millis(10));
-        }
-        let output = child
-            .wait_with_output()
+        };
+        let status = child
+            .wait()
             .map_err(|error| format!("ffmpeg fingerprint output failed: {error}"))?;
-        if !output.status.success() {
+        let stdout = stdout_reader
+            .join()
+            .map_err(|_| "ffmpeg fingerprint stdout reader panicked".to_string())?
+            .map_err(|error| format!("ffmpeg fingerprint stdout read failed: {error}"))?;
+        let _stderr = stderr_reader
+            .join()
+            .map_err(|_| "ffmpeg fingerprint stderr reader panicked".to_string())?
+            .map_err(|error| format!("ffmpeg fingerprint stderr read failed: {error}"))?;
+        if timed_out {
+            return Err("ffmpeg fingerprint timed out".into());
+        }
+        if !status.success() {
             return Err("ffmpeg fingerprint returned a failure status".into());
         }
-        let version = String::from_utf8_lossy(&output.stdout)
+        let version = String::from_utf8_lossy(&stdout)
             .lines()
             .next()
             .unwrap_or_default()
@@ -441,60 +469,36 @@ impl CreativeProject {
     }
 
     pub fn import_asset(&mut self, asset: Asset) -> Result<(), String> {
-        validate_text(&asset.id, "asset id")?;
-        validate_text(&asset.source_name, "asset source name")?;
-        validate_text(&asset.digest, "asset digest")?;
+        validate_asset(&asset)?;
         if self.assets.len() >= MAX_ASSETS && !self.assets.contains_key(&asset.id) {
             return Err("creative project has reached its asset limit".into());
         }
-        if self.assets.insert(asset.id.clone(), asset).is_some() {
+        if self.assets.contains_key(&asset.id) {
             return Err("creative asset identity already exists".into());
         }
+        self.assets.insert(asset.id.clone(), asset);
         Ok(())
     }
 
     pub fn add_revision(&mut self, revision: Revision) -> Result<(), String> {
-        validate_text(&revision.id, "revision id")?;
-        validate_text(&revision.operation, "revision operation")?;
-        if let Some(parent) = &revision.parent {
-            if !self.revisions.contains_key(parent) {
-                return Err("creative revision parent does not exist".into());
-            }
-        }
-        if revision
-            .asset_ids
-            .iter()
-            .any(|id| !self.assets.contains_key(id))
-        {
-            return Err("creative revision refers to an unknown asset".into());
-        }
-        validate_captions(&revision.caption_cues)?;
-        if revision.operations.len() > MAX_ASSETS {
-            return Err("creative revision has too many operations".into());
-        }
-        for operation in &revision.operations {
-            operation.validate()?;
-        }
+        validate_revision(&revision, &self.assets, &self.revisions)?;
         if self.revisions.len() >= MAX_REVISIONS && !self.revisions.contains_key(&revision.id) {
             return Err("creative project has reached its revision limit".into());
         }
-        if self
-            .revisions
-            .insert(revision.id.clone(), revision)
-            .is_some()
-        {
+        if self.revisions.contains_key(&revision.id) {
             return Err("creative revision identity already exists".into());
         }
-        self.current_revision = self.revisions.keys().next_back().cloned();
+        let revision_id = revision.id.clone();
+        self.revisions.insert(revision_id.clone(), revision);
+        // BTreeMap ordering is lexical, not creation order. Keep the
+        // already-durable current pointer bound to the revision admitted by
+        // this call instead of deriving it from the key order.
+        self.current_revision = Some(revision_id);
         Ok(())
     }
 
     pub fn record_render(&mut self, render: RenderRecord) -> Result<(), String> {
-        if !self.revisions.contains_key(&render.revision_id) {
-            return Err("creative render refers to an unknown revision".into());
-        }
-        validate_render_format(&render.format)?;
-        validate_output_name(&render.output_name)?;
+        validate_render_record(&render, &self.revisions)?;
         if self.renders.len() >= MAX_RENDERS {
             return Err("creative project has reached its render limit".into());
         }
@@ -514,7 +518,10 @@ impl CreativeProject {
             .ok_or_else(|| "creative render refers to an unknown revision".to_string())?;
         validate_render_format(format)?;
         validate_output_name(output_name)?;
-        let deterministic_key = format!("{revision_id}:{format}:{output_name}");
+        let revision_bytes = serde_json::to_vec(revision)
+            .map_err(|error| format!("creative revision digest encode failed: {error}"))?;
+        let revision_digest = crate::digest::sha256_hex(&revision_bytes);
+        let deterministic_key = format!("{revision_id}:{revision_digest}:{format}:{output_name}");
         Ok(RenderPlan {
             revision_id: revision_id.into(),
             format: format.into(),
@@ -594,8 +601,37 @@ impl CreativeProject {
                 ));
             }
             let destination = staging_root.join(name);
-            std::fs::copy(&source, &destination)
+            let mut source_file = std::fs::File::open(&source)
                 .map_err(|error| format!("creative asset staging failed: {error}"))?;
+            let mut destination_file = match std::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&destination)
+            {
+                Ok(file) => file,
+                Err(error) => {
+                    for prior in &staged {
+                        std::fs::remove_file(&prior.path).map_err(|cleanup_error| {
+                            format!("creative asset staging cleanup failed: {cleanup_error}")
+                        })?;
+                    }
+                    if error.kind() == std::io::ErrorKind::AlreadyExists {
+                        return Err("creative asset staging destination already exists".into());
+                    }
+                    return Err(format!("creative asset staging failed: {error}"));
+                }
+            };
+            if let Err(error) = std::io::copy(&mut source_file, &mut destination_file)
+                .and_then(|_| destination_file.flush())
+            {
+                crate::heard!(std::fs::remove_file(&destination));
+                for prior in &staged {
+                    std::fs::remove_file(&prior.path).map_err(|cleanup_error| {
+                        format!("creative asset staging cleanup failed: {cleanup_error}")
+                    })?;
+                }
+                return Err(format!("creative asset staging failed: {error}"));
+            }
             let staged_digest = crate::digest::sha256_file_hex(&destination)
                 .map_err(|error| format!("creative asset digest unavailable: {error}"))?;
             let expected_digest = format!("sha256:{staged_digest}");
@@ -630,6 +666,21 @@ impl CreativeProject {
         {
             return Err("creative project exceeds its local bounds".into());
         }
+        for (key, asset) in &self.assets {
+            if key != &asset.id {
+                return Err("creative asset map key does not match its identity".into());
+            }
+            validate_asset(asset)?;
+        }
+        for (key, revision) in &self.revisions {
+            if key != &revision.id {
+                return Err("creative revision map key does not match its identity".into());
+            }
+            validate_revision(revision, &self.assets, &self.revisions)?;
+        }
+        for render in &self.renders {
+            validate_render_record(render, &self.revisions)?;
+        }
         if let Some(current) = &self.current_revision {
             if !self.revisions.contains_key(current) {
                 return Err("current creative revision does not exist".into());
@@ -661,6 +712,48 @@ impl CreativeProject {
             .map_err(crate::error::AtlasError::Config)?;
         Ok(project)
     }
+}
+
+fn validate_asset(asset: &Asset) -> Result<(), String> {
+    validate_text(&asset.id, "asset id")?;
+    validate_text(&asset.source_name, "asset source name")?;
+    validate_text(&asset.digest, "asset digest")
+}
+
+fn validate_revision(
+    revision: &Revision,
+    assets: &BTreeMap<String, Asset>,
+    revisions: &BTreeMap<String, Revision>,
+) -> Result<(), String> {
+    validate_text(&revision.id, "revision id")?;
+    validate_text(&revision.operation, "revision operation")?;
+    if let Some(parent) = &revision.parent {
+        if parent == &revision.id || !revisions.contains_key(parent) {
+            return Err("creative revision parent does not exist".into());
+        }
+    }
+    if revision.asset_ids.iter().any(|id| !assets.contains_key(id)) {
+        return Err("creative revision refers to an unknown asset".into());
+    }
+    validate_captions(&revision.caption_cues)?;
+    if revision.operations.len() > MAX_ASSETS {
+        return Err("creative revision has too many operations".into());
+    }
+    for operation in &revision.operations {
+        operation.validate()?;
+    }
+    Ok(())
+}
+
+fn validate_render_record(
+    render: &RenderRecord,
+    revisions: &BTreeMap<String, Revision>,
+) -> Result<(), String> {
+    if !revisions.contains_key(&render.revision_id) {
+        return Err("creative render refers to an unknown revision".into());
+    }
+    validate_render_format(&render.format)?;
+    validate_output_name(&render.output_name)
 }
 
 fn validate_text(value: &str, label: &str) -> Result<(), String> {
@@ -744,6 +837,73 @@ mod tests {
             })
             .unwrap();
         assert_eq!(project.current_revision.as_deref(), Some("rev-1"));
+    }
+
+    #[test]
+    fn duplicate_asset_rejection_preserves_the_original_asset() {
+        let mut project = CreativeProject::new("p-1", "Lake campaign").unwrap();
+        project.import_asset(photo()).unwrap();
+        let replacement = Asset {
+            source_name: "different.png".into(),
+            digest: digest_for(b"different"),
+            ..photo()
+        };
+
+        assert!(project.import_asset(replacement).is_err());
+        assert_eq!(project.assets.get("photo-1"), Some(&photo()));
+    }
+
+    #[test]
+    fn duplicate_revision_rejection_preserves_revision_and_current_pointer() {
+        let mut project = CreativeProject::new("p-1", "Lake campaign").unwrap();
+        project.import_asset(photo()).unwrap();
+        let revision = Revision {
+            id: "rev-1".into(),
+            parent: None,
+            operation: "compose photo layout".into(),
+            asset_ids: vec!["photo-1".into()],
+            caption_cues: vec![],
+            operations: vec![],
+        };
+        project.add_revision(revision.clone()).unwrap();
+        let replacement = Revision {
+            operation: "replace layout".into(),
+            ..revision.clone()
+        };
+
+        assert!(project.add_revision(replacement).is_err());
+        assert_eq!(project.revisions.get("rev-1"), Some(&revision));
+        assert_eq!(project.current_revision.as_deref(), Some("rev-1"));
+    }
+
+    #[test]
+    fn current_revision_follows_admission_order_not_lexical_id_order() {
+        let mut project = CreativeProject::new("p-1", "Lake campaign").unwrap();
+        project.import_asset(photo()).unwrap();
+        for id in ["rev-2", "rev-10"] {
+            project
+                .add_revision(Revision {
+                    id: id.into(),
+                    parent: None,
+                    operation: "compose photo layout".into(),
+                    asset_ids: vec!["photo-1".into()],
+                    caption_cues: vec![],
+                    operations: vec![],
+                })
+                .unwrap();
+        }
+
+        assert_eq!(project.current_revision.as_deref(), Some("rev-10"));
+
+        let root =
+            std::env::temp_dir().join(format!("atlas-creative-order-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        let path = root.join("project.json");
+        project.save(&path).unwrap();
+        let reopened = CreativeProject::load(&path).unwrap();
+        assert_eq!(reopened.current_revision.as_deref(), Some("rev-10"));
+        let _ = std::fs::remove_dir_all(root);
     }
 
     #[test]
@@ -879,6 +1039,8 @@ mod tests {
         let second = renderer.render(&project, &plan).unwrap();
         assert_eq!(first, second);
         assert_eq!(first.media_type, "application/x-atlas-render-plan+svg");
+        project.revisions.get_mut("rev-1").unwrap().operation = "changed after planning".into();
+        assert!(renderer.render(&project, &plan).is_err());
         let stale = RenderPlan {
             output_name: "changed.svg".into(),
             ..plan
@@ -1026,6 +1188,41 @@ mod tests {
     }
 
     #[test]
+    fn staging_rejects_preexisting_destination_without_clobbering() {
+        let root = std::env::temp_dir().join(format!(
+            "atlas-creative-existing-destination-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join("source")).unwrap();
+        std::fs::create_dir_all(root.join("stage")).unwrap();
+        std::fs::write(root.join("source/lake.png"), b"fixture").unwrap();
+        std::fs::write(root.join("stage/lake.png"), b"keep me").unwrap();
+        let mut project = CreativeProject::new("p-1", "Lake campaign").unwrap();
+        project.import_asset(photo()).unwrap();
+        project
+            .add_revision(Revision {
+                id: "rev-1".into(),
+                parent: None,
+                operation: "compose".into(),
+                asset_ids: vec!["photo-1".into()],
+                caption_cues: vec![],
+                operations: vec![],
+            })
+            .unwrap();
+        let plan = project.plan_render("rev-1", "mp4", "out.mp4").unwrap();
+        let error = project
+            .stage_inputs(&plan, &root.join("source"), &root.join("stage"))
+            .unwrap_err();
+        assert!(error.contains("destination already exists"), "{error}");
+        assert_eq!(
+            std::fs::read(root.join("stage/lake.png")).unwrap(),
+            b"keep me"
+        );
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
     fn ffmpeg_execution_fails_closed_before_starting_without_inputs() {
         let plan = RenderPlan {
             revision_id: "rev-1".into(),
@@ -1145,6 +1342,21 @@ mod tests {
             .is_err());
     }
 
+    #[cfg(windows)]
+    #[test]
+    fn ffmpeg_fingerprint_drains_verbose_output_without_pipe_deadlock() {
+        let builder = FfmpegCommandBuilder {
+            executable: format!(
+                "{}\\tests\\fixtures\\ffmpeg-fingerprint-flood.cmd",
+                env!("CARGO_MANIFEST_DIR")
+            ),
+        };
+        let error = builder
+            .fingerprint(std::time::Duration::from_secs(5))
+            .unwrap_err();
+        assert!(error.contains("no version"), "{error}");
+    }
+
     #[test]
     fn a_project_reopens_with_its_revision_history() {
         let root = std::env::temp_dir().join(format!("atlas-creative-{}", std::process::id()));
@@ -1181,6 +1393,96 @@ mod tests {
         let path = root.join("project.json");
         std::fs::write(&path, b"not json").unwrap();
         assert!(CreativeProject::load(&path).is_err());
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn reopen_refuses_semantically_invalid_nested_revisions() {
+        let root = std::env::temp_dir().join(format!(
+            "atlas-creative-invalid-revision-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        let path = root.join("project.json");
+        let mut project = CreativeProject::new("p-1", "Lake campaign").unwrap();
+        project.import_asset(photo()).unwrap();
+        project
+            .add_revision(Revision {
+                id: "rev-1".into(),
+                parent: None,
+                operation: "compose".into(),
+                asset_ids: vec!["photo-1".into()],
+                caption_cues: vec![],
+                operations: vec![],
+            })
+            .unwrap();
+        let base = serde_json::to_value(&project).unwrap();
+        let assert_refused = |value: serde_json::Value| {
+            std::fs::write(&path, serde_json::to_vec(&value).unwrap()).unwrap();
+            assert!(
+                CreativeProject::load(&path).is_err(),
+                "accepted invalid {value}"
+            );
+        };
+
+        let mut missing_asset = base.clone();
+        missing_asset["revisions"]["rev-1"]["asset_ids"][0] = serde_json::json!("missing");
+        assert_refused(missing_asset);
+        let mut empty_operation = base;
+        empty_operation["revisions"]["rev-1"]["operation"] = serde_json::json!("");
+        assert_refused(empty_operation);
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn reopen_refuses_invalid_render_reference_format_and_output() {
+        let root = std::env::temp_dir().join(format!(
+            "atlas-creative-invalid-render-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        let path = root.join("project.json");
+        let mut project = CreativeProject::new("p-1", "Lake campaign").unwrap();
+        project.import_asset(photo()).unwrap();
+        project
+            .add_revision(Revision {
+                id: "rev-1".into(),
+                parent: None,
+                operation: "compose".into(),
+                asset_ids: vec!["photo-1".into()],
+                caption_cues: vec![],
+                operations: vec![],
+            })
+            .unwrap();
+        project
+            .record_render(RenderRecord {
+                revision_id: "rev-1".into(),
+                format: "mp4".into(),
+                output_name: "out.mp4".into(),
+                completed: false,
+                warning: None,
+            })
+            .unwrap();
+        let base = serde_json::to_value(&project).unwrap();
+        let assert_refused = |value: serde_json::Value| {
+            std::fs::write(&path, serde_json::to_vec(&value).unwrap()).unwrap();
+            assert!(
+                CreativeProject::load(&path).is_err(),
+                "accepted invalid {value}"
+            );
+        };
+
+        let mut missing_revision = base.clone();
+        missing_revision["renders"][0]["revision_id"] = serde_json::json!("missing");
+        assert_refused(missing_revision);
+        let mut invalid_format = base.clone();
+        invalid_format["renders"][0]["format"] = serde_json::json!("exe");
+        assert_refused(invalid_format);
+        let mut unsafe_output = base;
+        unsafe_output["renders"][0]["output_name"] = serde_json::json!("../escape.mp4");
+        assert_refused(unsafe_output);
         let _ = std::fs::remove_dir_all(root);
     }
 

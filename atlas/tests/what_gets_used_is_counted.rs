@@ -53,7 +53,7 @@ fn a_free_win_that_is_not_on_has_its_button() {
             get: None,
         },
     ];
-    let html = atlas::hub::recommendations_page(&[], None, &wins);
+    let html = atlas::hub::recommendations_page(&[], None, &wins, 0);
     assert!(html.contains("value='get-understanding'"), "{html}");
     // One button: the win that's on has none.
     assert_eq!(html.matches("<button name=what").count(), 1, "{html}");

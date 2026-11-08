@@ -31,7 +31,10 @@ fn body_of(src: &str, signature_starts_with: &str) -> String {
         .find(signature_starts_with)
         .unwrap_or_else(|| panic!("no function starting `{signature_starts_with}`"));
     let rest = &src[start..];
-    let open = rest.find('{').expect("no body");
+    let open = match rest.find('{') {
+        Some(open) => open,
+        None => panic!("no body for `{signature_starts_with}`"),
+    };
     let mut depth = 0i32;
     for (i, c) in rest[open..].char_indices() {
         if c == '{' {

@@ -366,7 +366,14 @@ fn two_windows_are_worked_side_by_side() {
     // alive at the same time. Three workers lets serial timing hide this
     // under-allocation; under suite concurrency the fourth job correctly
     // remains queued and the test times out waiting for its start signal.
-    d.crew = atlas::crew::Crew::new(4).with_room(Box::new(|| atlas::crew::Room {
+    d.crew = atlas::crew::Crew::with_limits(atlas::crew::Limits {
+        slots: 4,
+        cores: None,
+        waiting_hands: 2,
+        keep_free_mb: 0,
+        battery_floor_percent: 0,
+    })
+    .with_room(Box::new(|| atlas::crew::Room {
         free_mb: Some(8192),
         on_battery: false,
         battery_percent: Some(100),

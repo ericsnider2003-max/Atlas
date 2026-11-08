@@ -25,7 +25,10 @@ fn hourly(from: i64, hours: usize, shape: impl Fn(usize) -> (f64, f64)) -> Bars 
         c.push(mid);
         t.push(from + i as i64 * MS_PER_HOUR);
     }
-    Bars::new(o, h, l, c, t).expect("bars")
+    match Bars::new(o, h, l, c, t) {
+        Ok(bars) => bars,
+        Err(error) => panic!("bars fixture is invalid: {error}"),
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -120,8 +123,14 @@ fn a_completed_night_gives_its_high_and_its_low() {
             (1.1001, 1.0999)
         }
     });
-    let view = bars.latest().unwrap();
-    let night = last_night(&view).expect("a night in six days of bars");
+    let view = match bars.latest() {
+        Ok(view) => view,
+        Err(error) => panic!("six days of bars produced no latest view: {error:?}"),
+    };
+    let night = match last_night(&view) {
+        Some(night) => night,
+        None => panic!("a night in six days of bars"),
+    };
     assert!(
         !night.still_forming,
         "the last bar of this series is not overnight"
@@ -139,10 +148,16 @@ fn a_night_still_in_progress_offers_no_levels_at_all() {
     // Walk forward to a bar that IS overnight and end the series there.
     let end = (1..(24 * 6))
         .find(|h| overnight(start + h * MS_PER_HOUR))
-        .unwrap();
+        .unwrap_or_else(|| panic!("no overnight bar in six days of bars"));
     let bars = hourly(start, end as usize + 1, |_| (1.1010, 1.0990));
-    let view = bars.latest().unwrap();
-    let night = last_night(&view).expect("the session in progress");
+    let view = match bars.latest() {
+        Ok(view) => view,
+        Err(error) => panic!("overnight fixture produced no latest view: {error:?}"),
+    };
+    let night = match last_night(&view) {
+        Some(night) => night,
+        None => panic!("the session in progress"),
+    };
     assert!(night.still_forming);
     assert!(
         levels(&view).is_empty(),
@@ -154,15 +169,20 @@ fn a_night_still_in_progress_offers_no_levels_at_all() {
 #[test]
 fn bars_with_no_times_get_nothing_rather_than_a_guess() {
     let closes: Vec<f64> = (0..100).map(|i| 1.1 + (i % 7) as f64 * 1e-4).collect();
-    let bars = Bars::new(
+    let bars = match Bars::new(
         closes.clone(),
         closes.iter().map(|c| c + 1e-4).collect(),
         closes.iter().map(|c| c - 1e-4).collect(),
         closes,
         Vec::new(),
-    )
-    .unwrap();
-    let view = bars.latest().unwrap();
+    ) {
+        Ok(bars) => bars,
+        Err(error) => panic!("untimed bars fixture is invalid: {error}"),
+    };
+    let view = match bars.latest() {
+        Ok(view) => view,
+        Err(error) => panic!("untimed bars produced no latest view: {error:?}"),
+    };
     assert_eq!(last_night(&view), None);
     assert!(levels(&view).is_empty());
     assert!(spoken(&view).contains("no times"));
@@ -188,8 +208,14 @@ fn how_wide_the_night_was_is_a_fraction_of_this_markets_own_days() {
             (1.1050, 1.0950)
         }
     });
-    let view = bars.latest().unwrap();
-    let share = against_a_normal_day(&view).expect("enough complete days to compare against");
+    let view = match bars.latest() {
+        Ok(view) => view,
+        Err(error) => panic!("historical bars produced no latest view: {error:?}"),
+    };
+    let share = match against_a_normal_day(&view) {
+        Some(share) => share,
+        None => panic!("enough complete days to compare against"),
+    };
     assert!(share > 0.0 && share < 0.5, "night was {share:.2} of a day");
     assert!(spoken(&view).contains("of a normal day"));
 }
@@ -203,7 +229,10 @@ fn too_little_history_to_compare_against_says_so_instead_of_guessing() {
         .find(|h| !overnight(start + h * MS_PER_HOUR) && overnight(start + (h - 1) * MS_PER_HOUR));
     let Some(end) = end else { return };
     let bars = hourly(start, end as usize + 1, |_| (1.1010, 1.0990));
-    let view = bars.latest().unwrap();
+    let view = match bars.latest() {
+        Ok(view) => view,
+        Err(error) => panic!("short history produced no latest view: {error:?}"),
+    };
     assert_eq!(against_a_normal_day(&view), None);
     assert!(spoken(&view).contains("not going to guess"));
 }
@@ -227,7 +256,10 @@ fn the_overnight_lines_reach_the_place_targets_are_chosen() {
             (1.1050, 1.0950)
         }
     });
-    let view = bars.latest().unwrap();
+    let view = match bars.latest() {
+        Ok(view) => view,
+        Err(error) => panic!("wiring fixture produced no latest view: {error:?}"),
+    };
     assert!(
         !levels(&view).is_empty(),
         "the fixture must end outside the overnight session"

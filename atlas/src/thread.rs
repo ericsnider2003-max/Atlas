@@ -60,6 +60,11 @@ pub struct Thread {
     /// What you were last working on, so a return is a continuation.
     #[serde(default)]
     pub current_topic: Option<String>,
+    /// A bounded exact-text projection of facts that compaction must not lose.
+    /// This is not a second conversation store: it is the small protected
+    /// subset used to repair the existing running summary after later folds.
+    #[serde(default)]
+    pub protected_anchors: Vec<String>,
     /// A failed load must not be mistaken for a new empty conversation.
     /// Keep the error out of persisted state and refuse to overwrite the
     /// evidence until the caller explicitly recovers it.
@@ -69,9 +74,15 @@ pub struct Thread {
 }
 
 impl Thread {
+    const PROTECTED_ANCHORS_MAX: usize = 12;
+    const PROTECTED_ANCHOR_CHARS: usize = 240;
+
     pub fn load(store: &Store) -> Thread {
         match store.load_checked_bounded::<Thread>("thread", 8 * 1_048_576) {
-            Ok(Some(thread)) => thread,
+            Ok(Some(mut thread)) => {
+                thread.sanitize_protected_anchors();
+                thread
+            }
             Ok(None) => Thread::default(),
             Err(error) => {
                 let message = format!("thread could not be loaded safely: {error}");
@@ -90,6 +101,85 @@ impl Thread {
             )));
         }
         store.save("thread", self)
+    }
+
+    /// Keep the protected projection bounded and deterministic, including
+    /// when an older persisted file was produced before this field existed.
+    fn sanitize_protected_anchors(&mut self) {
+        let mut kept = Vec::new();
+        for anchor in self.protected_anchors.drain(..) {
+            let trimmed = anchor.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            let end = trimmed
+                .char_indices()
+                .map(|(i, _)| i)
+                .nth(Self::PROTECTED_ANCHOR_CHARS)
+                .unwrap_or(trimmed.len());
+            let clipped = trimmed[..end].trim_end().to_string();
+            if !kept.iter().any(|existing: &String| existing == &clipped) {
+                kept.push(clipped);
+            }
+            if kept.len() == Self::PROTECTED_ANCHORS_MAX {
+                break;
+            }
+        }
+        self.protected_anchors = kept;
+    }
+
+    fn retain_protected_anchors(&mut self, exchanges: &[Exchange]) {
+        self.protected_anchors.extend(must_keep(exchanges));
+        self.sanitize_protected_anchors();
+    }
+
+    /// Make the protected projection part of the existing summary only when
+    /// the summary does not already contain the exact anchor. Exact text is
+    /// deliberate: a paraphrase is not sufficient proof that a path, number,
+    /// date, or decision survived compaction.
+    fn summary_with_protected_anchors(&self, summary: &str) -> String {
+        let mut out = summary.trim().to_string();
+        let lower = out.to_lowercase();
+        let missing: Vec<&str> = self
+            .protected_anchors
+            .iter()
+            .filter(|anchor| !lower.contains(&anchor.to_lowercase()))
+            .map(String::as_str)
+            .collect();
+        if !missing.is_empty() {
+            if !out.is_empty() {
+                out.push(' ');
+            }
+            out.push_str("Protected anchors: ");
+            out.push_str(&missing.join(" / "));
+        }
+        out
+    }
+
+    /// Render as many complete protected anchors as the caller's remaining
+    /// character budget can hold. A partial path, number, or date is worse
+    /// than an explicit omission, so anchors are never split mid-line.
+    fn protected_anchor_block(&self, max_chars: usize) -> String {
+        if self.protected_anchors.is_empty() {
+            return String::new();
+        }
+        let header = "Protected anchors:\n";
+        if max_chars < header.len() {
+            return String::new();
+        }
+        let mut out = header.to_string();
+        for anchor in &self.protected_anchors {
+            let line = format!("- {anchor}\n");
+            if out.len().saturating_add(line.len()) > max_chars {
+                break;
+            }
+            out.push_str(&line);
+        }
+        if out != header {
+            out
+        } else {
+            String::new()
+        }
     }
 
     pub fn append(&mut self, said: &str, reply: &str, about: Option<String>, t: u64) {
@@ -148,13 +238,15 @@ impl Thread {
     /// The thread is never truncated — it is compressed. Dropping old turns
     /// outright is what makes an assistant feel amnesiac.
     pub fn fold(&mut self, new_summary: &str, cfg: &ThreadConfig) {
-        let n = self.foldable(cfg).len();
+        let old = self.foldable(cfg).to_vec();
+        let n = old.len();
         if n == 0 {
             return;
         }
+        self.retain_protected_anchors(&old);
         self.recent.drain(0..n);
         self.folded += n;
-        self.summary = new_summary.trim().to_string();
+        self.summary = self.summary_with_protected_anchors(new_summary);
     }
 
     /// Fold the first `n` exchanges into `new_summary` — the number that was
@@ -164,9 +256,11 @@ impl Thread {
         if n == 0 {
             return;
         }
+        let old = self.recent[..n].to_vec();
+        self.retain_protected_anchors(&old);
         self.recent.drain(0..n);
         self.folded += n;
-        self.summary = new_summary.trim().to_string();
+        self.summary = self.summary_with_protected_anchors(new_summary);
     }
 
     /// What to hand the model for folding: the notes so far, and what the
@@ -176,32 +270,79 @@ impl Thread {
     /// and the summary goes in front of every turn after, so the loop was
     /// fed back in forever.
     pub fn fold_input(&self, cfg: &ThreadConfig) -> String {
-        let mut s = String::new();
         let replies: Vec<&str> = self.recent.iter().map(|e| e.reply.as_str()).collect();
-        let summary = clean_summary(&self.summary, &replies);
+        let summary = self.summary_with_protected_anchors(&clean_summary(&self.summary, &replies));
+        let user_lines: Vec<String> = self
+            .foldable(cfg)
+            .iter()
+            .filter(|e| !e.said.trim().is_empty())
+            .map(|e| format!("- {}\n", e.said.trim()))
+            .collect();
+        let mut full = String::new();
         if !summary.trim().is_empty() {
-            s.push_str("Notes so far:\n");
-            s.push_str(summary.trim());
-            s.push_str("\n\n");
+            full.push_str("Notes so far:\n");
+            full.push_str(summary.trim());
+            full.push_str("\n\n");
         }
-        s.push_str("What the user said since, in order:\n");
-        for e in self.foldable(cfg) {
-            if !e.said.trim().is_empty() {
-                s.push_str(&format!("- {}\n", e.said.trim()));
+        full.push_str("What the user said since, in order:\n");
+        for line in &user_lines {
+            full.push_str(line);
+        }
+        if full.len() <= cfg.context_chars {
+            return full;
+        }
+
+        // Folding is itself a model request, so the same context boundary
+        // applies here as it does to ordinary turns. Keep complete protected
+        // lines and the newest user lines first; the older narrative is the
+        // part that can be shortened without turning a path or number into a
+        // misleading fragment.
+        let mut bounded = self.protected_anchor_block(cfg.context_chars);
+        let header = "What the user said since, in order:\n";
+        let header_end = if bounded.len().saturating_add(header.len()) <= cfg.context_chars {
+            bounded.push_str(header);
+            Some(bounded.len())
+        } else {
+            None
+        };
+        for line in user_lines.iter().rev() {
+            if bounded.len().saturating_add(line.len()) > cfg.context_chars {
+                break;
+            }
+            if let Some(insert_at) = header_end {
+                bounded.insert_str(insert_at, line);
+            } else {
+                bounded.push_str(line);
             }
         }
-        s
+        if bounded.len() < cfg.context_chars && !summary.trim().is_empty() {
+            let label = "Notes so far:\n";
+            let room = cfg.context_chars.saturating_sub(bounded.len());
+            if room > label.len() {
+                bounded.push_str(label);
+                let room = cfg.context_chars.saturating_sub(bounded.len());
+                let end = summary.floor_char_boundary(room);
+                bounded.push_str(&summary[..end]);
+            }
+        }
+        bounded
     }
 
     /// Context for an ordinary turn: the summary, then recent exchanges
     /// verbatim, newest last, inside a character budget.
     pub fn context(&self, cfg: &ThreadConfig) -> String {
+        // Protected anchors are a custody boundary, not optional summary
+        // prose. Reserve their complete-line projection before admitting
+        // recent exchanges, otherwise an exact-fit recent turn suppresses the
+        // summary branch and silently drops a path, number, or decision.
+        let protected = self.protected_anchor_block(cfg.context_chars);
+        let recent_budget = cfg.context_chars.saturating_sub(protected.len());
         let mut parts: Vec<String> = Vec::new();
         let mut used = 0usize;
 
         for e in self.recent.iter().rev() {
             let line = format!("you: {}\natlas: {}", e.said, e.reply);
-            if used + line.len() > cfg.context_chars {
+            if used + line.len() > recent_budget {
                 break;
             }
             used += line.len();
@@ -210,12 +351,11 @@ impl Thread {
         parts.reverse();
 
         let mut out = String::new();
-        if !self.summary.is_empty() && used < cfg.context_chars {
+        out.push_str(&protected);
+        if !self.summary.is_empty() && used < recent_budget {
             let prefix = "Earlier: ";
             let suffix = "\n\n";
-            let room = cfg
-                .context_chars
-                .saturating_sub(used + prefix.len() + suffix.len());
+            let room = recent_budget.saturating_sub(used + prefix.len() + suffix.len());
             if room > 0 {
                 let end = self.summary.floor_char_boundary(room);
                 out.push_str(prefix);
@@ -290,7 +430,7 @@ impl Thread {
         // The summary as it can be trusted: a summary written before 29 Sep
         // 2026 may hold Atlas's own reply boilerplate (`clean_summary`).
         let replies: Vec<&str> = self.recent.iter().map(|e| e.reply.as_str()).collect();
-        let summary = clean_summary(&self.summary, &replies);
+        let summary = self.summary_with_protected_anchors(&clean_summary(&self.summary, &replies));
         // What Atlas said without being asked (finished research, an errand
         // done): no turn of yours to hang it on, so the model is told it
         // here, the last few only (30 Sep 2026: results said into the room
@@ -324,9 +464,17 @@ impl Thread {
         // that remains; otherwise repeated folds can create a valid but
         // unbounded system message that crowds the current turn out.
         let summary_room = budget.saturating_sub(size_from(from));
-        if earlier.len() > summary_room {
-            earlier.truncate(earlier.floor_char_boundary(summary_room));
+        let protected = self.protected_anchor_block(summary_room);
+        let narrative_room = summary_room.saturating_sub(protected.len());
+        if earlier.len() > narrative_room {
+            earlier.truncate(earlier.floor_char_boundary(narrative_room));
             earlier = earlier.trim_end().to_string();
+        }
+        if !protected.is_empty() {
+            if !earlier.is_empty() {
+                earlier.push('\n');
+            }
+            earlier.push_str(&protected);
         }
         if !earlier.is_empty() {
             out.push(Msg::system(earlier));
@@ -819,4 +967,127 @@ pub fn plain_fold(earlier: &str, exchanges: &[Exchange]) -> String {
         out.push_str(&format!("Talked about {}.", topics.join(", ")));
     }
     with_the_important_kept(&out, exchanges, earlier)
+}
+
+#[cfg(test)]
+mod protected_anchor_tests {
+    use super::*;
+
+    fn exchange(said: &str) -> Exchange {
+        Exchange {
+            at: 0,
+            said: said.into(),
+            reply: String::new(),
+            about: None,
+        }
+    }
+
+    #[test]
+    fn protected_anchors_survive_later_folds_and_serialization() {
+        let mut thread = Thread::default();
+        thread.recent = vec![
+            exchange("remember the deployment token alias is A-4471"),
+            exchange("we decided to use the Atlas route on Friday"),
+        ];
+
+        thread.fold_first(2, "A short unrelated summary.");
+        assert_eq!(thread.folded, 2);
+        assert!(thread
+            .summary
+            .contains("remember the deployment token alias is A-4471"));
+        assert!(thread
+            .summary
+            .contains("we decided to use the Atlas route on Friday"));
+        let shown = thread
+            .messages(12, 4000)
+            .into_iter()
+            .map(|message| message.content)
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(shown.contains("Protected anchors:"));
+        assert!(shown.contains("A-4471"));
+
+        thread.append("a later ordinary exchange", "okay", None, 1);
+        thread.fold_first(1, "The later fold omitted the old decisions.");
+        assert!(thread.summary.contains("A-4471"));
+        assert!(thread.summary.contains("Atlas route on Friday"));
+
+        let encoded = serde_json::to_vec(&thread).unwrap();
+        let decoded: Thread = serde_json::from_slice(&encoded).unwrap();
+        assert_eq!(decoded.protected_anchors, thread.protected_anchors);
+        assert!(decoded.summary.contains("A-4471"));
+    }
+
+    #[test]
+    fn protected_anchor_projection_is_bounded_and_clipped() {
+        let mut thread = Thread {
+            protected_anchors: (0..32)
+                .map(|n| format!("remember anchor {n} {}", "x".repeat(300)))
+                .collect(),
+            ..Default::default()
+        };
+        thread.sanitize_protected_anchors();
+        assert_eq!(
+            thread.protected_anchors.len(),
+            Thread::PROTECTED_ANCHORS_MAX
+        );
+        assert!(thread
+            .protected_anchors
+            .iter()
+            .all(|anchor| anchor.chars().count() <= Thread::PROTECTED_ANCHOR_CHARS));
+    }
+
+    #[test]
+    fn fold_input_keeps_the_budget_when_the_summary_is_already_large() {
+        let mut thread = Thread {
+            summary: "old narrative ".repeat(500),
+            protected_anchors: vec!["remember the exact path C:/Atlas/keep.txt".into()],
+            ..Default::default()
+        };
+        let cfg = ThreadConfig {
+            context_chars: 180,
+            ..Default::default()
+        };
+        let input = thread.fold_input(&cfg);
+        assert!(
+            input.len() <= cfg.context_chars,
+            "{} > {}",
+            input.len(),
+            cfg.context_chars
+        );
+        assert!(input.contains("C:/Atlas/keep.txt"), "{input}");
+        thread.sanitize_protected_anchors();
+    }
+
+    #[test]
+    fn ordinary_context_reserves_room_for_complete_protected_anchors() {
+        let mut thread = Thread {
+            protected_anchors: vec!["remember the exact path C:/Atlas/keep.txt".into()],
+            ..Default::default()
+        };
+        thread.append(
+            "a current request that fills the window",
+            "a current reply that fills the window",
+            None,
+            1,
+        );
+        let recent_line = format!(
+            "you: {}\natlas: {}",
+            thread.recent[0].said, thread.recent[0].reply
+        );
+        let cfg = ThreadConfig {
+            context_chars: recent_line.len(),
+            ..Default::default()
+        };
+
+        let context = thread.context(&cfg);
+        assert!(context.len() <= cfg.context_chars, "{context:?}");
+        assert!(context.contains("C:/Atlas/keep.txt"), "{context:?}");
+        assert!(
+            context
+                .lines()
+                .any(|line| line == "- remember the exact path C:/Atlas/keep.txt"),
+            "anchor was not retained as a complete line: {context:?}"
+        );
+    }
 }

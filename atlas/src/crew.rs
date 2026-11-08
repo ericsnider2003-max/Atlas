@@ -451,6 +451,7 @@ struct Pending {
 /// The crew itself.
 pub struct Crew {
     limits: Limits,
+    strict_shutdown: bool,
     hands: Vec<Hand>,
     waiting: VecDeque<Pending>,
     next_id: u64,
@@ -474,6 +475,7 @@ impl Crew {
         };
         Crew {
             limits,
+            strict_shutdown: false,
             hands: Vec::new(),
             waiting: VecDeque::new(),
             next_id: 0,
@@ -488,6 +490,14 @@ impl Crew {
     /// something that thinks is about to start, and trusted for five seconds.
     pub fn with_room(mut self, room: Box<dyn Fn() -> Room + Send>) -> Crew {
         self.room = room;
+        self
+    }
+
+    /// Join workers during teardown when the integration harness needs to
+    /// prove that no worker can retain a state lock after its owner drops.
+    /// Ordinary crews keep the bounded production shutdown contract.
+    pub fn with_strict_shutdown(mut self, strict: bool) -> Crew {
+        self.strict_shutdown = strict;
         self
     }
 
@@ -683,18 +693,42 @@ impl Crew {
     pub fn wait_for_stop(&mut self) {
         let deadline = Instant::now() + Duration::from_secs(SHUTDOWN_DEADLINE_SECS);
         for h in self.hands.drain(..) {
-            let remaining = deadline.saturating_duration_since(Instant::now());
-            if h.rx.recv_timeout(remaining).is_ok() {
-                // Receiving the result proves the worker completed its work,
-                // but the thread may still be unwinding and running its final
-                // cleanup. Reclaim that OS thread before dropping the owner;
-                // otherwise every short-lived daemon in an aggregate test
-                // process leaves a detached worker behind. A worker that did
-                // not answer before the deadline remains detached so shutdown
-                // still has a hard upper bound.
-                if let Some(thread) = h.thread {
+            // The result channel is only a notification; an errand is allowed
+            // to ignore the cooperative stop flag. Never use `join()` as a
+            // timeout: once the deadline has expired, joining an uncooperative
+            // worker would hang shutdown forever. A finished worker is joined
+            // to reclaim its resources; an unfinished one is deliberately
+            // detached by dropping its handle, and the process can still exit.
+            if let Some(thread) = h.thread {
+                while !thread.is_finished() && Instant::now() < deadline {
+                    std::thread::sleep(Duration::from_millis(10));
+                }
+                if thread.is_finished() {
                     let _ = thread.join();
                 }
+            } else {
+                let remaining = deadline.saturating_duration_since(Instant::now());
+                let _ = h.rx.recv_timeout(remaining);
+            }
+        }
+    }
+
+    /// Stop and reclaim every worker using the configured lifecycle policy.
+    /// The integration harness opts into strict joining; production keeps
+    /// the bounded shutdown behavior of `wait_for_stop`.
+    pub fn shutdown(&mut self) {
+        self.ask_everyone_to_stop();
+        if self.strict_shutdown {
+            self.wait_for_stop_strict();
+        } else {
+            self.wait_for_stop();
+        }
+    }
+
+    fn wait_for_stop_strict(&mut self) {
+        for mut h in self.hands.drain(..) {
+            if let Some(thread) = h.thread.take() {
+                let _ = thread.join();
             }
         }
     }
@@ -1152,8 +1186,7 @@ impl Crew {
 
 impl Drop for Crew {
     fn drop(&mut self) {
-        self.ask_everyone_to_stop();
-        self.wait_for_stop();
+        self.shutdown();
     }
 }
 

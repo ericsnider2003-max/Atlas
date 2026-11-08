@@ -221,10 +221,16 @@ fn background_errands_are_called_off_before_the_saving_starts() {
     let mut crew = atlas::crew::Crew::new(2);
     let stopped = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
     let flag = stopped.clone();
+    let (started_tx, started_rx) = std::sync::mpsc::channel();
     crew.hand(
         "a long errand",
         0,
         Box::new(move |asked| {
+            // Establish the precondition this test is about to assert. A
+            // fixed sleep only guesses when the worker got a Windows thread
+            // slice; under the full aggregate that guess can expire before
+            // the worker has entered the closure at all.
+            let _ = started_tx.send(());
             for _ in 0..200 {
                 if asked.stopping() {
                     flag.store(true, std::sync::atomic::Ordering::SeqCst);
@@ -237,8 +243,9 @@ fn background_errands_are_called_off_before_the_saving_starts() {
     )
     .expect("a free hand");
 
-    // Give the errand a moment to actually be running.
-    std::thread::sleep(std::time::Duration::from_millis(50));
+    started_rx
+        .recv_timeout(std::time::Duration::from_secs(3))
+        .expect("the errand did not start within the bounded test window");
     assert_eq!(
         crew.ask_everyone_to_stop(),
         1,

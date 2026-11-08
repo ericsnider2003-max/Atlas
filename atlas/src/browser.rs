@@ -11,7 +11,12 @@ use crate::cdp::{ws_url_from_targets, Cdp};
 use crate::error::{AtlasError, Result};
 use crate::tools::{ExternalTool, Vars};
 use serde::Deserialize;
+use std::net::TcpListener;
+use std::path::Path;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
+
+static FENCED_BROWSER_SEQ: AtomicU64 = AtomicU64::new(1);
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
@@ -137,6 +142,58 @@ mod fixture_browser {
     }
 }
 
+#[cfg(test)]
+mod fenced_launch_tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    #[test]
+    fn research_browser_replaces_ambient_port_profile_and_network_policy() {
+        let launch = ExternalTool {
+            command: "chrome".into(),
+            args: vec![
+                "--remote-debugging-port=9222".into(),
+                "--user-data-dir=data/chrome-profile".into(),
+                "--host-resolver-rules=MAP old.example 192.0.2.1".into(),
+                "--proxy-server=http://127.0.0.1:9".into(),
+                "--proxy-bypass-list=*".into(),
+                "--headless=new".into(),
+            ],
+            ..Default::default()
+        };
+        let result = fenced_launch(
+            &launch,
+            43127,
+            &PathBuf::from("data/research-browser-test"),
+            "news.example.org",
+            "93.184.215.14".parse().unwrap(),
+        );
+
+        assert!(result
+            .args
+            .contains(&"--remote-debugging-port=43127".into()));
+        assert!(result
+            .args
+            .contains(&"--user-data-dir=data/research-browser-test".into()));
+        assert!(result
+            .args
+            .contains(&"--host-resolver-rules=MAP news.example.org 93.184.215.14".into()));
+        assert!(result
+            .args
+            .contains(&"--proxy-server=http://127.0.0.1:9".into()));
+        assert!(result
+            .args
+            .contains(&"--proxy-bypass-list=<-loopback>;news.example.org".into()));
+        assert!(!result.args.iter().any(|arg| {
+            arg == "--remote-debugging-port=9222"
+                || arg == "--user-data-dir=data/chrome-profile"
+                || arg == "--host-resolver-rules=MAP old.example 192.0.2.1"
+                || arg == "--proxy-bypass-list=*"
+        }));
+        assert!(result.args.contains(&"--headless=new".into()));
+    }
+}
+
 impl Browser {
     /// Attach to a Chrome already listening on the debug port.
     pub fn attach(cfg: &BrowserConfig) -> Result<Browser> {
@@ -162,8 +219,14 @@ impl Browser {
     /// fixed amount, so a fast machine isn't punished and a slow one isn't cut
     /// off early.
     pub fn start(cfg: &BrowserConfig, vars: &Vars) -> Result<Browser> {
-        if let Ok(b) = Browser::attach(cfg) {
-            return Ok(b);
+        Self::start_inner(cfg, vars, true)
+    }
+
+    fn start_inner(cfg: &BrowserConfig, vars: &Vars, reuse_existing: bool) -> Result<Browser> {
+        if reuse_existing {
+            if let Ok(b) = Browser::attach(cfg) {
+                return Ok(b);
+            }
         }
         let tool = cfg
             .launch
@@ -205,6 +268,33 @@ impl Browser {
             std::thread::sleep(Duration::from_millis(200));
         }
         Err(last.unwrap_or_else(|| AtlasError::Platform("Chrome never came up".into())))
+    }
+
+    /// Start a browser that cannot reuse Atlas's ordinary browser or a user's
+    /// existing CDP session. Research has already checked `host` resolves to
+    /// `ip`; keep every browser connection on that address and use a fresh
+    /// port/profile so the check cannot be bypassed by `start` attaching to a
+    /// browser that was launched without these flags.
+    pub fn start_fenced(
+        cfg: &BrowserConfig,
+        vars: &Vars,
+        host: &str,
+        ip: std::net::IpAddr,
+    ) -> Result<Browser> {
+        let port = TcpListener::bind(("127.0.0.1", 0))?.local_addr()?.port();
+        let profile = crate::roots::data_home().join(format!(
+            "research-browser-{}-{}",
+            std::process::id(),
+            FENCED_BROWSER_SEQ.fetch_add(1, Ordering::Relaxed)
+        ));
+        let launch = cfg
+            .launch
+            .as_ref()
+            .ok_or_else(|| AtlasError::Config("no browser launch command configured".into()))?;
+        let mut isolated = cfg.clone();
+        isolated.port = port;
+        isolated.launch = Some(fenced_launch(launch, port, &profile, host, ip));
+        Self::start_inner(&isolated, vars, false)
     }
 
     pub fn open(&mut self, url: &str) -> Result<()> {
@@ -622,6 +712,41 @@ pub fn media_problem(
         .iter()
         .find(|f| !std::path::Path::new(f.as_str()).is_absolute() || !exists(f))
         .map(|f| format!("the file to attach isn't there any more: {f}"))
+}
+
+/// Add the network and isolation flags to an existing Chrome command. Remove
+/// the command's old port/profile/policy first: duplicate Chrome flags are
+/// implementation-defined, so leaving configured values in place would make
+/// the fence depend on argument ordering.
+fn fenced_launch(
+    launch: &ExternalTool,
+    port: u16,
+    profile: &Path,
+    host: &str,
+    ip: std::net::IpAddr,
+) -> ExternalTool {
+    let at = match ip {
+        std::net::IpAddr::V6(v) => format!("[{v}]"),
+        std::net::IpAddr::V4(v) => v.to_string(),
+    };
+    let mut fenced = launch.clone();
+    fenced.args.retain(|arg| {
+        !arg.starts_with("--remote-debugging-port=")
+            && !arg.starts_with("--user-data-dir=")
+            && !arg.starts_with("--host-resolver-rules=")
+            && !arg.starts_with("--proxy-server=")
+            && !arg.starts_with("--proxy-bypass-list=")
+    });
+    let mut args = vec![
+        format!("--remote-debugging-port={port}"),
+        format!("--user-data-dir={}", profile.display()),
+        format!("--host-resolver-rules=MAP {host} {at}"),
+        "--proxy-server=http://127.0.0.1:9".into(),
+        format!("--proxy-bypass-list=<-loopback>;{host}"),
+    ];
+    args.append(&mut fenced.args);
+    fenced.args = args;
+    fenced
 }
 
 pub fn post_plan(p: &SiteProfile, text: &str, approved: bool) -> Vec<PostStep> {

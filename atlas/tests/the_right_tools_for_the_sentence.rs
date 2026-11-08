@@ -207,6 +207,7 @@ impl Llm for Spy {
         Ok(ChatReply {
             text: "Sure.".into(),
             tool_calls: vec![],
+            execution: Default::default(),
         })
     }
 }
@@ -261,6 +262,7 @@ fn a_normal_turn_is_under_nine_hundred_tokens_and_starts_the_same_every_time() {
         folded: 71,
         last_active: 1_790_740_000,
         current_topic: None,
+        protected_anchors: Vec::new(),
         load_error: None,
     };
     store.save("thread", &start).unwrap();

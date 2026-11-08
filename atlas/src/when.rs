@@ -387,6 +387,7 @@ pub fn parse(text: &str, now: u64) -> Option<Parsed> {
     let mut why: Option<String> = None;
     let mut guessed = false;
     let mut offset: Option<u64> = None;
+    let mut tomorrow_needs_clarification = false;
     let unsure = |s: &mut bool, why: &mut Option<String>, reason: String| {
         *s = false;
         why.get_or_insert(reason);
@@ -513,7 +514,10 @@ pub fn parse(text: &str, now: u64) -> Option<Parsed> {
                 } else {
                     day = Some(today + DAY);
                     if nowc.hour < 4 {
-                        unsure(&mut sure, &mut why, "it's past midnight -- \"tomorrow\" as in later today, or the day after?".into());
+                        // Keep a bare "tomorrow" cautious before 4 a.m., but
+                        // defer the decision until after the clock is parsed:
+                        // "tomorrow at 9am" is explicit and unambiguous.
+                        tomorrow_needs_clarification = true;
                     }
                 }
             }
@@ -790,6 +794,18 @@ pub fn parse(text: &str, now: u64) -> Option<Parsed> {
         }
     }
 
+    // Before 4 a.m., a bare hour such as "tomorrow at 10" is ambiguous:
+    // it may mean 10 a.m. later today or the following day's 10 a.m. An
+    // explicit meridiem ("10am") is clear, as is a clock phrase that was
+    // not guessed from a bare number.
+    if tomorrow_needs_clarification && (minute.is_none() || guessed) {
+        unsure(
+            &mut sure,
+            &mut why,
+            "it's past midnight -- \"tomorrow\" as in later today, or the day after?".into(),
+        );
+    }
+
     if let Some(off) = offset {
         if day.is_none() || minute.is_none() {
             // Offsets of minutes and hours are a moment; of days, a day.
@@ -930,5 +946,20 @@ mod tests {
         assert_eq!(n.start, at(2026, 9, 28, 0, 0));
         assert!(n.sure);
         assert!(!parse("3/4 at noon", now()).unwrap().sure);
+    }
+
+    #[test]
+    fn an_explicit_time_resolves_tomorrow_even_before_four() {
+        let two_am = at(2026, 9, 23, 2, 0);
+        let parsed = parse("tomorrow at 9am", two_am).unwrap();
+        assert!(parsed.sure);
+        assert_eq!(parsed.start, at(2026, 9, 24, 9, 0));
+    }
+
+    #[test]
+    fn bare_tomorrow_still_asks_before_four() {
+        let two_am = at(2026, 9, 23, 2, 0);
+        let parsed = parse("tomorrow", two_am).unwrap();
+        assert!(!parsed.sure);
     }
 }

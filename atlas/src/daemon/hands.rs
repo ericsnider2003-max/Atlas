@@ -4,6 +4,18 @@
 //! Moved out of `daemon.rs` unchanged on 29 Sep 2026 (docs/refactor-plan-daemon-split.md).
 
 use super::*;
+
+static AUDIO_OUTPUT_ENUMERATION: std::sync::Mutex<()> = std::sync::Mutex::new(());
+static AUDIO_OUTPUTS: std::sync::OnceLock<Vec<crate::audio::Device>> = std::sync::OnceLock::new();
+
+fn cached_output_devices() -> Vec<crate::audio::Device> {
+    let _guard = AUDIO_OUTPUT_ENUMERATION
+        .lock()
+        .unwrap_or_else(|poison| poison.into_inner());
+    AUDIO_OUTPUTS
+        .get_or_init(crate::playout::output_devices)
+        .clone()
+}
 use std::io::Read;
 
 const MAX_TRAY_TEXT_BYTES: u64 = 64 * 1024 * 1024;
@@ -2502,7 +2514,17 @@ impl<'a> Daemon<'a> {
         }
         if let Some(h) = self.audio_probe.take() {
             match h.join() {
-                Ok(Ok(list)) => self.audio_devices = Some(list),
+                Ok(Ok(mut list)) => {
+                    // WASAPI enumeration is thread-affine on Windows. Keep
+                    // the FFmpeg probe off the control loop, but perform the
+                    // native output-device query here after joining that
+                    // worker; calling it from the worker can crash the next
+                    // daemon/test in the process.
+                    if !list.iter().any(|d| d.kind == crate::audio::Kind::Output) {
+                        list.extend(cached_output_devices());
+                    }
+                    self.audio_devices = Some(list);
+                }
                 Ok(Err(e)) => {
                     self.log.warn(&format!(
                         "couldn't list the sound devices (trying again in five minutes): {e}"
@@ -2524,16 +2546,7 @@ impl<'a> Daemon<'a> {
             .and_then(|t| t.vars.get("ffmpeg").cloned())
             .unwrap_or_else(|| "ffmpeg".into());
         self.audio_probe = Some(std::thread::spawn(move || {
-            crate::audio::probe_devices(&ffmpeg)
-                .map(|mut list| {
-                    // With the speakers too, where the listing names none (Windows):
-                    // a notice then knows it is going into your headphones (29 Sep 2026).
-                    if !list.iter().any(|d| d.kind == crate::audio::Kind::Output) {
-                        list.extend(crate::playout::output_devices());
-                    }
-                    list
-                })
-                .map_err(|e| e.to_string())
+            crate::audio::probe_devices(&ffmpeg).map_err(|e| e.to_string())
         }));
     }
 

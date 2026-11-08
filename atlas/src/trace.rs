@@ -55,6 +55,14 @@ pub struct Call {
     /// buckets are these, counted.
     #[serde(default)]
     pub why: Option<String>,
+    /// The provider's own timing payload for this recorded call, when the
+    /// provider returned one. Optional so old trace files remain readable and
+    /// local/non-chat calls do not acquire invented provider numbers.
+    #[serde(default)]
+    pub server_timings: Option<crate::models::ServerTimings>,
+    /// Non-sensitive gateway routing facts for this call, when available.
+    #[serde(default)]
+    pub execution_metadata: Option<crate::execution::ExecutionMetadata>,
 }
 
 impl Call {
@@ -72,6 +80,8 @@ impl Call {
             correction: None,
             id: 0,
             why: None,
+            server_timings: None,
+            execution_metadata: None,
         }
     }
 
@@ -777,4 +787,16 @@ pub fn example_of(t: &Trace, id: u64, words: &Words) -> Option<Example> {
         user: scrub(&words.user),
         reply: scrub(&words.reply),
     })
+}
+
+#[cfg(test)]
+mod compatibility_tests {
+    use super::Call;
+
+    #[test]
+    fn old_call_json_defaults_new_execution_metadata_to_none() {
+        let old = r#"{"at":1,"asked_by":"test","model":"local","took_ms":2,"prompt_chars":3,"reply_chars":4,"failed":null}"#;
+        let call: Call = serde_json::from_str(old).unwrap();
+        assert_eq!(call.execution_metadata, None);
+    }
 }

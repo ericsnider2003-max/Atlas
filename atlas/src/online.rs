@@ -40,6 +40,10 @@ use crate::certainty::{self, CertaintyConfig, Confidence, Grounding};
 use crate::tools::ExternalTool;
 use serde::Deserialize;
 
+pub use crate::freellmapi::{
+    FreeLlmApiConfig, FreeLlmApiLlm, FreeLlmApiMetadata, DEFAULT_FREELLMAPI_MODEL,
+};
+
 /// The Cloudflare provider, as configured in `tools.yaml`.
 ///
 /// Ships disabled and empty: this is the one thing here that reaches a

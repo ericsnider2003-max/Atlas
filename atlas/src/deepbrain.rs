@@ -1167,6 +1167,7 @@ mod bounded_background_requests {
                 return Ok(ChatReply {
                     text: "rest".into(),
                     tool_calls: vec![],
+                    execution: Default::default(),
                 });
             }
             assert!(keep());
@@ -1256,6 +1257,7 @@ mod bounded_background_requests {
             Ok(ChatReply {
                 text: text.into(),
                 tool_calls: vec![],
+                execution: Default::default(),
             })
         }
     }

@@ -24,11 +24,12 @@ use std::path::{Path, PathBuf};
 fn tmp(tag: &str) -> PathBuf {
     let p = std::env::temp_dir().join(format!("atlas-flowrun-{tag}"));
     let _ = std::fs::remove_dir_all(&p);
-    std::fs::create_dir_all(&p).unwrap();
+    std::fs::create_dir_all(&p)
+        .unwrap_or_else(|error| panic!("create flow fixture {p:?}: {error}"));
     p
 }
 fn cfg() -> Config {
-    Config::load(Path::new("config")).unwrap()
+    Config::load(Path::new("config")).unwrap_or_else(|error| panic!("load shipped config: {error}"))
 }
 fn plat() -> MockPlatform {
     MockPlatform::new(vec![Monitor {

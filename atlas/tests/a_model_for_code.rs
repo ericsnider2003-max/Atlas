@@ -951,6 +951,15 @@ fn a_change_to_your_file_is_fixed_from_the_projects_own_tests_and_not_written() 
         "Cargo.toml",
         "[package]\nname = \"doubling_for_atlas_test\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
     );
+    // This synthetic project runs outside the Atlas workspace, so it cannot
+    // inherit the repository override. Keep the fixture on the same pinned
+    // toolchain contract as the real project instead of silently falling back
+    // to whichever default Rustup toolchain happens to be installed.
+    write(
+        &proj,
+        "rust-toolchain.toml",
+        "[toolchain]\nchannel = \"1.98.1\"\ncomponents = [\"clippy\", \"rustfmt\"]\nprofile = \"minimal\"\n",
+    );
     let original = "pub fn double(x: i32) -> i32 {\n    x + 1\n}\n";
     write(&proj, "src/lib.rs", original);
     // The project's own test, spelled so it isn't read as one of these.

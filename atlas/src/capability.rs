@@ -317,7 +317,7 @@ pub fn all() -> Vec<Capability> {
         // a business reaching his own Atlas is not policed at all.
         Capability { id: "firewall", what: "keep your own work out of anything you share", area: Files, state: Untested, needs: None, offline: true, added: 26, runs: &[Needs::Files], modules: &["firewall"] },
 
-        Capability { id: "research", what: "look something up, and save the write-up as a Word or PDF file with its sources as links", area: Web, state: Untested, needs: None, offline: false, added: 4, runs: &[Needs::JustThinking], modules: &["research", "readable", "report"] },
+        Capability { id: "research", what: "look something up, and save the write-up as a Word or PDF file with its sources as links", area: Web, state: Untested, needs: None, offline: false, added: 4, runs: &[Needs::JustThinking], modules: &["research", "readable", "report", "research_route", "freellmapi"] },
         Capability { id: "delegate_online", what: "hand heavy background work to an online worker and check what comes back", area: Web, state: Blocked, needs: Some("a Cloudflare account and token"), offline: false, added: 20, runs: &[Needs::Background, Needs::JustThinking], modules: &["online"] },
         Capability { id: "build_it", what: "write code from your description and check it against the compiler and tests before trusting it -- in Python unless you name Rust, Go, JavaScript, TypeScript or C++, with the checkers Atlas downloads itself; a coding model (Qwen2.5-Coder, 7B or 1.5B by what this computer has room for) first, the talking model stepping aside while it works, then your stronger models; a change to your project written against the files and pieces it points at, checked by the project's own tests, and never written over your file until you say so; room for a whole file, and a coding agent (Claude Code, Codex) used when one is installed and you say yes; saved where you say, and run when you ask", area: Thinking, state: Untested, needs: Some("a model to draft with, or a coding agent installed"), offline: true, added: 20, runs: &[Needs::Background, Needs::JustThinking], modules: &["build_it", "craft", "goal", "codetools", "coding_agent", "coder", "projectread"] },
         Capability { id: "design", what: "review a page's design against a house style — spacing, colour tokens, accessibility — and say what's off, honestly not claiming to judge whether it looks good; also gate a page it builds against the same rules", area: Thinking, state: Working, needs: None, offline: true, added: 30, runs: &[Needs::JustThinking], modules: &["taste"] },
@@ -2034,7 +2034,10 @@ pub fn claimed_modules() -> std::collections::BTreeSet<&'static str> {
 // internal plumbing until a real provider route is wired) = 509.
 // 6 Nov 2026: + `context_budget`, `fallback_privacy`, and
 // `resource_admission` (pure local model/runtime boundaries) = 514.
-pub const MODULES_IN_TREE: usize = 514;
+// 7 Nov 2026: + `execution` (the adapter identity carried by replies and
+// receipts; internal provenance plumbing), `code_response` (shared model
+// response normalization) and the explicit FreeLLMAPI adapter = 518.
+pub const MODULES_IN_TREE: usize = 518;
 
 /// Every module no capability claims, and why it is not one.
 ///
@@ -2052,6 +2055,8 @@ pub const MODULES_IN_TREE: usize = 514;
 /// a feature cannot be filed as plumbing without somebody writing down why it
 /// is not one.
 pub const PLUMBING: &[(&str, &str)] = &[
+    ("code_response", "normalizes model replies for the daemon; internal response plumbing, not a user-facing ability"),
+    ("execution", "records the provider, model and runtime identity carried by a reply; internal provenance plumbing, not a user-facing ability"),
     ("context_budget", "pure token-budget accounting used by prompt fitting; it is an internal boundary, not a user-facing ability"),
     ("fallback_privacy", "removes local-only context before a secondary model call; it is a privacy boundary, not a user-facing ability"),
     ("resource_admission", "shared free-memory threshold arithmetic for heavyweight local engines; it is an admission boundary, not a user-facing ability"),

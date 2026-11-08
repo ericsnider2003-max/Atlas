@@ -621,7 +621,7 @@ impl crate::brain::Llm for BoundedModel<'_, '_> {
                 crate::brain::Msg::user(user),
             ],
             tools: Vec::new(),
-            max_tokens: 4096,
+            max_tokens: crate::fixloop::repair_response_budget(self.model.context_tokens()),
             force_tool: false,
             stable_tools: 0,
             aside: true,
@@ -697,6 +697,12 @@ pub fn draft_fix(
             let reply = llm
                 .complete_hard(MEND_BY_EDITS_SYSTEM, &user)
                 .map_err(|e| e.to_string())?;
+            if !edit_blocks_are_complete(&reply) {
+                return Err(format!(
+                    "the model returned an incomplete edit block for {}",
+                    file.path
+                ));
+            }
             let blocks = edit_blocks(&reply);
             if blocks.is_empty() {
                 return Err(format!("the model returned no edits for {}", file.path));
@@ -814,6 +820,27 @@ pub fn edit_blocks(reply: &str) -> Vec<(String, String)> {
         rest = &after_mid[end + ">>>>>>> REPLACE".len()..];
     }
     out
+}
+
+/// Whether a reply containing edit markers has a complete final block.
+/// Returning earlier complete edits from a truncated response would let a
+/// partial model answer enter the repair loop as if it were intentional.
+pub fn edit_blocks_are_complete(reply: &str) -> bool {
+    let mut rest = reply;
+    loop {
+        let Some(a) = rest.find("<<<<<<< SEARCH") else {
+            return true;
+        };
+        let after = &rest[a + "<<<<<<< SEARCH".len()..];
+        let Some(mid) = after.find("\n=======") else {
+            return false;
+        };
+        let after_mid = &after[mid + "\n=======".len()..];
+        let Some(end) = after_mid.find(">>>>>>> REPLACE") else {
+            return false;
+        };
+        rest = &after_mid[end + ">>>>>>> REPLACE".len()..];
+    }
 }
 
 /// Apply edit blocks to a file. Each SEARCH must match exactly one place --
@@ -1983,6 +2010,19 @@ mod edits_for_a_big_file {
         assert!(apply_edit_blocks(file, &[("y = 1".into(), "y = 2".into())])
             .unwrap_err()
             .contains("doesn't match"));
+    }
+
+    #[test]
+    fn an_incomplete_later_edit_does_not_leave_earlier_edits_admitted() {
+        let reply = "<<<<<<< SEARCH\nx = 1\n=======\nx = 2\n>>>>>>> REPLACE\n\
+                     <<<<<<< SEARCH\ny = 1\n=======\ny = 2";
+        assert!(!edit_blocks_are_complete(reply));
+        assert_eq!(edit_blocks(reply).len(), 1);
+    }
+
+    #[test]
+    fn prose_without_edit_markers_is_complete() {
+        assert!(edit_blocks_are_complete("please return the complete file"));
     }
 
     #[test]

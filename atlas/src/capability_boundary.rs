@@ -73,7 +73,7 @@ pub enum Decision {
 /// reject traversal instead of trying to resolve it, because resolution would
 /// make this pure admission check depend on the host filesystem.
 fn normalize_target(raw: &str) -> Result<String, String> {
-    if raw.is_empty() || raw.contains('\0') {
+    if raw.trim().is_empty() || raw.contains('\0') {
         return Err("capability target is empty or contains a NUL".into());
     }
     let raw = raw.replace('\\', "/");
@@ -118,9 +118,19 @@ pub fn evaluate(
     request: &Request,
     approval: Option<&Approval>,
 ) -> Decision {
-    if policy.revision.is_empty() {
+    if policy.revision.trim().is_empty() {
         return Decision::Denied {
             reason: "capability policy has no revision".into(),
+        };
+    }
+    if request.binary.trim().is_empty() {
+        return Decision::Denied {
+            reason: "capability request has no binary identity".into(),
+        };
+    }
+    if request.method.trim().is_empty() {
+        return Decision::Denied {
+            reason: "capability request has no method identity".into(),
         };
     }
     let Some(approval) = approval else {
@@ -274,6 +284,42 @@ mod tests {
                 Some(&Approval::rejected("rev-1")),
             ),
             Decision::Denied { .. }
+        ));
+    }
+
+    #[test]
+    fn empty_request_identity_is_denied_even_if_a_rule_is_malformed_too() {
+        let policy = CapabilityPolicy::new("rev-1", vec![rule("", "", "workspace")]);
+        assert!(matches!(
+            evaluate(
+                &policy,
+                &request("", "", "workspace/a"),
+                Some(&Approval::accepted("rev-1")),
+            ),
+            Decision::Denied { reason } if reason.contains("binary identity")
+        ));
+    }
+
+    #[test]
+    fn whitespace_revision_and_target_are_denied() {
+        let policy = CapabilityPolicy::new("  ", vec![rule("worker", "read", "workspace")]);
+        assert!(matches!(
+            evaluate(
+                &policy,
+                &request("worker", "read", "workspace/a"),
+                Some(&Approval::accepted("  ")),
+            ),
+            Decision::Denied { reason } if reason.contains("policy has no revision")
+        ));
+
+        let policy = CapabilityPolicy::new("rev-1", vec![rule("worker", "read", "workspace")]);
+        assert!(matches!(
+            evaluate(
+                &policy,
+                &request("worker", "read", "   "),
+                Some(&Approval::accepted("rev-1")),
+            ),
+            Decision::Denied { reason } if reason.contains("target is empty")
         ));
     }
 

@@ -135,6 +135,7 @@ fn call(name: &str, arg: &str) -> ChatReply {
             name: name.into(),
             arguments: serde_json::json!({ "arg": arg }),
         }],
+        execution: Default::default(),
     }
 }
 

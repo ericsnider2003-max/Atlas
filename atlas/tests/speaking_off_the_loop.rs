@@ -108,6 +108,7 @@ impl Llm for Talker {
         Ok(ChatReply {
             text: reply,
             tool_calls: vec![],
+            execution: Default::default(),
         })
     }
 }

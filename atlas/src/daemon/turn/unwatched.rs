@@ -946,7 +946,12 @@ impl<'a> Daemon<'a> {
                     // If this was a scheduled job asking, close it out too.
                     if let Some(jid) = self.pending_job.take() {
                         self.scheduler.approve(jid);
-                        self.scheduler.complete(jid, t, &r, !r.starts_with("error"));
+                        self.scheduler.complete(
+                            jid,
+                            t,
+                            &r,
+                            crate::scheduler::result_is_success(&r),
+                        );
                     }
                     r
                 } else if let Some(own) = crate::coding_agent::declined(&intent) {

@@ -67,6 +67,7 @@ impl ChatSpy {
             reply: Mutex::new(ChatReply {
                 text: text.into(),
                 tool_calls: vec![],
+                execution: Default::default(),
             }),
             slow_ms: 0,
         })
@@ -80,6 +81,7 @@ impl ChatSpy {
                     name: name.into(),
                     arguments: serde_json::json!({ "arg": arg }),
                 }],
+                execution: Default::default(),
             }),
             slow_ms: 0,
         })
@@ -162,6 +164,7 @@ fn a_real_multi_turn_exchange_reaches_the_model_as_separate_messages() {
     *spy.reply.lock().unwrap() = ChatReply {
         text: "Because the ocean cools the lava quickly.".into(),
         tool_calls: vec![],
+        execution: Default::default(),
     };
     let _ = d.turn("why does it cool so fast", 130);
 
@@ -720,6 +723,7 @@ fn a_talk_turn_does_not_hold_the_loop_while_the_model_thinks() {
         reply: Mutex::new(ChatReply {
             text: "Once upon a time there was a lighthouse. It kept the light.".into(),
             tool_calls: vec![],
+            execution: Default::default(),
         }),
         slow_ms: 3_000,
     });
@@ -866,6 +870,7 @@ fn the_offer_is_made_and_answered_as_an_offer() {
     *spy.reply.lock().unwrap() = ChatReply {
         text: "Why did the compiler cross the road?".into(),
         tool_calls: vec![],
+        execution: Default::default(),
     };
     let other = d.turn("never mind that, tell me a joke", 210);
     assert!(spy.calls() > before + 1);
@@ -1088,6 +1093,7 @@ fn the_web_is_for_when_it_was_asked_for_or_changes_by_the_day() {
             name: "research".into(),
             arguments: serde_json::json!({"arg": "octopus facts"}),
         }],
+        execution: Default::default(),
     };
     let d = atlas::brain::decision_from_chat(&r, "tell me a fun fact about octopuses");
     assert_eq!(d.intent, Intent::Say("Octopuses have three hearts.".into()));

@@ -1382,13 +1382,13 @@ impl<'a> Daemon<'a> {
         ) {
             return format!("I couldn't back up: {error}");
         }
-        // A user-asked backup is a visible Hub job (20 Oct 2026), started here
-        // and finished with the same words the person is told, so the Status
-        // page shows it running and then done or failed. Before this it left
-        // no trace there at all.
-        let job = self
-            .hub_jobs
-            .start(crate::hub::Page::Status, "Backing up Atlas's state");
+        // A user-asked backup is both a visible Hub job and a durable Atlas
+        // job. The Hub keeps the immediate projection; the durable record is
+        // what restart/recovery and the Outstanding view can trust.
+        let stage = "Back up Atlas's state";
+        let job_id = crate::job::unique_id("errand:state-backup");
+        crate::heard!(crate::job::begin(&self.store, &job_id, stage, stage));
+        let job = self.hub_jobs.start(crate::hub::Page::Status, stage);
         let said = match crate::safety::back_up_with_report(
             self.store.root(),
             &cfg,
@@ -1422,6 +1422,24 @@ impl<'a> Daemon<'a> {
             }
             Err(e) => Err(format!("Backup failed: {e}")),
         };
+        let state = if said.is_ok() {
+            crate::job::State::Succeeded
+        } else {
+            crate::job::State::Failed
+        };
+        let detail = match &said {
+            Ok(text) | Err(text) => text,
+        };
+        let receipt_saved = crate::heard!(crate::job::finish(
+            &self.store,
+            &job_id,
+            stage,
+            state,
+            detail,
+            "user-requested backup",
+        ))
+        .is_some();
+        let said = crate::job::completion_receipt_result(said, receipt_saved);
         self.hub_jobs.finish(job, said.clone(), false);
         said.unwrap_or_else(|failed| failed)
     }

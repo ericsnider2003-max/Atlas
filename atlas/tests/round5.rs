@@ -340,6 +340,26 @@ fn when_every_angle_is_spent_it_writes_the_brief_instead() {
     assert!(atlas::fixloop::land(&o, Path::new("/nonexistent")).is_err());
 }
 
+#[test]
+fn an_unsafe_outcome_path_is_rejected_before_landing_any_file() {
+    let dir = tmp("unsafe-land");
+    let outside = dir.parent().unwrap().join("atlas-r5-escaped.txt");
+    let _ = std::fs::remove_file(&outside);
+    let outcome = atlas::fixloop::Outcome {
+        solved: true,
+        attempts: 1,
+        exchanges: 1,
+        copy: dir.join("copy"),
+        changes: vec![("..\\atlas-r5-escaped.txt".into(), "should not land".into())],
+        diff: String::new(),
+        brief: None,
+        steps: vec!["passed".into()],
+    };
+    let error = atlas::fixloop::land(&outcome, &dir).unwrap_err();
+    assert!(error.contains("unsafe relative path"), "{error}");
+    assert!(!outside.exists(), "unsafe landing created an outside file");
+}
+
 // ---- editcraft: a real video's cuts --------------------------------------------------------
 
 #[test]

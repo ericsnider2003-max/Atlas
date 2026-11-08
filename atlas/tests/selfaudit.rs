@@ -229,7 +229,7 @@ fn recommendations_have_a_page_rather_than_interrupting() {
 #[test]
 fn each_one_carries_its_evidence_so_you_can_disagree_with_that() {
     let recs = recommend(&[signal(Kind::RouteFails, "the export route", 9, 10)], 3);
-    let html = recommendations_page(&recs, Some("how it decides things"), &[]);
+    let html = recommendations_page(&recs, Some("how it decides things"), &[], 0);
     assert!(html.contains("keeps failing"));
     assert!(html.contains("9 times out of 10"));
     assert!(html.contains("What would prove it"));
@@ -239,8 +239,8 @@ fn each_one_carries_its_evidence_so_you_can_disagree_with_that() {
 fn certainty_is_a_word_because_a_percentage_on_a_self_assessment_is_false_precision() {
     let sure = recommend(&[signal(Kind::RouteFails, "x", 20, 20)], 1);
     let unsure = recommend(&[signal(Kind::NeverUsed, "y", 1, 40)], 1);
-    let a = recommendations_page(&sure, None, &[]);
-    let b = recommendations_page(&unsure, None, &[]);
+    let a = recommendations_page(&sure, None, &[], 0);
+    let b = recommendations_page(&unsure, None, &[], 0);
     assert!(a.contains("fairly sure"));
     assert!(b.contains("not certain"));
     // The number itself never reaches the page.
@@ -252,10 +252,10 @@ fn certainty_is_a_word_because_a_percentage_on_a_self_assessment_is_false_precis
 
 #[test]
 fn the_page_says_what_atlas_is_already_fixing_without_asking() {
-    let granted = recommendations_page(&[], Some("how it decides things"), &[]);
+    let granted = recommendations_page(&[], Some("how it decides things"), &[], 0);
     assert!(granted.contains("on my own and tell you after"));
 
-    let none = recommendations_page(&[], None, &[]);
+    let none = recommendations_page(&[], None, &[], 0);
     assert!(none.contains("not fixing anything on my own"));
 }
 
@@ -263,12 +263,12 @@ fn the_page_says_what_atlas_is_already_fixing_without_asking() {
 fn every_recommendation_can_be_dismissed_as_well_as_started() {
     // Otherwise the only way to clear one is to let Atlas do it.
     let recs = recommend(&[signal(Kind::RouteFails, "the export route", 9, 10)], 1);
-    let html = recommendations_page(&recs, None, &[]);
+    let html = recommendations_page(&recs, None, &[], 0);
     assert!(html.contains("Have a go"));
     assert!(html.contains("Not worth it"));
 }
 
 #[test]
 fn nothing_to_recommend_is_one_line_rather_than_an_empty_table() {
-    assert!(recommendations_page(&[], None, &[]).contains("Nothing I'd change"));
+    assert!(recommendations_page(&[], None, &[], 0).contains("Nothing I'd change"));
 }

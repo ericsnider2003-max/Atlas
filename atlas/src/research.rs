@@ -426,13 +426,20 @@ impl Research {
                         // browser request to a loopback, private, or metadata
                         // address merely because its partial result set was
                         // small.
-                        let search_is_public = public_address_until(&page, should_stop).is_some();
-                        if search_is_public {
+                        if let Some((search_host, search_ip)) =
+                            public_address_until(&page, should_stop)
+                        {
                             // Any failure here -- no Chrome, no launch
                             // command, a page that never rendered -- is the
                             // same outcome as before the fallback existed:
                             // no sources.
-                            if let Ok(links) = self.links_via_browser(bcfg, &page, should_stop) {
+                            if let Ok(links) = self.links_via_browser(
+                                bcfg,
+                                &page,
+                                &search_host,
+                                search_ip,
+                                should_stop,
+                            ) {
                                 for url in urls_from_links(&links, candidate_limit) {
                                     if !urls.contains(&url) {
                                         urls.push(url);
@@ -625,6 +632,8 @@ impl Research {
         &self,
         bcfg: &crate::browser::BrowserConfig,
         page: &str,
+        host: &str,
+        ip: std::net::IpAddr,
         stop: &dyn Fn() -> bool,
     ) -> Result<Vec<String>> {
         if stop() {
@@ -633,9 +642,9 @@ impl Research {
         let mut bounded = bcfg.clone();
         bounded.timeout_ms = bounded.timeout_ms.clamp(50, 1000);
         bounded.startup_ms = bounded.startup_ms.min(3000);
-        let mut b = crate::browser::Browser::start(&bounded, &self.vars)?;
+        let mut b = crate::browser::Browser::start_fenced(&bounded, &self.vars, host, ip)?;
         let got = read_links_until(&mut b, page, bcfg.timeout_ms.min(15_000), stop);
-        b.close();
+        b.quit();
         got
     }
 
@@ -853,32 +862,63 @@ fn public_curl_fetch(host: &str, ip: std::net::IpAddr, url: &str) -> ExternalToo
     }
 }
 
-fn effective_url_port(url: &str) -> u16 {
-    let trimmed = url.trim();
-    let lower = trimmed.to_ascii_lowercase();
-    let default = if lower.starts_with("http://") {
-        80
+fn web_authority(url: &str) -> Option<(String, u16)> {
+    let lower = url.trim().to_ascii_lowercase();
+    let (rest, default_port) = if let Some(rest) = lower.strip_prefix("https://") {
+        (rest, 443)
     } else {
-        443
-    };
-    let Some(rest) = trimmed
-        .strip_prefix("http://")
-        .or_else(|| trimmed.strip_prefix("https://"))
-    else {
-        return default;
+        let rest = lower.strip_prefix("http://")?;
+        (rest, 80)
     };
     let authority = rest.split(['/', '?', '#', '\\']).next().unwrap_or("");
-    if let Some(v6) = authority.strip_prefix('[') {
-        return v6
-            .split_once(']')
-            .and_then(|(_, suffix)| suffix.strip_prefix(':'))
-            .and_then(|port| port.parse().ok())
-            .unwrap_or(default);
+    if authority.is_empty()
+        || authority.contains('@')
+        || authority
+            .chars()
+            .any(|c| c.is_ascii_whitespace() || c.is_control())
+    {
+        return None;
     }
-    authority
-        .rsplit_once(':')
-        .and_then(|(_, port)| port.parse().ok())
-        .unwrap_or(default)
+
+    let (host, port) = if let Some(v6) = authority.strip_prefix('[') {
+        let (host, suffix) = v6.split_once(']')?;
+        if host.is_empty() {
+            return None;
+        }
+        let port = match suffix {
+            "" => default_port,
+            value => value.strip_prefix(':').and_then(parse_web_port)?,
+        };
+        (host, port)
+    } else if authority.matches(':').count() > 1 {
+        // IPv6 literals must be bracketed in a URL. Treating the final segment
+        // as a port would otherwise make the address checked differ from the
+        // address fetched.
+        return None;
+    } else if let Some((host, value)) = authority.rsplit_once(':') {
+        (host, parse_web_port(value)?)
+    } else {
+        (authority, default_port)
+    };
+    if host.is_empty() {
+        return None;
+    }
+    Some((host.to_string(), port))
+}
+
+fn parse_web_port(value: &str) -> Option<u16> {
+    if value.is_empty() || !value.bytes().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    let port = value.parse::<u16>().ok()?;
+    (port != 0).then_some(port)
+}
+
+fn effective_url_port(url: &str) -> u16 {
+    // The caller has already passed `public_address`; returning zero for an
+    // independently malformed URL is safer than silently falling back to a
+    // different port and weakening curl's `--resolve` pin.
+    web_authority(url).map(|(_, port)| port).unwrap_or(0)
 }
 
 fn read_links_until(
@@ -1612,26 +1652,7 @@ fn public_address_with(
     url: &str,
     resolve: &dyn Fn(&str) -> Option<Vec<std::net::IpAddr>>,
 ) -> Option<(String, std::net::IpAddr)> {
-    let lower = url.trim().to_lowercase();
-    let rest = lower
-        .strip_prefix("https://")
-        .or_else(|| lower.strip_prefix("http://"))?;
-    let authority = rest.split(['/', '?', '#', '\\']).next().unwrap_or("");
-    if authority.contains('@') {
-        return None;
-    }
-    let host = if let Some(v6) = authority.strip_prefix('[') {
-        v6.split(']').next().unwrap_or("").to_string()
-    } else {
-        authority
-            .rsplit_once(':')
-            .map(|(h, _)| h)
-            .unwrap_or(authority)
-            .to_string()
-    };
-    if host.is_empty() {
-        return None;
-    }
+    let (host, _) = web_authority(url)?;
     let local_name = host == "localhost"
         || [
             ".localhost",
@@ -1836,6 +1857,36 @@ mod fetching {
             assert!(tool.args.iter().any(|arg| arg == expected), "{url}");
         }
     }
+
+    #[test]
+    fn malformed_ports_never_pass_the_public_fetch_gate() {
+        for url in [
+            "https://example.test:0/article",
+            "https://example.test:65536/article",
+            "https://example.test:not-a-port/article",
+            "https://example.test:443:8443/article",
+            "https://2001:db8::1/article",
+        ] {
+            assert!(
+                super::public_address_with(url, &|_| Some(vec!["93.184.215.14".parse().unwrap()]))
+                    .is_none(),
+                "malformed URL passed the public gate: {url}"
+            );
+        }
+    }
+
+    #[test]
+    fn uppercase_scheme_keeps_an_explicit_port_pinned() {
+        let tool = super::public_curl_fetch(
+            "example.org",
+            "93.184.215.14".parse().unwrap(),
+            "HTTPS://example.org:8443/article",
+        );
+        assert!(tool
+            .args
+            .iter()
+            .any(|arg| arg == "example.org:8443:93.184.215.14"));
+    }
 }
 
 #[cfg(test)]
@@ -2015,7 +2066,7 @@ mod bounded_research {
         assert!(saved.contains("substantial_sources_at_least_1200: 1"));
         assert!(saved.contains(&format!("content_sha256: {}", "a".repeat(64))));
         assert!(saved.contains("source_revision: per-source SHA-256"));
-        assert!(saved.contains("1,500 captured characters"));
+        assert!(saved.contains("1500 captured characters"));
         assert!(saved.contains("planning-input"));
         assert!(saved.contains("source tried to redirect Atlas"));
         assert!(saved.contains("999"));

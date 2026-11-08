@@ -49,7 +49,8 @@ const THREE_DAYS: u64 = 3 * 24 * 3600;
 fn tmp(tag: &str) -> PathBuf {
     let p = std::env::temp_dir().join(format!("atlas-brief-{tag}"));
     let _ = std::fs::remove_dir_all(&p);
-    std::fs::create_dir_all(&p).unwrap();
+    std::fs::create_dir_all(&p)
+        .unwrap_or_else(|error| panic!("create brief fixture {p:?}: {error}"));
     p
 }
 
@@ -84,11 +85,12 @@ fn the_brief_can_be_turned_on_at_all_now() {
     // The root cause under the root cause. `BriefConfig` was not a field on
     // `ToolsConfig`, so the only value it could ever have was its own
     // `Default` — and that was `enabled: false`. There was no switch.
-    let c = Config::load(Path::new("config")).unwrap();
+    let c = Config::load(Path::new("config"))
+        .unwrap_or_else(|error| panic!("load shipped config: {error}"));
     let tools = c
         .tools
         .as_ref()
-        .expect("the shipped config has a tools section");
+        .unwrap_or_else(|| panic!("the shipped config has a tools section"));
     assert!(
         tools.brief.enabled,
         "the brief ships off again, so it computes nothing"
@@ -421,7 +423,7 @@ fn plat() -> MockPlatform {
 }
 
 fn cfg() -> Config {
-    Config::load(Path::new("config")).unwrap()
+    Config::load(Path::new("config")).unwrap_or_else(|error| panic!("load shipped config: {error}"))
 }
 
 fn daemon<'a>(c: &'a Config, p: &'a MockPlatform, tag: &str) -> Daemon<'a> {
@@ -438,7 +440,9 @@ fn prepared_answer(d: &mut Daemon) -> String {
     let until = std::time::Instant::now() + std::time::Duration::from_secs(5);
     loop {
         if let Some(result) = d.poll_brief() {
-            return spoken(&result.expect("brief preparation failed"));
+            return spoken(
+                &result.unwrap_or_else(|error| panic!("brief preparation failed: {error}")),
+            );
         }
         assert!(
             std::time::Instant::now() < until,

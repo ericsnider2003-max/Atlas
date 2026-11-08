@@ -14,7 +14,9 @@ fn a_lock_a_panic_poisoned_is_still_taken_with_its_data() {
     let m = Arc::new(Mutex::new(vec![1, 2]));
     let m2 = m.clone();
     let _ = std::thread::spawn(move || {
-        let mut g = m2.lock().unwrap();
+        let mut g = m2
+            .lock()
+            .unwrap_or_else(|error| panic!("fixture mutex unexpectedly poisoned: {error}"));
         g.push(3);
         panic!("a bug elsewhere, holding the lock");
     })

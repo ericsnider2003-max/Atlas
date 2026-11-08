@@ -15,7 +15,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 fn tmp(tag: &str) -> PathBuf {
     let nonce = SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .expect("system clock must be after the Unix epoch")
+        .unwrap_or_else(|error| panic!("system clock must be after the Unix epoch: {error}"))
         .as_nanos();
     let p = std::env::temp_dir().join(format!(
         "atlas-accounts-{tag}-{}-{nonce}",

@@ -42,7 +42,8 @@ const NOW: u64 = 1_700_000_000;
 fn tmp(tag: &str) -> PathBuf {
     let p = std::env::temp_dir().join(format!("atlas-park-{tag}"));
     let _ = std::fs::remove_dir_all(&p);
-    std::fs::create_dir_all(&p).unwrap();
+    std::fs::create_dir_all(&p)
+        .unwrap_or_else(|error| panic!("create parked-question fixture {p:?}: {error}"));
     p
 }
 
@@ -58,7 +59,7 @@ fn plat() -> MockPlatform {
 }
 
 fn cfg() -> Config {
-    Config::load(Path::new("config")).unwrap()
+    Config::load(Path::new("config")).unwrap_or_else(|error| panic!("load shipped config: {error}"))
 }
 
 fn away<'a>(c: &'a Config, p: &'a MockPlatform, tag: &str) -> Daemon<'a> {

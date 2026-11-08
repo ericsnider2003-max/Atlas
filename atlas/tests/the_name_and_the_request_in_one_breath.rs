@@ -800,20 +800,33 @@ fn real_ears(dir: &Path, audio: &[i16], w: &str, m: &str) -> atlas::voice::Tools
     let raw = dir.join("mic.raw");
     let bytes: Vec<u8> = audio.iter().flat_map(|s| s.to_le_bytes()).collect();
     std::fs::write(&raw, bytes).unwrap();
-    let rec = dir.join("mic.sh");
-    std::fs::write(&rec, format!("#!/bin/sh\ncat '{}'\n", raw.display())).unwrap();
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&rec, std::fs::Permissions::from_mode(0o755)).unwrap();
-    }
+    let (record_command, record_args) = {
+        #[cfg(windows)]
+        {
+            let rec = dir.join("mic.cmd");
+            std::fs::write(&rec, format!("@echo off\r\ntype \"{}\"\r\n", raw.display())).unwrap();
+            (rec.display().to_string(), "[]".to_string())
+        }
+        #[cfg(not(windows))]
+        {
+            let rec = dir.join("mic.sh");
+            std::fs::write(&rec, format!("#!/bin/sh\ncat '{}'\n", raw.display())).unwrap();
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                std::fs::set_permissions(&rec, std::fs::Permissions::from_mode(0o755)).unwrap();
+            }
+            (rec.display().to_string(), "[]".to_string())
+        }
+    };
     let yaml = format!(
         "enabled: true\nwork_dir: '{work}'\nvars:\n  mic_device: 'the test microphone'\n  whisper: '{w}'\n  stt_model: '{m}'\n\
-         record:\n  command: '{rec}'\n  args: []\n\
+         record:\n  command: '{record_command}'\n  args: {record_args}\n\
          stt:\n  command: '{{whisper}}'\n  args: ['-m', '{{stt_model}}', '-f', '{{in_wav}}', '-otxt', '-of', '{{stem}}', '-nt', '{{hint_opt}}', '{{hint_val}}']\n  result_file: '{{transcript}}'\n\
          wake:\n  enabled: true\n  phrase: atlas\n  clip_seconds: 3\n",
         work = dir.join("work").display(),
-        rec = rec.display(),
+        record_command = record_command,
+        record_args = record_args,
     );
     serde_yaml::from_str(&yaml).unwrap()
 }

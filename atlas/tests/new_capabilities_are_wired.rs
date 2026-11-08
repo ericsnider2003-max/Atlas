@@ -191,6 +191,7 @@ const KNOWN: &[&str] = &[
     "endpoint::clip_ms",
     "enrol::is_final",
     "events::collisions",
+    "evidence::task_outcome",
     // events::is_window came off 23 Sep 2026 (decision-list remainder, doc 15).
     "faithful::not_checked",
     // Came off 26 Sep 2026 when the Atlas Project chat's 25i/25j were merged
@@ -219,7 +220,6 @@ const KNOWN: &[&str] = &[
     // 28 Sep 2026: a test seam -- "ten minutes later" without waiting ten minutes.
     "hubjobs::age_finished",
     "identity::reason",
-    "improve::automatic_cost_mb",
     "install::required",
     // `knowhow::as_plan` wired 22 Sep 2026 into `Intent::WalkThrough`
     // (`Daemon::walk_me_through`): "walk me through freeing up memory" matches a

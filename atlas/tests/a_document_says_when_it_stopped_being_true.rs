@@ -106,7 +106,11 @@ fn docs() -> Vec<(String, String)> {
         if p.extension().and_then(|x| x.to_str()) != Some("md") {
             continue;
         }
-        let name = p.file_name().unwrap().to_string_lossy().to_string();
+        let name = p
+            .file_name()
+            .unwrap_or_else(|| panic!("documentation path has a file name: {p:?}"))
+            .to_string_lossy()
+            .to_string();
         if let Ok(t) = std::fs::read_to_string(&p) {
             out.push((name, t));
         }

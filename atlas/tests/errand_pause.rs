@@ -32,7 +32,11 @@ fn counter(steps: usize, done: Arc<AtomicUsize>) -> Work {
 }
 
 fn until(mut f: impl FnMut() -> bool) -> bool {
-    let end = Instant::now() + Duration::from_secs(5);
+    // This helper observes an asynchronous worker. Under the aggregate
+    // Windows suite, process scheduling can be materially slower than an
+    // isolated test; use the harness's measured allowance instead of turning
+    // contention into a false crew-lifecycle failure.
+    let end = Instant::now() + crate::common::allowed(Duration::from_secs(5));
     while Instant::now() < end {
         if f() {
             return true;

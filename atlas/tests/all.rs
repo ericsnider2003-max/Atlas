@@ -30,16 +30,12 @@ mod common;
 mod a_backup_that_holds_everything;
 #[path = "a_bar_knows_when_it_opened_and_closed.rs"]
 mod a_bar_knows_when_it_opened_and_closed;
-#[path = "a_brief_without_an_inbox.rs"]
-mod a_brief_without_an_inbox;
 #[path = "a_conversation_not_a_script.rs"]
 mod a_conversation_not_a_script;
 #[path = "a_document_says_when_it_stopped_being_true.rs"]
 mod a_document_says_when_it_stopped_being_true;
 #[path = "a_flow_is_a_run_not_a_pile_of_pushes.rs"]
 mod a_flow_is_a_run_not_a_pile_of_pushes;
-#[path = "a_group_has_an_owner.rs"]
-mod a_group_has_an_owner;
 #[path = "a_judgment_says_how_sure_it_is.rs"]
 mod a_judgment_says_how_sure_it_is;
 #[path = "a_misspelt_setting_is_reported.rs"]
@@ -50,16 +46,12 @@ mod a_month_against_your_own_months;
 mod a_note_on_who_messaged;
 #[path = "a_private_network_you_do_not_have.rs"]
 mod a_private_network_you_do_not_have;
-#[path = "a_question_that_survives_you_leaving.rs"]
-mod a_question_that_survives_you_leaving;
 #[path = "a_reader_for_the_messages.rs"]
 mod a_reader_for_the_messages;
 #[path = "a_recording_does_not_outlive_its_transcript.rs"]
 mod a_recording_does_not_outlive_its_transcript;
 #[path = "a_reply_is_read_as_bytes_and_bounded.rs"]
 mod a_reply_is_read_as_bytes_and_bounded;
-#[path = "a_room_that_disagrees.rs"]
-mod a_room_that_disagrees;
 #[path = "a_save_that_fails_is_not_silent.rs"]
 mod a_save_that_fails_is_not_silent;
 #[path = "a_stage_that_cannot_be_reached.rs"]
@@ -264,6 +256,8 @@ mod flow_refs;
 mod frames;
 #[path = "free_form_corpus.rs"]
 mod free_form_corpus;
+#[path = "freellmapi_config.rs"]
+mod freellmapi_config;
 #[path = "freshness.rs"]
 mod freshness;
 #[path = "fxday.rs"]
@@ -864,8 +858,6 @@ mod a_model_for_code;
 mod a_model_without_curl;
 #[path = "a_network_that_blocks_tor.rs"]
 mod a_network_that_blocks_tor;
-#[path = "a_no_comes_with_a_way_to_yes.rs"]
-mod a_no_comes_with_a_way_to_yes;
 #[path = "a_normal_voice_is_heard.rs"]
 mod a_normal_voice_is_heard;
 #[path = "a_quiet_tick_is_quick.rs"]

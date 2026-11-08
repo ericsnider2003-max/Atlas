@@ -62,7 +62,8 @@ fn wait_for_report<'a>(d: &mut Daemon<'a>, start_t: u64) -> String {
 fn tmp(tag: &str) -> PathBuf {
     let p = std::env::temp_dir().join(format!("atlas-room-{tag}"));
     let _ = std::fs::remove_dir_all(&p);
-    std::fs::create_dir_all(&p).unwrap();
+    std::fs::create_dir_all(&p)
+        .unwrap_or_else(|error| panic!("create disagreement fixture {p:?}: {error}"));
     p
 }
 
@@ -361,8 +362,12 @@ impl Llm for DownLlm {
 }
 
 fn cfg_with_model() -> Config {
-    let mut c = Config::load(Path::new("config")).unwrap();
-    let tools = c.tools.as_mut().expect("tools section");
+    let mut c = Config::load(Path::new("config"))
+        .unwrap_or_else(|error| panic!("load shipped config: {error}"));
+    let tools = c
+        .tools
+        .as_mut()
+        .unwrap_or_else(|| panic!("the shipped config has a tools section"));
     tools.llm = Some(LlmConfig {
         tool: Default::default(),
         request: r#"{"model":"llama3.1","prompt":"{user}"}"#.into(),

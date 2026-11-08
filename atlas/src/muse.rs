@@ -405,6 +405,12 @@ pub struct MuseFirst {
 }
 
 impl Llm for MuseFirst {
+    fn execution_descriptor(&self) -> crate::execution::ExecutionDescriptor {
+        // Conversation chat is delegated to `rest`; Muse is selected only by
+        // the separate hard-work path and must not be guessed here.
+        self.rest.execution_descriptor()
+    }
+
     fn supports_bounded_chat(&self) -> bool {
         self.rest.supports_bounded_chat()
     }

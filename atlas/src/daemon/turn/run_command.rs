@@ -1112,10 +1112,12 @@ impl<'a> Daemon<'a> {
             Some(crate::job::State::Succeeded)
         };
         if parked {
-            use std::sync::atomic::{AtomicU64, Ordering};
-            static PSEQ: AtomicU64 = AtomicU64::new(1);
-            let id = format!("chat:{_t}:p{}", PSEQ.fetch_add(1, Ordering::Relaxed));
-            let stage: String = intent.plain().chars().take(80).collect();
+            // The backlog is the owner of this decision, while the shared
+            // job journal is its durable outcome projection. Give that
+            // projection the approval namespace so restart reconciliation and
+            // approval cleanup treat it like every other waiting decision.
+            let id = format!("{}:{_t}", crate::job::approval_key("parked", said));
+            let stage: String = said.chars().take(160).collect();
             let mut r = crate::job::Record::planned(id, stage);
             // unheard-ok: Planned to AwaitingApproval is always allowed
             let _ = r.transition(
@@ -1152,10 +1154,7 @@ impl<'a> Daemon<'a> {
             }
         }
         let reply = if completion_unconfirmed {
-            format!(
-                "{} I couldn't save the completion receipt, so check before repeating.",
-                reply.trim_end()
-            )
+            crate::job::completion_receipt_warning(&reply)
         } else {
             reply
         };

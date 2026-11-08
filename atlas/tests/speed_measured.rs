@@ -129,6 +129,7 @@ impl Llm for Talker {
         Ok(ChatReply {
             text: reply,
             tool_calls: vec![],
+            execution: Default::default(),
         })
     }
 }
@@ -834,6 +835,7 @@ impl Llm for CallsThenWords {
             return Ok(ChatReply {
                 text: "Your computer's fine.".into(),
                 tool_calls: vec![],
+                execution: Default::default(),
             });
         }
         Ok(ChatReply {
@@ -842,6 +844,7 @@ impl Llm for CallsThenWords {
                 name: "machine_health".into(),
                 arguments: serde_json::json!({}),
             }],
+            execution: Default::default(),
         })
     }
 }

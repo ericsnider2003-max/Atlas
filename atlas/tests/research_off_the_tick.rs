@@ -13,8 +13,17 @@ use atlas::platform::mock::MockPlatform;
 use atlas::platform::Monitor;
 use atlas::proactive::{Proactive, ProactiveConfig};
 use atlas::store::Store;
+use atlas::vault::{Kind, VaultConfig};
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
+
+fn freellmapi_test_guard() -> std::sync::MutexGuard<'static, ()> {
+    static GATE: std::sync::OnceLock<std::sync::Mutex<()>> = std::sync::OnceLock::new();
+    GATE.get_or_init(|| std::sync::Mutex::new(()))
+        .lock()
+        .unwrap()
+}
 
 fn tmp(tag: &str) -> PathBuf {
     let nonce = std::time::SystemTime::now()
@@ -46,6 +55,18 @@ fn plat() -> MockPlatform {
 /// the model call itself.
 struct StubLlm;
 impl Llm for StubLlm {
+    fn execution_descriptor(&self) -> atlas::execution::ExecutionDescriptor {
+        atlas::execution::ExecutionDescriptor::new(
+            "fixture-local",
+            "stub-research",
+            "test-runtime",
+            "test-device",
+            "offline",
+            "resident",
+        )
+        .expect("fixture descriptor is valid")
+    }
+
     fn supports_bounded_chat(&self) -> bool {
         true
     }
@@ -103,6 +124,22 @@ fn daemon<'a>(c: &'a Config, p: &'a MockPlatform, tag: &str) -> Daemon<'a> {
         c,
         p,
         Some(std::sync::Arc::new(StubLlm)),
+        Store::new(tmp(tag)),
+        Proactive::new(ProactiveConfig::default()),
+    );
+    d.connectivity.set(atlas::connectivity::Reach::Online, 0);
+    d
+}
+
+fn daemon_without_local_background<'a>(
+    c: &'a Config,
+    p: &'a MockPlatform,
+    tag: &str,
+) -> Daemon<'a> {
+    let mut d = Daemon::new(
+        c,
+        p,
+        None,
         Store::new(tmp(tag)),
         Proactive::new(ProactiveConfig::default()),
     );
@@ -169,6 +206,386 @@ fn the_real_answer_arrives_later_once_the_crew_actually_finishes() {
         t += 1;
     }
     assert_eq!(d.crew.active(), 0, "research indexing did not settle");
+}
+
+#[test]
+fn completed_background_research_receipt_records_the_adapter_that_finished_it() {
+    let c = cfg_researching_locally();
+    let p = plat();
+    let mut d = daemon(&c, &p, "execution-provenance");
+
+    d.turn("research tide times at Ventura", 100);
+
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let mut t: u64 = 101;
+    let mut records = Vec::new();
+    while Instant::now() < deadline {
+        d.tick(t);
+        records = atlas::job::load_checked(&d.store).expect("job journal remains readable");
+        if records.iter().any(|record| {
+            record.stage == "research"
+                && record.state == atlas::job::State::Succeeded
+                && record.receipt.is_some()
+        }) {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(10));
+        t += 1;
+    }
+    let research_records: Vec<_> = records
+        .iter()
+        .filter(|record| record.stage == "research")
+        .collect();
+    assert_eq!(
+        research_records.len(),
+        1,
+        "exactly one research job is recorded"
+    );
+
+    let record = research_records[0];
+    assert_eq!(record.state, atlas::job::State::Succeeded);
+    let execution = record
+        .receipt
+        .as_ref()
+        .and_then(|receipt| receipt.execution.as_ref())
+        .expect("completed research receipt records execution identity");
+    assert_eq!(record.receipt.as_ref().unwrap().job_id, record.job_id);
+    assert_eq!(execution.provider, "fixture-local");
+    assert_eq!(execution.model, "stub-research");
+    assert_eq!(execution.network, "offline");
+}
+
+#[test]
+fn delegated_research_failure_uses_local_fallback_and_records_local_identity() {
+    let _test_guard = freellmapi_test_guard();
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind fake gateway");
+    listener
+        .set_nonblocking(true)
+        .expect("make fake gateway bounded");
+    let port = listener.local_addr().expect("fake gateway address").port();
+    let gateway = std::thread::spawn(move || {
+        let deadline = Instant::now() + Duration::from_secs(30);
+        while Instant::now() < deadline {
+            match listener.accept() {
+                Ok((mut stream, _)) => {
+                    let mut request = [0u8; 1024];
+                    let _ = stream.read(&mut request);
+                    stream
+                        .write_all(
+                            b"HTTP/1.1 503 Service Unavailable\r\nContent-Length: 3\r\nConnection: close\r\n\r\nbad",
+                        )
+                        .expect("write fake gateway failure");
+                    return true;
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                    std::thread::sleep(Duration::from_millis(10));
+                }
+                Err(error) => panic!("fake gateway accept failed: {error}"),
+            }
+        }
+        false
+    });
+
+    let mut c = cfg_researching_locally();
+    let tools = c.tools.as_mut().expect("the shipped config has tools");
+    tools.freellmapi.enabled = true;
+    tools.freellmapi.verify = false;
+    tools.freellmapi.endpoint = format!("http://127.0.0.1:{port}/v1/chat/completions");
+    tools.freellmapi.model = "fixture-remote-model".into();
+    tools.freellmapi.token_vault = "freellmapi fixture key".into();
+
+    let p = plat();
+    let mut d = daemon(&c, &p, "remote-fallback");
+    d.vault
+        .open(
+            "a genuinely long passphrase, not a word",
+            0,
+            &VaultConfig::default(),
+        )
+        .expect("open fixture vault");
+    d.vault
+        .put("freellmapi fixture key", Kind::Login, "fixture-token", 0)
+        .expect("store fixture gateway token");
+
+    let ack = d.turn("research tide times at Ventura", 100);
+    assert!(
+        ack.contains("worker online"),
+        "FreeLLMAPI worker was not admitted: {ack}"
+    );
+    let deadline = Instant::now() + Duration::from_secs(20);
+    let mut t: u64 = 101;
+    let mut records = Vec::new();
+    while Instant::now() < deadline {
+        d.tick(t);
+        records = atlas::job::load_checked(&d.store).expect("job journal remains readable");
+        if records.iter().any(|record| {
+            record.stage == "research"
+                && record.state == atlas::job::State::Succeeded
+                && record.receipt.is_some()
+        }) {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(10));
+        t += 1;
+    }
+    assert_eq!(
+        records
+            .iter()
+            .filter(|record| record.stage == "research")
+            .count(),
+        1,
+        "exactly one research job is recorded"
+    );
+    let record = records
+        .iter()
+        .find(|record| record.stage == "research")
+        .expect("research record exists");
+    assert_eq!(record.state, atlas::job::State::Succeeded);
+    let execution = record
+        .receipt
+        .as_ref()
+        .and_then(|receipt| receipt.execution.as_ref())
+        .expect("fallback receipt records execution identity");
+    assert_eq!(execution.provider, "fixture-local");
+    assert!(gateway.join().expect("fake gateway thread completed"));
+}
+
+#[test]
+fn delegated_research_success_records_freellmapi_request_and_identity() {
+    let _test_guard = freellmapi_test_guard();
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind fake gateway");
+    listener
+        .set_nonblocking(true)
+        .expect("make fake gateway bounded");
+    let port = listener.local_addr().expect("fake gateway address").port();
+    let (request_tx, request_rx) = std::sync::mpsc::channel();
+    let gateway = std::thread::spawn(move || {
+        let deadline = Instant::now() + Duration::from_secs(30);
+        while Instant::now() < deadline {
+            match listener.accept() {
+                Ok((mut stream, _)) => {
+                    let mut request = Vec::new();
+                    let mut chunk = [0u8; 4096];
+                    let _ = stream
+                        .read(&mut chunk)
+                        .map(|read| request.extend_from_slice(&chunk[..read]));
+                    request_tx
+                        .send(request)
+                        .expect("send captured gateway request");
+                    let body = br#"{"choices":[{"message":{"content":"Tide times at Ventura peak just after noon. Wear sandals."}}]}"#;
+                    let response = format!(
+                        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nX-Routed-Via: fixture-provider\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                        body.len(),
+                        String::from_utf8_lossy(body)
+                    );
+                    stream
+                        .write_all(response.as_bytes())
+                        .expect("write fake gateway success");
+                    return true;
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                    std::thread::sleep(Duration::from_millis(10));
+                }
+                Err(error) => panic!("fake gateway accept failed: {error}"),
+            }
+        }
+        false
+    });
+
+    let mut c = cfg_researching_locally();
+    let tools = c.tools.as_mut().expect("the shipped config has tools");
+    tools.freellmapi.enabled = true;
+    tools.freellmapi.verify = false;
+    tools.freellmapi.endpoint = format!("http://127.0.0.1:{port}/v1/chat/completions");
+    tools.freellmapi.model = "fixture-remote-model".into();
+    tools.freellmapi.token_vault = "freellmapi fixture key".into();
+
+    let p = plat();
+    let mut d = daemon(&c, &p, "remote-success");
+    d.vault
+        .open(
+            "a genuinely long passphrase, not a word",
+            0,
+            &VaultConfig::default(),
+        )
+        .expect("open fixture vault");
+    d.vault
+        .put("freellmapi fixture key", Kind::Login, "fixture-token", 0)
+        .expect("store fixture gateway token");
+
+    let ack = d.turn("research tide times at Ventura", 100);
+    assert!(
+        ack.contains("worker online"),
+        "FreeLLMAPI worker was not admitted: {ack}"
+    );
+    let deadline = Instant::now() + Duration::from_secs(20);
+    let mut t: u64 = 101;
+    let mut records = Vec::new();
+    while Instant::now() < deadline {
+        d.tick(t);
+        records = atlas::job::load_checked(&d.store).expect("job journal remains readable");
+        if records.iter().any(|record| {
+            record.stage == "research"
+                && record.state == atlas::job::State::Succeeded
+                && record.receipt.is_some()
+        }) {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(10));
+        t += 1;
+    }
+
+    let request = request_rx
+        .recv_timeout(Duration::from_secs(2))
+        .expect("FreeLLMAPI received a research request");
+    let request = String::from_utf8_lossy(&request);
+    assert!(
+        request.starts_with("POST /v1/chat/completions "),
+        "{request}"
+    );
+    assert!(
+        request.contains("Authorization: Bearer fixture-token"),
+        "{request}"
+    );
+    assert!(
+        request.contains(r#""model":"fixture-remote-model""#),
+        "{request}"
+    );
+
+    assert_eq!(
+        records
+            .iter()
+            .filter(|record| record.stage == "research")
+            .count(),
+        1,
+        "exactly one research job is recorded"
+    );
+    let record = records
+        .iter()
+        .find(|record| record.stage == "research")
+        .expect("research record exists");
+    assert_eq!(record.state, atlas::job::State::Succeeded);
+    let execution = record
+        .receipt
+        .as_ref()
+        .and_then(|receipt| receipt.execution.as_ref())
+        .expect("successful receipt records execution identity");
+    assert_eq!(execution.provider, "freellmapi-gateway");
+    assert_eq!(execution.model, "fixture-remote-model");
+    assert_eq!(execution.network, "remote-via-loopback-gateway");
+    let evidence: Vec<atlas::evidence::Bundle> = d.store.load("evidence");
+    let research_evidence = evidence
+        .iter()
+        .find(|bundle| bundle.receipt_job_id.as_deref() == Some(record.job_id.as_str()))
+        .expect("research evidence is linked to the completed job");
+    assert_eq!(research_evidence.provider, "freellmapi-gateway");
+    assert_eq!(research_evidence.execution.as_ref(), Some(execution));
+    assert_eq!(
+        research_evidence
+            .execution_metadata
+            .as_ref()
+            .and_then(|metadata| metadata.routed_via.as_deref()),
+        Some("fixture-provider")
+    );
+    assert!(gateway.join().expect("fake gateway thread completed"));
+}
+
+#[test]
+fn freellmapi_can_write_research_without_a_local_background_model() {
+    let _test_guard = freellmapi_test_guard();
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind fake gateway");
+    listener
+        .set_nonblocking(true)
+        .expect("make fake gateway bounded");
+    let port = listener.local_addr().expect("fake gateway address").port();
+    let gateway = std::thread::spawn(move || {
+        let deadline = Instant::now() + Duration::from_secs(30);
+        while Instant::now() < deadline {
+            match listener.accept() {
+                Ok((mut stream, _)) => {
+                    let mut request = [0u8; 4096];
+                    let _ = stream.read(&mut request);
+                    let body = br#"{"choices":[{"message":{"content":"FreeLLMAPI research found Ventura tide times near noon, based on the fetched source."}}]}"#;
+                    let response = format!(
+                        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nX-Routed-Via: fixture-provider\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                        body.len(),
+                        String::from_utf8_lossy(body)
+                    );
+                    stream
+                        .write_all(response.as_bytes())
+                        .expect("write fake gateway success");
+                    return true;
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                    std::thread::sleep(Duration::from_millis(10));
+                }
+                Err(error) => panic!("fake gateway accept failed: {error}"),
+            }
+        }
+        false
+    });
+
+    let mut c = cfg_researching_locally();
+    let tools = c
+        .tools
+        .as_mut()
+        .expect("the shipped config has a tools section");
+    tools.llm = None;
+    tools.freellmapi.enabled = true;
+    tools.freellmapi.verify = false;
+    tools.freellmapi.endpoint = format!("http://127.0.0.1:{port}/v1/chat/completions");
+    tools.freellmapi.model = "fixture-remote-model".into();
+    tools.freellmapi.token_vault = "freellmapi fixture key".into();
+
+    let p = plat();
+    let mut d = daemon_without_local_background(&c, &p, "remote-only");
+    d.vault
+        .open(
+            "a genuinely long passphrase, not a word",
+            0,
+            &VaultConfig::default(),
+        )
+        .expect("open fixture vault");
+    d.vault
+        .put("freellmapi fixture key", Kind::Login, "fixture-token", 0)
+        .expect("store fixture gateway token");
+
+    let ack = d.turn("research tide times at Ventura", 100);
+    assert!(
+        ack.contains("worker online"),
+        "FreeLLMAPI-only worker was not admitted: {ack}"
+    );
+    let deadline = Instant::now() + Duration::from_secs(20);
+    let mut t: u64 = 101;
+    let mut records = Vec::new();
+    while Instant::now() < deadline {
+        d.tick(t);
+        records = atlas::job::load_checked(&d.store).expect("job journal remains readable");
+        if records.iter().any(|record| {
+            record.stage == "research"
+                && record.state == atlas::job::State::Succeeded
+                && record.receipt.is_some()
+        }) {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(10));
+        t += 1;
+    }
+
+    let record = records
+        .iter()
+        .find(|record| record.stage == "research")
+        .expect("research record exists");
+    assert_eq!(record.state, atlas::job::State::Succeeded);
+    let execution = record
+        .receipt
+        .as_ref()
+        .and_then(|receipt| receipt.execution.as_ref())
+        .expect("successful receipt records execution identity");
+    assert_eq!(execution.provider, "freellmapi-gateway");
+    assert_eq!(execution.model, "fixture-remote-model");
+    assert_eq!(execution.network, "remote-via-loopback-gateway");
+    assert!(gateway.join().expect("fake gateway thread completed"));
 }
 
 #[test]

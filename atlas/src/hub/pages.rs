@@ -200,6 +200,7 @@ pub fn recommendations_page(
     // whether it's on here, and the button that turns it on when it isn't
     // (30 Sep 2026: they were a list you could only read).
     free_wins: &[FreeWin],
+    automatic_cost_mb: u64,
 ) -> String {
     let mut body = String::new();
 
@@ -254,6 +255,9 @@ pub fn recommendations_page(
     // Ways to get better on the hardware already here. `improve` listed these
     // and nothing ever asked it.
     if !free_wins.is_empty() {
+        body.push_str(&format!(
+            "<p class=note>Automatic improvements use about {automatic_cost_mb} MB when all are running.</p>"
+        ));
         body.push_str("<h2>Free wins</h2><ul class=tight>");
         for w in free_wins {
             let act = match &w.get {

@@ -520,6 +520,7 @@ impl Index {
 /// different answers.
 pub struct Loading {
     rx: Option<std::sync::mpsc::Receiver<Index>>,
+    worker: Option<std::thread::JoinHandle<()>>,
 }
 
 /// The saved index, with a plain reason on it if the file had to be set aside
@@ -569,14 +570,20 @@ impl Loading {
                     .map_err(|_| "nothing was waiting for the saved file index any more"));
             });
         match started {
-            Ok(_) => Loading { rx: Some(rx) },
+            Ok(worker) => Loading {
+                rx: Some(rx),
+                worker: Some(worker),
+            },
             // No thread: read it here, as before, rather than not at all.
             Err(_) => {
                 let (tx, rx) = std::sync::mpsc::channel();
                 crate::heard!(tx
                     .send(read_saved_index(store))
                     .map_err(|_| "nothing was waiting for the saved file index"));
-                Loading { rx: Some(rx) }
+                Loading {
+                    rx: Some(rx),
+                    worker: None,
+                }
             }
         }
     }
@@ -585,7 +592,20 @@ impl Loading {
     #[doc(hidden)]
     pub fn held_for_test() -> (Loading, std::sync::mpsc::Sender<Index>) {
         let (tx, rx) = std::sync::mpsc::channel();
-        (Loading { rx: Some(rx) }, tx)
+        (
+            Loading {
+                rx: Some(rx),
+                worker: None,
+            },
+            tx,
+        )
+    }
+
+    /// Do not let an index reader outlive the daemon/store it reads.
+    pub fn wait_for_worker(&mut self) {
+        if let Some(worker) = self.worker.take() {
+            let _ = worker.join();
+        }
     }
 
     pub fn is_loading(&self) -> bool {
@@ -606,6 +626,7 @@ impl Loading {
             // so, where a search will read it (21 Oct 2026).
             Err(std::sync::mpsc::TryRecvError::Disconnected) => {
                 self.rx = None;
+                self.wait_for_worker();
                 if current.written_as() == (0, 0) {
                     current.missed.not_loaded =
                         Some("the part of me that reads it stopped before it finished".into());
@@ -617,6 +638,7 @@ impl Loading {
             }
         };
         self.rx = None;
+        self.wait_for_worker();
         if current.written_as() == (0, 0) {
             *current = loaded;
             Settled::Took(current.written_as())

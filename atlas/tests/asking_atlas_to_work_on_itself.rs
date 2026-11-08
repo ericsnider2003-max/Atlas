@@ -30,13 +30,14 @@ fn plat() -> MockPlatform {
 fn tmp(tag: &str) -> PathBuf {
     let nonce = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .expect("system clock is before the Unix epoch")
+        .unwrap_or_else(|error| panic!("system clock is before the Unix epoch: {error}"))
         .as_nanos();
     let p = std::env::temp_dir().join(format!(
         "atlas-selfwork-{tag}-{}-{nonce}",
         std::process::id()
     ));
-    std::fs::create_dir_all(&p).unwrap();
+    std::fs::create_dir_all(&p)
+        .unwrap_or_else(|error| panic!("could not create self-work fixture: {error}"));
     p
 }
 
@@ -47,8 +48,12 @@ fn tmp(tag: &str) -> PathBuf {
 /// on its own below, so that "it's switched off" cannot quietly stand in for
 /// "it doesn't work".
 fn cfg_on() -> Config {
-    let mut c = Config::load(Path::new("config")).unwrap();
-    let mut tools = c.tools.clone().unwrap();
+    let mut c = Config::load(Path::new("config"))
+        .unwrap_or_else(|error| panic!("config should load for self-work tests: {error}"));
+    let mut tools = c
+        .tools
+        .clone()
+        .unwrap_or_else(|| panic!("config should contain tools for self-work tests"));
     tools.pipeline.enabled = true;
     // A test command that returns immediately and prints nothing.
     //
@@ -88,8 +93,13 @@ fn switched_off_says_so_and_nothing_else() {
     // Eric turned the pipeline on in the shipped config on 25 Sep 2026 (E2),
     // so "off" is now a choice you make rather than the default. Still has
     // to say so, and nothing else, when you make it.
-    let mut c = Config::load(Path::new("config")).unwrap();
-    c.tools.as_mut().unwrap().pipeline.enabled = false;
+    let mut c = Config::load(Path::new("config"))
+        .unwrap_or_else(|error| panic!("config should load for self-work tests: {error}"));
+    c.tools
+        .as_mut()
+        .unwrap_or_else(|| panic!("config should contain tools for self-work tests"))
+        .pipeline
+        .enabled = false;
     let p = plat();
     let mut d = daemon(&c, &p, "off");
     let said = d.execute(&Intent::WorkOnYourself("the panel is slow".into()));
@@ -358,8 +368,12 @@ fn a_blank_turn_does_not_answer_a_question() {
 fn a_self_audit_that_has_slowed_down_says_why() {
     use atlas::timing::{Stage, Turn};
 
-    let mut c = Config::load(Path::new("config")).unwrap();
-    let mut tools = c.tools.clone().unwrap();
+    let mut c = Config::load(Path::new("config"))
+        .unwrap_or_else(|error| panic!("config should load for self-work tests: {error}"));
+    let mut tools = c
+        .tools
+        .clone()
+        .unwrap_or_else(|| panic!("config should contain tools for self-work tests"));
     tools.self_audit.enabled = true;
     c.tools = Some(tools);
 
@@ -408,8 +422,12 @@ fn a_self_audit_that_has_slowed_down_says_why() {
 fn a_self_audit_that_is_fine_does_not_volunteer_a_speed_line() {
     use atlas::timing::{Stage, Turn};
 
-    let mut c = Config::load(Path::new("config")).unwrap();
-    let mut tools = c.tools.clone().unwrap();
+    let mut c = Config::load(Path::new("config"))
+        .unwrap_or_else(|error| panic!("config should load for self-work tests: {error}"));
+    let mut tools = c
+        .tools
+        .clone()
+        .unwrap_or_else(|| panic!("config should contain tools for self-work tests"));
     tools.self_audit.enabled = true;
     c.tools = Some(tools);
 

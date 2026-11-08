@@ -244,6 +244,41 @@ name = "all"
 path = "tests/all.rs"
 
 [[test]]
+# The brief suite owns daemon workers and process-wide clock/state fixtures;
+# isolate it from the consolidated integration binary.
+name = "brief_without_an_inbox"
+path = "tests/brief_without_an_inbox.rs"
+
+[[test]]
+name = "group_has_an_owner"
+path = "tests/group_has_an_owner.rs"
+
+[[test]]
+name = "no_comes_with_a_way_to_yes"
+path = "tests/no_comes_with_a_way_to_yes.rs"
+
+[[test]]
+name = "search_check_errand"
+path = "tests/search_check_errand.rs"
+
+[[test]]
+name = "search_measurement_shutdown"
+path = "tests/search_measurement_shutdown.rs"
+
+[[test]]
+name = "never_satisfied_council"
+path = "tests/never_satisfied_council.rs"
+
+[[test]]
+name = "question_survives_you_leaving"
+path = "tests/a_question_that_survives_you_leaving.rs"
+
+[[test]]
+name = "room_that_disagrees"
+path = "tests/a_room_that_disagrees.rs"
+
+
+[[test]]
 name = "truthful_publication_and_calendars"
 path = "tests/truthful_publication_and_calendars.rs"
 # Its own process: "quit Atlas" rings the process-wide stop flag.

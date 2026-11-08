@@ -180,6 +180,48 @@ pub fn coder_among<'r>(
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::coder_among;
+    use crate::models::{Model, ModelsConfig, Registry};
+    use std::path::PathBuf;
+
+    fn model(id: &str, parameters: u64) -> Model {
+        Model {
+            path: PathBuf::from(format!("{id}.gguf")),
+            id: id.into(),
+            architecture: "qwen2".into(),
+            quant: "Q4_K_M".into(),
+            parameters,
+            weight_bytes: parameters,
+            max_context: 4096,
+            chat_template: None,
+        }
+    }
+
+    #[test]
+    fn explicit_installed_qwen3_filename_resolves_as_coder() {
+        let registry = Registry {
+            models: vec![model("Qwen3-1.7B-Q4_K_M", 1_700_000_000)],
+        };
+        let mut cfg = ModelsConfig::default();
+        cfg.coder = "Qwen3-1.7B-Q4_K_M.gguf".into();
+
+        let chosen = coder_among(&registry, &cfg, 16_000, 0).expect("explicit coder");
+        assert_eq!(chosen.id, "Qwen3-1.7B-Q4_K_M");
+    }
+
+    #[test]
+    fn empty_coder_selection_does_not_promote_unlisted_qwen3_model() {
+        let registry = Registry {
+            models: vec![model("Qwen3-1.7B-Q4_K_M", 1_700_000_000)],
+        };
+        let cfg = ModelsConfig::default();
+
+        assert!(coder_among(&registry, &cfg, 16_000, 0).is_none());
+    }
+}
+
 /// The settings the coding model's server is started with: its own port
 /// (the talking model's plus two, past the deep model's) and context.
 pub fn coder_settings(cfg: &crate::models::ModelsConfig) -> crate::models::ModelsConfig {

@@ -883,15 +883,6 @@ impl Store {
         self.save(name, value)
     }
 
-    /// Save a completion receipt while waiting for a competing worker to
-    /// release the state lock. A task that has actually finished must not be
-    /// reported as unverified solely because its evidence write overlapped a
-    /// background persistence operation.
-    pub(crate) fn save_for_completion<T: Serialize>(&self, name: &str, value: &T) -> Result<()> {
-        let _guard = state_lock::acquire_for_completion(&self.root)?;
-        self.save_held(name, value)
-    }
-
     pub fn save<T: Serialize>(&self, name: &str, value: &T) -> Result<()> {
         self.save_bounded(name, value, MAX_LOAD_BYTES)
     }

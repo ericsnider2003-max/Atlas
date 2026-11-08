@@ -45,6 +45,9 @@ enum PartOutcome {
     Asked,
     /// Tried and did not happen.
     Failed,
+    /// The request stopped before the turn could confirm whether the part
+    /// happened. This must not collapse into a confirmed failure.
+    Unknown,
     /// Never carried out: refused, parked for later, held.
     Refused,
 }
@@ -58,6 +61,9 @@ enum RunEnd {
     Asked,
     /// A part did not happen.
     Failed,
+    /// A part may have happened, but no trustworthy completion or failure
+    /// receipt was available.
+    Unknown,
     /// Never reached an ending: the run was cut short.
     Dropped,
 }
@@ -104,6 +110,10 @@ impl<'a> Daemon<'a> {
         let (mut state, mut detail): (Option<crate::job::State>, String) = match end {
             RunEnd::Done => (Some(crate::job::State::Succeeded), "every part finished".into()),
             RunEnd::Failed => (Some(crate::job::State::Failed), "a part did not happen".into()),
+            RunEnd::Unknown => (
+                Some(crate::job::State::Uncertain),
+                "a part ended without a confirmed outcome".into(),
+            ),
             // The question is its own record (a saved approval, in the Hub's
             // needs-you lane); this one is closed so it is not left Running,
             // and what was left undone is named in the reply.
@@ -117,24 +127,38 @@ impl<'a> Daemon<'a> {
             ),
         };
         if state == Some(crate::job::State::Succeeded) {
-            if let Err(error) =
-                self.capture_task_evidence(&job_id, &crate::taskloop::Outcome::Done(reply.clone()))
-            {
+            if let Err(error) = self.capture_task_evidence(
+                &job_id,
+                &crate::taskloop::Outcome::Done(reply.clone()),
+                None,
+            ) {
                 state = Some(crate::job::State::Failed);
                 detail = format!("completion evidence could not be verified: {error}");
                 reply = format!("I couldn't verify completion evidence for this task: {error}");
             }
         }
+        let mut completion_unconfirmed = false;
         if let Some(state) = state {
             let detail = format!("{detail}: {}", reply.chars().take(240).collect::<String>());
-            crate::heard!(crate::job::finish(
+            if crate::heard!(crate::job::finish(
                 &self.store,
                 &job_id,
                 &stage,
                 state,
                 &detail,
                 "spoken steps"
-            ));
+            ))
+            .is_none()
+            {
+                // The parts may already have changed something. A failed
+                // receipt save therefore cannot be reported as a clean
+                // completion or failure, and repeating blindly could
+                // duplicate an external effect.
+                completion_unconfirmed = true;
+            }
+        }
+        if completion_unconfirmed {
+            reply = crate::job::completion_receipt_warning(&reply);
         }
         self.keep_as_one_turn(said, &reply, thread_had, turns_had, t);
         reply
@@ -269,6 +293,10 @@ impl<'a> Daemon<'a> {
                     *end = RunEnd::Asked;
                     return finish_spoken_steps(&done, &reply, &rest, true);
                 }
+                PartOutcome::Unknown => {
+                    *end = RunEnd::Unknown;
+                    return finish_spoken_steps(&done, &reply, &rest, false);
+                }
                 // The last part's own words say how it went.
                 _ if rest.is_empty() => {
                     done.push(reply);
@@ -295,9 +323,6 @@ impl<'a> Daemon<'a> {
         if !matches!(self.session.pending, Pending::Nothing) {
             return PartOutcome::Asked;
         }
-        if reads_as_not_done(reply) {
-            return PartOutcome::Failed;
-        }
         if let Reading::Command(_) = reading {
             if let Some((_, receipt)) = &self.execution_receipt {
                 return match receipt {
@@ -307,8 +332,15 @@ impl<'a> Daemon<'a> {
                         PartOutcome::Done
                     }
                     crate::taskloop::Outcome::NeedsYou(_) => PartOutcome::Asked,
-                    _ => PartOutcome::Failed,
+                    crate::taskloop::Outcome::Unknown(_) => PartOutcome::Unknown,
+                    crate::taskloop::Outcome::Done(_) | crate::taskloop::Outcome::Started(_) => {
+                        PartOutcome::Failed
+                    }
+                    crate::taskloop::Outcome::Failed(_) => PartOutcome::Failed,
                 };
+            }
+            if reads_as_not_done(reply) {
+                return PartOutcome::Failed;
             }
             if self.last_executed.is_none() {
                 return PartOutcome::Refused;
@@ -317,6 +349,9 @@ impl<'a> Daemon<'a> {
                 return PartOutcome::Failed;
             }
             return PartOutcome::Done;
+        }
+        if reads_as_not_done(reply) {
+            return PartOutcome::Failed;
         }
         // A helper (reminder, window move, text, weather) leaves no receipt:
         // it counts as done only when its reply says it was, in the words it
@@ -584,5 +619,13 @@ mod tests {
         assert!(said.ends_with("Go ahead?"), "{said}");
         let failed = finish_spoken_steps(&[], "I couldn't open it.", &[&rest], false);
         assert!(failed.contains("haven't done"), "{failed}");
+    }
+
+    #[test]
+    fn compound_completion_receipt_failure_is_not_reported_as_confirmed() {
+        let reply = crate::job::completion_receipt_warning("every part finished");
+        assert!(reply.contains("completion receipt"), "{reply}");
+        assert!(reply.contains("check before repeating"), "{reply}");
+        assert!(reply.starts_with("every part finished"), "{reply}");
     }
 }

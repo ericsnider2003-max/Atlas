@@ -371,6 +371,7 @@ impl Llm for Inventive {
         Ok(atlas::brain::ChatReply {
             text,
             tool_calls: vec![],
+            execution: Default::default(),
         })
     }
     fn complete(&self, system: &str, _user: &str) -> Result<String> {

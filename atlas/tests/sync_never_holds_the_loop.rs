@@ -52,6 +52,10 @@ fn a_device_that_never_answers_doesnt_stop_atlas() {
     }]);
     let mut c = Config::load(Path::new("config")).unwrap();
     let tools = c.tools.as_mut().unwrap();
+    // This test measures whether automatic sync waits on a peer. Keep the
+    // unrelated connectivity probe offline so host/network latency cannot
+    // contaminate the tick bound under the full aggregate.
+    tools.connectivity.assume_offline = true;
     tools.sync.enabled = true;
     tools.sync.automatic = true;
     tools.sync.folder = String::new();

@@ -339,11 +339,26 @@ pub(super) fn outcome_of(ending: &crew::Ending) -> watching::Outcome {
     match ending {
         crew::Ending::Done(Ok(_)) => watching::Outcome::Finished,
         crew::Ending::Done(Err(_)) => watching::Outcome::Failed,
-        // Asked to stop, and it did. `watching` has no separate "stopped"
-        // outcome — getting this wrong the other way (Failed) would be told
-        // off for changing your mind, so this reads as a clean finish.
-        crew::Ending::Stopped => watching::Outcome::Finished,
+        // Asked to stop, and it did. Stopping does not prove delivery or a
+        // complete read, so keep it in the existing no-result lane rather
+        // than announcing a clean finish.
+        crew::Ending::Stopped => watching::Outcome::Vanished,
         crew::Ending::Vanished => watching::Outcome::Vanished,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::outcome_of;
+    use crate::{crew, watching};
+
+    #[test]
+    fn a_stopped_mail_errand_is_not_reported_as_finished() {
+        assert_eq!(
+            outcome_of(&crew::Ending::Stopped),
+            watching::Outcome::Vanished,
+            "a stopped mail errand has no confirmed result"
+        );
     }
 }
 

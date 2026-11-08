@@ -228,6 +228,7 @@ fn brief_settings_signature(configuration: &str) -> Result<Vec<serde_json::Value
 #[derive(Default)]
 pub(super) struct Live {
     receiver: Option<Receiver<Result<Prepared, String>>>,
+    worker: Option<std::thread::JoinHandle<()>>,
     ready: Option<Prepared>,
     effects: Option<Effects>,
     epoch: u64,
@@ -237,6 +238,17 @@ pub(super) struct Live {
     automatic_canceled_day: Option<u64>,
     daypart: Option<crate::nudge::Part>,
     announcement: Option<String>,
+}
+
+impl Live {
+    /// The preparation worker owns a snapshot of daemon state. Keep its
+    /// handle so a daemon cannot be dropped while that snapshot is still
+    /// being read or written by the worker.
+    pub(super) fn wait_for_worker(&mut self) {
+        if let Some(worker) = self.worker.take() {
+            let _ = worker.join();
+        }
+    }
 }
 
 fn item(
@@ -998,12 +1010,13 @@ impl Daemon<'_> {
         let owner = self.owner_state_root();
         let input = self.brief_input(now, owner)?;
         let (tx, rx) = mpsc::sync_channel(1);
-        std::thread::Builder::new()
+        let worker = std::thread::Builder::new()
             .name("atlas-brief".into())
             .spawn(move || {
                 let _ = tx.send(build(input));
             })
             .map_err(|e| format!("The brief worker could not start: {e}"))?;
+        self.brief_preparation.worker = Some(worker);
         self.brief_preparation.receiver = Some(rx);
         Ok(())
     }
@@ -1029,6 +1042,7 @@ impl Daemon<'_> {
             match receiver.try_recv() {
                 Ok(result) => {
                     self.brief_preparation.receiver = None;
+                    self.brief_preparation.wait_for_worker();
                     match result {
                         Ok(prepared) => self.brief_preparation.ready = Some(prepared),
                         Err(why) => return Some(Err(why)),
@@ -1037,6 +1051,7 @@ impl Daemon<'_> {
                 Err(mpsc::TryRecvError::Empty) => return None,
                 Err(mpsc::TryRecvError::Disconnected) => {
                     self.brief_preparation.receiver = None;
+                    self.brief_preparation.wait_for_worker();
                     return Some(Err("Brief preparation stopped before it produced a result. Nothing was marked delivered.".into()));
                 }
             }

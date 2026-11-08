@@ -187,6 +187,9 @@ pub struct Block {
 /// The path matters: an answer usually names the file just above the block,
 /// and without it Atlas would have to guess where a change goes.
 pub fn extract_blocks(reply: &str) -> Vec<Block> {
+    if let Some(marked) = extract_marked_blocks(reply) {
+        return marked;
+    }
     let mut out = Vec::new();
     let mut lines = reply.lines().peekable();
     let mut last_path: Option<String> = None;
@@ -214,10 +217,91 @@ pub fn extract_blocks(reply: &str) -> Vec<Block> {
         out.push(Block {
             language,
             code,
-            path: last_path.clone(),
+            // A path belongs to the next block only. Do not let a missing
+            // path on a later block silently reuse an earlier destination.
+            path: last_path.take(),
         });
     }
     out
+}
+
+/// Extract Atlas's explicit multi-file response protocol.
+///
+/// Models sometimes omit the closing marker or add a Markdown fence around a
+/// file body. A next `===FILE:` marker is still an unambiguous boundary, so
+/// accept that bounded shape and leave destination safety to `read_answer`.
+fn extract_marked_blocks(reply: &str) -> Option<Vec<Block>> {
+    let mut out = Vec::new();
+    let mut current: Option<(String, String)> = None;
+    let mut saw_marker = false;
+    for line in reply.lines() {
+        let t = line.trim();
+        if let Some(path) = t
+            .strip_prefix("===FILE:")
+            .and_then(|rest| rest.strip_suffix("==="))
+        {
+            saw_marker = true;
+            if let Some((old_path, body)) = current.take() {
+                push_marked_block(&mut out, old_path, &body);
+            }
+            current = Some((path.trim().to_string(), String::new()));
+            continue;
+        }
+        if t == "===END FILE===" {
+            if let Some((path, body)) = current.take() {
+                push_marked_block(&mut out, path, &body);
+            }
+            continue;
+        }
+        if let Some((_, body)) = current.as_mut() {
+            body.push_str(line);
+            body.push('\n');
+        }
+    }
+    if let Some((path, body)) = current {
+        push_marked_block(&mut out, path, &body);
+    }
+    saw_marker.then_some(out)
+}
+
+fn push_marked_block(out: &mut Vec<Block>, path: String, body: &str) {
+    let mut code = body.trim().to_string();
+    let mut language = String::new();
+    let mut lines = code.lines();
+    if let Some(first) = lines.next() {
+        let first = first.trim();
+        if first.starts_with("```") {
+            language = first.trim_start_matches('`').trim().to_string();
+            code = lines.collect::<Vec<_>>().join("\n");
+            if code.trim_end().ends_with("```") {
+                code = code
+                    .trim_end()
+                    .trim_end_matches("```")
+                    .trim_end()
+                    .to_string();
+            }
+        }
+    }
+    if language.is_empty() {
+        language = path
+            .rsplit_once('.')
+            .map(|(_, ext)| ext.to_string())
+            .unwrap_or_default();
+    }
+    if !code.trim().is_empty() {
+        out.push(Block {
+            language,
+            code: format!("{code}\n"),
+            path: Some(path),
+        });
+    }
+}
+
+/// A single pathless block may be resolved from the surrounding repair
+/// context. Once a reply contains multiple blocks, every destination must be
+/// explicit or the response is incomplete and must not be partially applied.
+pub fn multi_block_paths_are_complete(blocks: &[Block]) -> bool {
+    blocks.len() <= 1 || blocks.iter().all(|block| block.path.is_some())
 }
 
 fn mentions_a_path(line: &str) -> Option<String> {
@@ -250,7 +334,27 @@ pub enum Usable {
 }
 
 pub fn read_answer(reply: &str) -> Usable {
+    if crate::code_response::has_fence(reply) && !crate::code_response::fences_are_closed(reply) {
+        return Usable::NeedsCode(
+            "the code response was cut off inside a fenced block — resend the complete file before it is tested".into(),
+        );
+    }
     let blocks = extract_blocks(reply);
+    if !multi_block_paths_are_complete(&blocks) {
+        return Usable::NeedsCode(
+            "the multi-file response omitted a destination path — resend every file with its relative path before it is tested".into(),
+        );
+    }
+    if blocks.iter().any(|block| {
+        block
+            .path
+            .as_deref()
+            .is_some_and(|path| !crate::code_response::path_is_safe_relative(path))
+    }) {
+        return Usable::NeedsCode(
+            "the response named an unsafe file path — provide a relative path inside the approved project".into(),
+        );
+    }
     if !blocks.is_empty() {
         return Usable::Apply(blocks);
     }

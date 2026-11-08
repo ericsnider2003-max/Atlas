@@ -16,7 +16,7 @@
 //! angle is spent — the brief, written up for you or for someone else.
 
 use crate::consult::{classify, ConsultConfig, Consultation, Move};
-use crate::handoff::{write_brief, HandoffConfig, Problem, Snippet};
+use crate::handoff::{trim_middle, write_brief, HandoffConfig, Problem, Snippet};
 use crate::strategy::{Campaign, Effort, Next, StrategyConfig};
 use std::path::{Path, PathBuf};
 
@@ -31,6 +31,35 @@ pub trait Counsel {
 pub struct ModelCounsel<'a> {
     llm: &'a dyn crate::brain::Llm,
     transcript: String,
+}
+
+/// Reserve a response budget that scales down on small local contexts without
+/// starving larger local or delegated contexts. A fixed output request makes
+/// a small model spend its context on output room before reading the repair
+/// evidence.
+pub(crate) fn repair_response_budget(context_tokens: Option<u32>) -> u32 {
+    context_tokens
+        .map(|tokens| {
+            let desired = (tokens / 4).clamp(128, 4096);
+            let available = tokens
+                .saturating_sub(crate::context_budget::estimate_tokens(SYSTEM) as u32 + 192)
+                .max(128);
+            desired.min(available)
+        })
+        .unwrap_or(4096)
+}
+
+fn compact_repair_transcript(transcript: &str, context_tokens: Option<u32>) -> String {
+    let context = context_tokens.unwrap_or(8192) as usize;
+    let prompt_budget = context
+        .saturating_sub(repair_response_budget(context_tokens) as usize)
+        .saturating_sub(crate::context_budget::estimate_tokens(SYSTEM) + 64)
+        .max(512);
+    if crate::context_budget::estimate_tokens(transcript) <= prompt_budget {
+        return transcript.to_string();
+    }
+    let max_chars = prompt_budget.saturating_mul(7) / 2;
+    trim_middle(transcript, max_chars.max(256))
 }
 
 impl<'a> ModelCounsel<'a> {
@@ -50,6 +79,7 @@ const SYSTEM: &str =
 impl Counsel for ModelCounsel<'_> {
     fn ask(&mut self, message: &str) -> Result<String, String> {
         self.transcript.push_str(&format!("\n\n## Me\n{message}"));
+        self.transcript = compact_repair_transcript(&self.transcript, self.llm.context_tokens());
         // A hard task by the brain's own definition: it goes to the stronger
         // model when one is configured, and stays local when not.
         let reply = self
@@ -57,7 +87,31 @@ impl Counsel for ModelCounsel<'_> {
             .complete_hard(SYSTEM, &self.transcript)
             .map_err(|e| e.to_string())?;
         self.transcript.push_str(&format!("\n\n## You\n{reply}"));
+        self.transcript = compact_repair_transcript(&self.transcript, self.llm.context_tokens());
         Ok(reply)
+    }
+}
+
+#[cfg(test)]
+mod transcript_budget_tests {
+    use super::{compact_repair_transcript, repair_response_budget};
+
+    #[test]
+    fn repair_output_budget_scales_with_known_context() {
+        assert_eq!(repair_response_budget(Some(1024)), 256);
+        assert_eq!(repair_response_budget(Some(4096)), 1024);
+        assert_eq!(repair_response_budget(Some(32768)), 4096);
+        assert_eq!(repair_response_budget(None), 4096);
+    }
+
+    #[test]
+    fn repair_transcript_keeps_edges_but_bounds_prompt_size() {
+        let transcript = format!("HEAD\n{}\nTAIL", "middle ".repeat(20_000));
+        let compact = compact_repair_transcript(&transcript, Some(4096));
+        assert!(compact.starts_with("HEAD"));
+        assert!(compact.ends_with("TAIL"));
+        assert!(crate::context_budget::estimate_tokens(&compact) <= 4096 - 1024);
+        assert!(compact.len() < transcript.len());
     }
 }
 
@@ -237,6 +291,32 @@ fn snippets(copy: &Path, files: &[String], output: &str, max_lines: usize) -> Ve
         .collect()
 }
 
+/// Resolve a single pathless code block only when the test command identifies
+/// every test file and leaves exactly one possible source file. This helps a
+/// small local coder that returns the requested code but omits the heading,
+/// without guessing when more than one source could be changed.
+fn pathless_target(files: &[String], test: &[String]) -> Option<String> {
+    let test_names: Vec<String> = test
+        .iter()
+        .filter_map(|arg| {
+            let path = Path::new(arg.trim_matches(['"', '\'']));
+            let name = path.file_name()?.to_string_lossy().to_string();
+            (name.contains('.') && name.len() > 2).then_some(name)
+        })
+        .collect();
+    let candidates: Vec<&String> = files
+        .iter()
+        .filter(|file| {
+            let name = Path::new(file)
+                .file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_default();
+            !test_names.iter().any(|test_name| test_name == &name)
+        })
+        .collect();
+    (candidates.len() == 1).then(|| candidates[0].clone())
+}
+
 /// Work the job. `base` is where the copy goes.
 pub fn run(
     job: &Job,
@@ -385,9 +465,10 @@ pub(crate) fn run_controlled(
                     talk.record(&message, &reply, true);
                     let mut wrote = Vec::new();
                     for b in &blocks {
-                        let target = b.path.clone().or_else(|| {
-                            (problem.snippets.len() == 1).then(|| problem.snippets[0].path.clone())
-                        });
+                        let target = b
+                            .path
+                            .clone()
+                            .or_else(|| pathless_target(&files, &job.test));
                         if let Some(t) = target {
                             let mut t = t.trim_start_matches("./").to_string();
                             // A bare name means the file of that name in the folder.
@@ -514,12 +595,47 @@ pub fn land(o: &Outcome, folder: &Path) -> Result<Vec<String>, String> {
     if !o.solved {
         return Err("it didn't pass, so there's nothing to land".into());
     }
+    let root = std::fs::canonicalize(folder)
+        .map_err(|e| format!("couldn't resolve landing folder {}: {e}", folder.display()))?;
+    // `Outcome` normally comes from the sandbox, but this is the final
+    // approval-stage boundary and must not trust that provenance implicitly.
+    // Validate every destination before the first backup or write so one bad
+    // path cannot turn a multi-file landing into a partial mutation.
+    let targets: Vec<(String, PathBuf)> = o
+        .changes
+        .iter()
+        .map(|(rel, _)| {
+            if !crate::code_response::path_is_safe_relative(rel) {
+                return Err(format!("refusing to land unsafe relative path {rel:?}"));
+            }
+            let target = folder.join(rel);
+            if std::fs::symlink_metadata(&target)
+                .map(|metadata| metadata.file_type().is_symlink())
+                .unwrap_or(false)
+            {
+                return Err(format!(
+                    "refusing to replace symlink landing target {rel:?}"
+                ));
+            }
+            let mut existing_parent = target.parent().unwrap_or(folder).to_path_buf();
+            while !existing_parent.exists() && existing_parent != root {
+                if !existing_parent.pop() {
+                    break;
+                }
+            }
+            let resolved_parent = std::fs::canonicalize(&existing_parent)
+                .map_err(|e| format!("couldn't resolve landing parent for {rel:?}: {e}"))?;
+            if !resolved_parent.starts_with(&root) {
+                return Err(format!("refusing to land through a symlinked path {rel:?}"));
+            }
+            Ok((rel.clone(), target))
+        })
+        .collect::<Result<_, _>>()?;
     let mut done = Vec::new();
-    for (rel, text) in &o.changes {
-        let target = folder.join(rel);
+    for ((rel, text), (_, target)) in o.changes.iter().zip(&targets) {
         if target.exists() {
             std::fs::copy(
-                &target,
+                target,
                 target.with_extension(format!(
                     "{}.before",
                     target
@@ -532,7 +648,7 @@ pub fn land(o: &Outcome, folder: &Path) -> Result<Vec<String>, String> {
                 format!("couldn't keep the original of {rel}: {e}; nothing landed for it")
             })?;
         }
-        std::fs::write(&target, text).map_err(|e| format!("couldn't write {rel}: {e}"))?;
+        std::fs::write(target, text).map_err(|e| format!("couldn't write {rel}: {e}"))?;
         done.push(rel.clone());
     }
     Ok(done)
@@ -605,6 +721,18 @@ mod local_recipe_tests {
         );
         let _ = std::fs::remove_dir_all(root);
     }
+
+    #[test]
+    fn pathless_block_targets_only_unambiguous_non_test_file() {
+        let files = vec!["largest.py".into(), "check.py".into()];
+        let test = vec!["python".into(), "-B".into(), "check.py".into()];
+        assert_eq!(
+            pathless_target(&files, &test).as_deref(),
+            Some("largest.py")
+        );
+        let ambiguous = vec!["largest.py".into(), "helper.py".into(), "check.py".into()];
+        assert_eq!(pathless_target(&ambiguous, &test), None);
+    }
 }
 #[cfg(test)]
 mod native_repair_proof {
@@ -674,6 +802,7 @@ mod native_repair_proof {
             Some(&budget),
         )
         .unwrap();
+        eprintln!("native repair steps: {}", outcome.steps.join(" | "));
         assert!(outcome.steps.first().unwrap().contains("fails"));
         assert!(
             outcome.solved && outcome.exchanges > 0 && outcome.attempts > 0,

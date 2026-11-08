@@ -32,6 +32,7 @@ fn main() {
     println!("cargo:rerun-if-changed=windows/atlas-res.o");
     println!("cargo:rerun-if-changed=assets/atlas.ico");
     println!("cargo:rerun-if-env-changed=ATLAS_BUILD_NUMBER");
+    println!("cargo:rerun-if-env-changed=ATLAS_LINKER_FLAVOR");
     println!("cargo:rerun-if-env-changed=RC");
     println!("cargo:rerun-if-env-changed=WINDRES");
 
@@ -43,7 +44,16 @@ fn main() {
     // unaffected in behaviour. (23 Oct 2026)
     match std::env::var("CARGO_CFG_TARGET_ENV").as_deref() {
         Ok("msvc") => println!("cargo:rustc-link-arg-bins=/STACK:8388608"),
-        Ok("gnu") => println!("cargo:rustc-link-arg-bins=-Wl,--stack,8388608"),
+        Ok("gnu") => {
+            let stack_arg = if std::env::var("ATLAS_LINKER_FLAVOR").as_deref() == Ok("rust-lld") {
+                // Rust's bundled LLD is invoked directly, so it needs the
+                // native option rather than GCC's -Wl forwarding syntax.
+                "--stack=8388608"
+            } else {
+                "-Wl,--stack,8388608"
+            };
+            println!("cargo:rustc-link-arg-bins={stack_arg}");
+        }
         _ => {}
     }
 

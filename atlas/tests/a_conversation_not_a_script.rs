@@ -45,7 +45,8 @@ use atlas::persona::{Persona, Tone};
 use atlas::register::Register;
 
 fn parser() -> Parser {
-    let cfg = atlas::config::Config::load(std::path::Path::new("config")).unwrap();
+    let cfg = atlas::config::Config::load(std::path::Path::new("config"))
+        .unwrap_or_else(|error| panic!("load shipped config: {error}"));
     Parser::new(&cfg.commands)
 }
 
@@ -53,7 +54,7 @@ fn parser() -> Parser {
 struct Spy(std::sync::Mutex<String>);
 impl atlas::brain::Llm for Spy {
     fn complete(&self, system: &str, _user: &str) -> atlas::error::Result<String> {
-        *self.0.lock().unwrap() = system.to_string();
+        *self.0.lock().unwrap_or_else(|error| error.into_inner()) = system.to_string();
         Ok("{\"action\":\"say\",\"arg\":null,\"say\":\"fine\"}".into())
     }
 }
@@ -412,7 +413,8 @@ mod answering {
     fn tmp(tag: &str) -> PathBuf {
         let p = std::env::temp_dir().join(format!("atlas-conv-{tag}"));
         let _ = std::fs::remove_dir_all(&p);
-        std::fs::create_dir_all(&p).unwrap();
+        std::fs::create_dir_all(&p)
+            .unwrap_or_else(|error| panic!("create conversation fixture: {error}"));
         p
     }
 
@@ -420,7 +422,10 @@ mod answering {
     struct UserSpy(std::sync::Mutex<String>);
     impl atlas::brain::Llm for UserSpy {
         fn complete(&self, _system: &str, user: &str) -> atlas::error::Result<String> {
-            self.0.lock().unwrap().push_str(user);
+            self.0
+                .lock()
+                .unwrap_or_else(|error| error.into_inner())
+                .push_str(user);
             Ok("{\"action\":\"say\",\"arg\":null,\"say\":\"the second one it is\"}".into())
         }
     }

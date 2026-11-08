@@ -33,7 +33,12 @@ fn plat() -> MockPlatform {
 }
 
 fn install(tag: &str) -> PathBuf {
-    let root = std::env::temp_dir().join(format!("atlas-hubupd-{tag}-{}", std::process::id()));
+    let nonce = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("system clock is before the Unix epoch")
+        .as_nanos();
+    let root =
+        std::env::temp_dir().join(format!("atlas-hubupd-{tag}-{}-{nonce}", std::process::id()));
     let _ = std::fs::remove_dir_all(&root);
     std::fs::create_dir_all(root.join("data/state")).unwrap();
     std::fs::create_dir_all(root.join("peers")).unwrap();

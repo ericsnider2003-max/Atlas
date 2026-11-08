@@ -284,6 +284,19 @@ impl<'a> Daemon<'a> {
                     wanted.push((crate::job::approval_key("chat", &d), d));
                 }
             }
+            // Unattended approval requests are owned by the backlog rather
+            // than the live session. Keep their job projection in the same
+            // approval journal so completing or dismissing the backlog item
+            // closes the corresponding NeedsYou record.
+            for item in self.backlog.outstanding() {
+                if matches!(
+                    &item.blocker,
+                    crate::backlog::Blocker::NeedsYourDecision { .. }
+                ) {
+                    let q = item.request.clone();
+                    wanted.push((crate::job::approval_key("parked", &q), q));
+                }
+            }
             note(
                 &mut failed,
                 "approval_records",
@@ -536,10 +549,13 @@ impl<'a> Daemon<'a> {
             // triggers is brought up to date, off the loop.
             if let Ok(exe) = std::env::current_exe() {
                 let state_dir = state.clone();
-                std::thread::spawn(move || {
-                    // unheard-ok: returns `Option<Result<String, String>>`, not a Result
-                    let _ = crate::startup::bring_up_to_date(&exe, &state_dir);
-                });
+                self.startup_worker = std::thread::Builder::new()
+                    .name("atlas-startup-migration".into())
+                    .spawn(move || {
+                        // unheard-ok: returns `Option<Result<String, String>>`, not a Result
+                        let _ = crate::startup::bring_up_to_date(&exe, &state_dir);
+                    })
+                    .ok();
             }
             let args: Vec<String> = std::env::args().skip(1).collect();
             if crate::whystopped::come_back_after_updates(&args.join(" ")) {
@@ -1145,9 +1161,20 @@ impl<'a> Daemon<'a> {
         calls_before: u64,
         speaking_ms: u64,
         reply: &str,
+        speech_engines: Vec<String>,
     ) {
         let calls = self.trace.recorded_since(calls_before);
         let model_ms: u64 = calls.iter().map(|c| c.took_ms).sum();
+        let model_call_attribution = calls
+            .iter()
+            .map(|call| crate::timing::ModelCallAttribution {
+                asked_by: call.asked_by.clone(),
+                seat: call.seat.clone(),
+                model_id: call.model.clone(),
+                took_ms: call.took_ms,
+                execution_metadata: call.execution_metadata.clone(),
+            })
+            .collect();
         let mut line = String::from("timing: turn");
         for stage in crate::timing::Stage::all() {
             if let Some(ms) = t.get(stage) {
@@ -1172,12 +1199,25 @@ impl<'a> Daemon<'a> {
         if let Some(ms) = self.silence_ms.take() {
             line.push_str(&format!(" end_of_speech_to_first_audio={ms}ms"));
         }
-        // What the model server itself counted for the last call: a whole
-        // prompt read again (a cache miss) reads very differently from a
-        // long reply (29 Sep 2026).
-        let server_timings = crate::models::take_last_timings();
-        if let Some(st) = server_timings {
+        // What the model server itself counted: a whole prompt read again (a
+        // cache miss) reads very differently from a long reply. Each payload
+        // is bound to its trace call when recorded, so multiple recorded calls
+        // can be summed without presenting only the last call as the turn.
+        let timed_calls: Vec<_> = calls
+            .iter()
+            .filter_map(|call| call.server_timings)
+            .collect();
+        let server_timings_complete = !calls.is_empty() && timed_calls.len() == calls.len();
+        let server_timings = crate::models::ServerTimings::aggregate(timed_calls);
+        if calls.len() > 1 && !server_timings_complete {
+            line.push_str("; server_timings=unknown(incomplete_call_coverage)");
+        } else if let Some(st) = server_timings {
             line.push_str(&format!("; {}", st.line()));
+        }
+        if speech_engines.is_empty() {
+            line.push_str("; tts=unknown");
+        } else {
+            line.push_str(&format!("; tts={}", speech_engines.join(",")));
         }
         // Which ear heard this turn and why (`voicelat`).
         let asr = crate::voicelat::take_asr();
@@ -1206,16 +1246,19 @@ impl<'a> Daemon<'a> {
             server_timings.map(|st| st.read),
             failed.then(|| "model_unreachable".into()),
             if failed { "failed" } else { "completed" }.into(),
-        );
-        let receipt = match server_timings {
-            Some(st) => receipt.with_server_timings(crate::timing::ServerTimingsReceipt {
+        )
+        .with_model_call_coverage(calls.len(), server_timings_complete)
+        .with_speech_engines(speech_engines)
+        .with_model_call_attribution(model_call_attribution);
+        let receipt = match (server_timings_complete, server_timings) {
+            (true, Some(st)) => receipt.with_server_timings(crate::timing::ServerTimingsReceipt {
                 cached_prompt_tokens: st.cached,
                 prompt_tokens: st.read,
                 prompt_ms: st.read_ms,
                 completion_tokens: st.wrote,
                 completion_ms: st.wrote_ms,
             }),
-            None => receipt,
+            _ => receipt,
         };
         let receipt = match self.last_reached() {
             Some(action) => {
@@ -2317,7 +2360,8 @@ impl<'a> Daemon<'a> {
                     heard_ms,
                     first_sound,
                 ));
-            self.log_turn_timing(&timed, calls_before, speaking_ms, &reply);
+            let speech_engines = mouth.take_speech_engines();
+            self.log_turn_timing(&timed, calls_before, speaking_ms, &reply, speech_engines);
             self.timing.add(timed);
             self.last_spoke_at = clock();
             self.own_speech.borrow_mut().finished(self.last_spoke_at);
@@ -2759,20 +2803,37 @@ impl Drop for Daemon<'_> {
     fn drop(&mut self) {
         // Other programs Atlas started (`mcp`) end with it.
         self.mcp.stop_all();
+        if let Some(worker) = self.startup_worker.take() {
+            let _ = worker.join();
+        }
+        if let Some(probe) = self.audio_probe.take() {
+            let _ = probe.join();
+        }
         if self.stopped {
+            // `shut_down` has already persisted its final state, but it may
+            // still have cooperative workers holding native-backed resources.
+            // Reclaim those workers even on this early-exit path; skipping
+            // persistence must not mean skipping lifecycle cleanup.
+            self.crew.shutdown();
+            if let Some((_, writer)) = self.index_saving.take() {
+                let _ = writer.join();
+            }
+            self.brief_preparation.wait_for_worker();
+            self.index_load.wait_for_worker();
             return;
         }
-        self.crew.ask_everyone_to_stop();
         // Wait for cooperative workers before writing restart state. Without
         // this ordering a worker can finish during `persist_at_exit` and leave
         // a stale left-waiting checkpoint for the next daemon instance.
-        self.crew.wait_for_stop();
+        self.crew.shutdown();
         // The index writer owns the same state transaction used by the
         // daemon. Join it before the final persistence boundary so its lock
         // cannot leak into the next daemon/test in this process.
         if let Some((_, writer)) = self.index_saving.take() {
             let _ = writer.join();
         }
+        self.brief_preparation.wait_for_worker();
+        self.index_load.wait_for_worker();
         self.persist_at_exit();
         // The final persist may start a fresh index writer after the first
         // join above.  Do not release the daemon's state transaction until

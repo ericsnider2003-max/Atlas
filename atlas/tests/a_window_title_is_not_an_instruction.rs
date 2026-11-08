@@ -47,7 +47,7 @@ fn llm_at(args: &[&str]) -> LlmConfig {
         "command: curl\nargs: [{}]\nrequest: '{{}}'\nresponse_path: response\n",
         args.join(", ")
     ))
-    .expect("config")
+    .unwrap_or_else(|error| panic!("parse test model config: {error}"))
 }
 
 // ================= the title is marked as somebody else's words =================

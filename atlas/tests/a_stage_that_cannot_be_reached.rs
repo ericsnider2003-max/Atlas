@@ -132,7 +132,10 @@ fn production_lines() -> Vec<(String, usize, String)> {
     let mut stack = vec![std::path::PathBuf::from("src")];
     while let Some(p) = stack.pop() {
         if p.is_dir() {
-            for e in std::fs::read_dir(&p).expect("src is readable").flatten() {
+            for e in std::fs::read_dir(&p)
+                .unwrap_or_else(|error| panic!("read source directory {p:?}: {error}"))
+                .flatten()
+            {
                 stack.push(e.path());
             }
             continue;

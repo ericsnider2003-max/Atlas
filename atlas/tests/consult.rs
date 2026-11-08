@@ -139,6 +139,30 @@ fn a_solution_is_tested_when_there_are_attempts_left() {
 }
 
 #[test]
+fn an_unclosed_code_fence_does_not_spend_a_test_attempt() {
+    let reply = classify("```rust\nfn x() {");
+    assert!(matches!(reply, Reply::Guidance(ref message) if message.contains("cut off")));
+    let c = Consultation::new("x");
+    assert!(matches!(c.next(&reply, 3, &cfg()), Move::Reply(_)));
+}
+
+#[test]
+fn an_escape_model_path_does_not_spend_a_test_attempt() {
+    match classify("..\\outside.rs\n```rust\nfn main() {}\n```") {
+        Reply::Guidance(reason) => assert!(reason.contains("unsafe file path"), "{reason}"),
+        other => panic!("unsafe model path was admitted: {other:?}"),
+    }
+}
+
+#[test]
+fn an_incomplete_multi_file_response_does_not_spend_a_test_attempt() {
+    match classify("src/voice.rs:\n```rust\nfn a() {}\n```\n```rust\nfn b() {}\n```") {
+        Reply::Guidance(reason) => assert!(reason.contains("omitted a destination"), "{reason}"),
+        other => panic!("incomplete multi-file response was admitted: {other:?}"),
+    }
+}
+
+#[test]
 fn with_no_attempts_left_it_stops_instead_of_testing() {
     let c = Consultation::new("x");
     let reply = classify("```rust\nfn x() {}\n```");

@@ -2132,13 +2132,18 @@ impl ToolEntry {
             let mut p = json!({
                 "type": "object",
                 "properties": {"arg": {"type": "string", "description": arg_doc}},
+                "additionalProperties": false,
             });
             if !self.arg_optional {
                 p["required"] = json!(["arg"]);
             }
             p
         } else {
-            json!({"type": "object", "properties": {}})
+            json!({
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+            })
         };
         json!({"type": "function", "function": {"name": self.name, "description": what, "parameters": parameters}})
     }

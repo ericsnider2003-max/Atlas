@@ -110,6 +110,7 @@ fn text(t: &str) -> ChatReply {
     ChatReply {
         text: t.into(),
         tool_calls: vec![],
+        execution: Default::default(),
     }
 }
 
@@ -1029,6 +1030,7 @@ fn a_call_missing_what_it_needs_is_asked_about_not_run_with_nothing() {
     let broken = ChatReply {
         text: String::new(),
         tool_calls: vec![call("research", serde_json::json!({}))],
+        execution: Default::default(),
     };
     let llm = Pieces::new(vec![(vec![], Some(broken))]);
     let (d, _, _) = converse(
@@ -1040,22 +1042,28 @@ fn a_call_missing_what_it_needs_is_asked_about_not_run_with_nothing() {
 }
 
 #[test]
-fn a_second_tool_call_is_named_not_dropped() {
+fn multiple_actionable_tool_calls_are_rejected_before_partial_execution() {
     let two = ChatReply {
         text: String::new(),
         tool_calls: vec![
             call("open_app", serde_json::json!({"arg": "chrome"})),
             call("open_app", serde_json::json!({"arg": "notepad"})),
         ],
+        execution: Default::default(),
     };
     let llm = Pieces::new(vec![(vec![], Some(two))]);
     let (d, _, also) = converse(
         &llm,
         &brain_turn("get chrome and notepad up", vec![], vec![]),
     );
-    assert_eq!(d.intent, Intent::OpenApp("chrome".into()));
-    assert_eq!(also.len(), 1, "{also:?}");
-    assert!(also[0].contains("notepad"), "{also:?}");
+    assert!(
+        matches!(d.intent, Intent::Ask(ref question) if question.contains("more than one")),
+        "{d:?}"
+    );
+    assert!(
+        also.is_empty(),
+        "no operation may be partially dispatched: {also:?}"
+    );
 }
 
 #[test]
@@ -1073,6 +1081,7 @@ fn an_announced_tool_is_called_rather_than_promised() {
             Some(ChatReply {
                 text: String::new(),
                 tool_calls: vec![call("agenda", serde_json::json!({"arg": "tomorrow"}))],
+                execution: Default::default(),
             }),
         ),
     ]);
@@ -1358,6 +1367,7 @@ fn a_calendar_read_is_put_into_words_by_the_model() {
             ChatReply {
                 text: String::new(),
                 tool_calls: vec![call("agenda", serde_json::json!({"arg": "tomorrow"}))],
+                execution: Default::default(),
             }
         }
     });

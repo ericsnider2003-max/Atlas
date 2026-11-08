@@ -64,7 +64,11 @@ impl atlas::brain::Llm for Says {
         _on_text: &mut dyn FnMut(&str) -> bool,
     ) -> atlas::error::Result<atlas::brain::ChatReply> {
         let (text, tool_calls) = atlas::brain::inline_tool_calls(&self.0);
-        Ok(atlas::brain::ChatReply { text, tool_calls })
+        Ok(atlas::brain::ChatReply {
+            text,
+            tool_calls,
+            execution: Default::default(),
+        })
     }
 }
 

@@ -639,7 +639,7 @@ impl<'a> Daemon<'a> {
                 .filter(|(executed, _)| executed == &intent)
                 .map(|(_, outcome)| outcome);
             let ok = receipt.map_or_else(
-                || !result.starts_with("error"),
+                || crate::scheduler::result_is_success(&result),
                 |outcome| matches!(outcome, crate::taskloop::Outcome::Done(_)),
             );
             if job.command.starts_with("reminder ") {
@@ -976,7 +976,7 @@ impl<'a> Daemon<'a> {
                 .filter(|(executed, _)| executed == &intent)
                 .map(|(_, outcome)| outcome);
             let ok = receipt.map_or_else(
-                || !result.starts_with("error"),
+                || crate::scheduler::result_is_success(&result),
                 |outcome| matches!(outcome, crate::taskloop::Outcome::Done(_)),
             );
             self.queue.finish(id, &result, ok);

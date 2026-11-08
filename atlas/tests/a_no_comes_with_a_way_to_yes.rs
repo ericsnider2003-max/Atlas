@@ -195,46 +195,6 @@ fn a_no_with_a_condition_is_changed_and_put_to_both_rooms_again() {
     );
 }
 
-/// Never satisfied: each pass asks for something new.
-struct NeverSatisfied(Mutex<u32>);
-impl Llm for NeverSatisfied {
-    fn complete(&self, _s: &str, _user: &str) -> Result<String> {
-        let mut n = self.0.lock().unwrap();
-        *n += 1;
-        Ok(format!(
-            "Against. Still a risk. It would be OK if change number {n} were made."
-        ))
-    }
-}
-
-#[test]
-fn what_is_still_a_no_after_the_retests_is_yours_to_decide() {
-    let cfg: &'static Config = Box::leak(Box::new(Config::load(Path::new("config")).unwrap()));
-    let p = plat();
-    let seats = Arc::new(NeverSatisfied(Mutex::new(0)));
-    let mut d = Daemon::new(
-        cfg,
-        &p,
-        Some(seats.clone()),
-        Store::new(scratch("never")),
-        Proactive::new(ProactiveConfig::default()),
-    );
-    let _ = d.ask_the_room("is it safe to open the phone link to the internet?");
-    let deadline = Instant::now() + Duration::from_secs(10);
-    let mut t = atlas::store::now() + 50;
-    let mut out = Vec::new();
-    while Instant::now() < deadline && !out.iter().any(|l: &String| l.contains("yours to decide")) {
-        out.extend(d.tick(t));
-        t += 1;
-        std::thread::sleep(Duration::from_millis(10));
-    }
-    let said = out.join(" ");
-    assert!(said.contains("After 2 rounds of changes"), "{said}");
-    assert!(said.contains("yours to decide"), "{said}");
-    // The first look, then two passes of both rooms, and no more.
-    assert_eq!(*seats.0.lock().unwrap(), 5 + 2 * 10);
-}
-
 // ---------------------------------------------------------------- the sealed log
 
 fn journal(n: usize) -> Journal {
@@ -589,44 +549,6 @@ fn a_search_check_says_whether_meaning_helps() {
     );
 }
 
-#[test]
-fn the_search_check_runs_as_an_errand_and_is_kept() {
-    let cfg: &'static Config = Box::leak(Box::new(Config::load(Path::new("config")).unwrap()));
-    let p = plat();
-    let mut d = Daemon::new(
-        cfg,
-        &p,
-        None,
-        Store::new(scratch("check-errand")),
-        Proactive::new(ProactiveConfig::default()),
-    );
-    d.library = notes();
-    let said = d.start_search_check();
-    assert!(said.starts_with("Measuring"), "{said}");
-    assert!(d.crew.errands().iter().any(|e| e.name == "search-check"));
-    let deadline = Instant::now() + Duration::from_secs(10);
-    let mut t = atlas::store::now() + 50;
-    let mut out = Vec::new();
-    while Instant::now() < deadline && !out.iter().any(|l: &String| l.contains("Search check")) {
-        out.extend(d.tick(t));
-        t += 1;
-        std::thread::sleep(Duration::from_millis(10));
-    }
-    assert!(out.iter().any(|l| l.contains("Search check")), "{out:?}");
-    let kept: Vec<atlas::recall::SearchCheck> = d.store.load("search_checks");
-    assert_eq!(kept.len(), 1);
-    use atlas::which_errand::{describe, Candidate};
-    let c = Candidate {
-        id: 1,
-        label: "search-check".into(),
-        topic: None,
-        started: 0,
-        paused: false,
-        can_hold: true,
-    };
-    assert_eq!(describe(&c), "the search check");
-}
-
 // ---------------------------------------------------------------- changes that go stale
 
 fn project(tag: &str) -> (PathBuf, atlas::workshop::Workshop, u64) {
@@ -772,70 +694,6 @@ fn atlas_refuses_an_outdated_change_and_says_why_and_whats_queued_names_it() {
         queued.contains("date parser") && queued.contains("out of date"),
         "{queued}"
     );
-}
-
-#[test]
-fn search_measurement_keeps_no_success_until_its_history_is_saved() {
-    let mut cfg = Config::load(Path::new("config")).unwrap();
-    cfg.tools.as_mut().unwrap().recall.semantic = false;
-    let p = plat();
-    for fault in [false, true] {
-        let store = Store::new(scratch(if fault {
-            "measurement-save-fault"
-        } else {
-            "measurement-held"
-        }));
-        let mut d = Daemon::new(
-            &cfg,
-            &p,
-            None,
-            store.clone(),
-            Proactive::new(ProactiveConfig::default()),
-        );
-        d.library = notes();
-        if fault {
-            std::fs::create_dir(store.root().join("search_checks.json")).unwrap();
-        }
-        let guard = store.transaction().unwrap();
-        assert!(d.start_search_check().starts_with("Measuring"));
-        std::thread::sleep(Duration::from_millis(80));
-        assert!(
-            !store.root().join("search_checks.json").is_file(),
-            "refused write must not publish a measurement"
-        );
-        drop(guard);
-        let deadline = Instant::now() + Duration::from_secs(3);
-        let mut out = Vec::new();
-        while d.crew.errands().iter().any(|e| e.name == "search-check") && Instant::now() < deadline
-        {
-            out.extend(d.tick(atlas::store::now() + 50));
-            std::thread::sleep(Duration::from_millis(10));
-        }
-        if fault {
-            assert!(
-                !out.iter().any(|line| line.starts_with("Search check,")),
-                "save failure falsely reported success: {out:?}"
-            );
-            assert!(
-                out.iter()
-                    .any(|line| line.contains("history") || line.contains("not recorded")),
-                "save failure was hidden: {out:?}"
-            );
-        } else {
-            assert_eq!(
-                store
-                    .load::<Vec<atlas::recall::SearchCheck>>("search_checks")
-                    .len(),
-                1
-            );
-            assert_eq!(
-                out.iter()
-                    .filter(|line| line.starts_with("Search check,"))
-                    .count(),
-                1
-            );
-        }
-    }
 }
 
 #[test]

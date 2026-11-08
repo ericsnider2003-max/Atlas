@@ -904,7 +904,7 @@ pub fn start(
                 dirty = false;
             }
             if !w.said.is_empty() {
-                if let Ok(mut s) = said.lock() {
+                if let Ok(mut s) = said.lock().or_else(crate::crash::unpoison) {
                     s.append(&mut w.said);
                 }
             }

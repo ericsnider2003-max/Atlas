@@ -93,7 +93,27 @@ pub fn settled(previous: &str, current: &str, unchanged_for_ms: u64, cfg: &Consu
 /// Ordering matters: code beats everything, because a reply that explains
 /// *and* gives the change is a solution, not guidance.
 pub fn classify(text: &str) -> Reply {
+    if crate::code_response::has_fence(text) && !crate::code_response::fences_are_closed(text) {
+        return Reply::Guidance(
+            "The code response was cut off inside a fenced block; it must be resent completely before Atlas tests it.".into(),
+        );
+    }
     let blocks = extract_blocks(text);
+    if !crate::handoff::multi_block_paths_are_complete(&blocks) {
+        return Reply::Guidance(
+            "The multi-file response omitted a destination path; every file must name its relative path before Atlas tests it.".into(),
+        );
+    }
+    if blocks.iter().any(|block| {
+        block
+            .path
+            .as_deref()
+            .is_some_and(|path| !crate::code_response::path_is_safe_relative(path))
+    }) {
+        return Reply::Guidance(
+            "The code response named an unsafe file path; it must use a relative path inside the approved project before Atlas tests it.".into(),
+        );
+    }
     if !blocks.is_empty() {
         return Reply::Solution(blocks);
     }

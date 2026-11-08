@@ -21,12 +21,14 @@ fn tmp(tag: &str) -> PathBuf {
         NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
     ));
     let _ = std::fs::remove_dir_all(&p);
-    std::fs::create_dir_all(p.join("state")).unwrap();
-    std::fs::create_dir_all(p.join("plugins")).unwrap();
+    std::fs::create_dir_all(p.join("state"))
+        .unwrap_or_else(|error| panic!("create add-on state: {error}"));
+    std::fs::create_dir_all(p.join("plugins"))
+        .unwrap_or_else(|error| panic!("create add-on plugins: {error}"));
     p
 }
 fn cfg() -> Config {
-    Config::load(Path::new("config")).unwrap()
+    Config::load(Path::new("config")).unwrap_or_else(|error| panic!("load shipped config: {error}"))
 }
 fn plat() -> MockPlatform {
     MockPlatform::new(vec![Monitor {
@@ -60,8 +62,10 @@ struct Rig {
 impl Rig {
     fn new(tag: &str, text: &str) -> Rig {
         let root = tmp(tag);
-        std::fs::create_dir_all(root.join("plugins/wind-down")).unwrap();
-        std::fs::write(root.join("plugins/wind-down/plugin.yaml"), text).unwrap();
+        std::fs::create_dir_all(root.join("plugins/wind-down"))
+            .unwrap_or_else(|error| panic!("create wind-down plugin: {error}"));
+        std::fs::write(root.join("plugins/wind-down/plugin.yaml"), text)
+            .unwrap_or_else(|error| panic!("write wind-down plugin: {error}"));
         Rig { root }
     }
     fn store(&self) -> Store {
@@ -90,7 +94,7 @@ impl Rig {
             "wind-down",
             &found[0].sha256,
         )
-        .unwrap();
+        .unwrap_or_else(|error| panic!("approve wind-down plugin: {error}"));
     }
 }
 

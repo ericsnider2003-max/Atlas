@@ -301,6 +301,7 @@ fn the_capability_list_is_for_questions_about_atlas() {
                 name: "capabilities".into(),
                 arguments: serde_json::json!({}),
             }],
+            execution: Default::default(),
         };
         decision_from_chat(&r, said).intent
     };

@@ -33,6 +33,7 @@ impl Llm for Records {
         Ok(ChatReply {
             text: "Sunlight scatters off the air, and blue scatters most.".into(),
             tool_calls: Vec::new(),
+            execution: Default::default(),
         })
     }
 }

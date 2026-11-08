@@ -105,6 +105,7 @@ impl Llm for Replay {
         Ok(ChatReply {
             text,
             tool_calls: vec![],
+            execution: Default::default(),
         })
     }
 }
@@ -137,6 +138,7 @@ fn the_evening_replayed_through_the_prompt_builder() {
         folded: t.folded,
         last_active: t.recent[0].at,
         current_topic: None,
+        protected_anchors: Vec::new(),
         load_error: None,
     };
     store.save("thread", &start).unwrap();
@@ -342,6 +344,7 @@ impl Llm for Loops {
         Ok(ChatReply {
             text,
             tool_calls: vec![],
+            execution: Default::default(),
         })
     }
 }

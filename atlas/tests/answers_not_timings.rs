@@ -22,6 +22,7 @@ fn chose_recommend(said: &str) -> Intent {
             name: "recommend".into(),
             arguments: serde_json::json!({}),
         }],
+        execution: Default::default(),
     };
     decision_from_chat(&r, said).intent
 }

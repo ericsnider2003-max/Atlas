@@ -871,7 +871,7 @@ pub enum Writer {
     /// Your own second model (`llm_secondary`): a server you run, or a hosted
     /// model with your key.
     YourSecond,
-    /// The Cloudflare worker you set up, when online.
+    /// An approved online worker you set up, when online.
     Worker,
     /// The model on this computer.
     Local,
@@ -885,7 +885,7 @@ impl Writer {
         match self {
             Writer::Coder => "the coding model on this computer",
             Writer::YourSecond => "your second model",
-            Writer::Worker => "your Cloudflare worker",
+            Writer::Worker => "your online worker",
             Writer::Local => "the model on this computer",
             Writer::FreeOnline => "a free online model",
         }

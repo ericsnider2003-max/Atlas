@@ -7,6 +7,7 @@ use atlas::daemon::Daemon;
 use atlas::market::bars::Bars;
 use atlas::market::events::{Event, Tier};
 use atlas::market::fixtures::path;
+use atlas::market::regime::efficiency_ratio;
 use atlas::market::structure::{before_the_turn, recent};
 use atlas::otherside::{against, argued, decision_from, not_raised, Angle};
 use atlas::platform::mock::MockPlatform;
@@ -155,6 +156,14 @@ const UP_THEN_PULLBACK: [f64; 10] = [
 
 fn bars(points: &[f64]) -> Bars {
     Bars::from_closes(&path(points, 0.0002), 0.0006).unwrap()
+}
+
+#[test]
+fn efficiency_ratio_is_directly_tested_against_a_bounded_view() {
+    let b = Bars::from_closes(&[1.0, 2.0, 3.0, 4.0], 0.0006).unwrap();
+    let view = b.latest().unwrap();
+    let ratio = efficiency_ratio(&view, 3).expect("the view has enough bars");
+    assert!((ratio - 1.0).abs() < f64::EPSILON, "ratio was {ratio}");
 }
 
 #[test]

@@ -17,6 +17,7 @@ use atlas::platform::mock::MockPlatform;
 use atlas::platform::Monitor;
 use atlas::proactive::{Proactive, ProactiveConfig};
 use atlas::store::Store;
+use std::error::Error;
 use std::path::Path;
 
 fn has(findings: &[atlas::motion::Finding], rule: &str) -> bool {
@@ -46,13 +47,11 @@ fn a_static_svg_is_not_an_animation() {
         has(&f, "actually animates"),
         "a still picture must be flagged: {f:?}"
     );
-    assert_eq!(
-        f.iter()
-            .find(|x| x.rule == "actually animates")
-            .unwrap()
-            .severity,
-        Severity::Blocking
-    );
+    let severity = f
+        .iter()
+        .find(|x| x.rule == "actually animates")
+        .map(|x| x.severity);
+    assert_eq!(severity, Some(Severity::Blocking));
 }
 
 #[test]
@@ -118,12 +117,13 @@ fn a_size_that_differs_from_the_spec_is_advisory() {
     spec.width = 600;
     spec.height = 400;
     let f = check(CLEAN, &spec); // CLEAN is 480×480
-    let size = f
-        .iter()
-        .find(|x| x.rule == "canvas size")
-        .expect("size mismatch flagged");
-    assert_eq!(size.severity, Severity::Advisory);
-    assert!(size.detail.contains("600"), "{}", size.detail);
+    match f.iter().find(|x| x.rule == "canvas size") {
+        Some(size) => {
+            assert_eq!(size.severity, Severity::Advisory);
+            assert!(size.detail.contains("600"), "{}", size.detail);
+        }
+        None => panic!("size mismatch flagged: {f:?}"),
+    }
 }
 
 #[test]
@@ -267,18 +267,17 @@ fn gif_bytes(w: u16, h: u16) -> Vec<u8> {
     b
 }
 
-fn scratch_dir(tag: &str) -> std::path::PathBuf {
+fn scratch_dir(tag: &str) -> std::io::Result<std::path::PathBuf> {
     let d = std::env::temp_dir().join(format!("atlas-render-{tag}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&d);
-    std::fs::create_dir_all(&d).unwrap();
-    d
+    std::fs::create_dir_all(&d).map(|_| d)
 }
 
 #[test]
-fn a_png_of_the_right_size_verifies_clean() {
-    let d = scratch_dir("png-ok");
+fn a_png_of_the_right_size_verifies_clean() -> Result<(), Box<dyn Error>> {
+    let d = scratch_dir("png-ok")?;
     let p = d.join("out.png");
-    std::fs::write(&p, png_bytes(480, 480)).unwrap();
+    std::fs::write(&p, png_bytes(480, 480))?;
     let f = verify_render(
         &p,
         &Expect {
@@ -289,13 +288,14 @@ fn a_png_of_the_right_size_verifies_clean() {
     );
     assert!(f.is_empty(), "a correct PNG should be clean: {f:?}");
     let _ = std::fs::remove_dir_all(&d);
+    Ok(())
 }
 
 #[test]
-fn a_png_of_the_wrong_size_is_advisory_not_blocking() {
-    let d = scratch_dir("png-size");
+fn a_png_of_the_wrong_size_is_advisory_not_blocking() -> Result<(), Box<dyn Error>> {
+    let d = scratch_dir("png-size")?;
     let p = d.join("out.png");
-    std::fs::write(&p, png_bytes(600, 400)).unwrap();
+    std::fs::write(&p, png_bytes(600, 400))?;
     let f = verify_render(
         &p,
         &Expect {
@@ -304,21 +304,23 @@ fn a_png_of_the_wrong_size_is_advisory_not_blocking() {
             height: 480,
         },
     );
-    let note = f
-        .iter()
-        .find(|x| x.rule == "render size")
-        .expect("size mismatch flagged");
-    assert_eq!(note.severity, Severity::Advisory);
-    assert!(note.detail.contains("600"), "{}", note.detail);
+    match f.iter().find(|x| x.rule == "render size") {
+        Some(note) => {
+            assert_eq!(note.severity, Severity::Advisory);
+            assert!(note.detail.contains("600"), "{}", note.detail);
+        }
+        None => panic!("size mismatch flagged: {f:?}"),
+    }
     let _ = std::fs::remove_dir_all(&d);
+    Ok(())
 }
 
 #[test]
-fn an_output_that_isnt_the_format_is_blocking() {
-    let d = scratch_dir("png-bad");
+fn an_output_that_isnt_the_format_is_blocking() -> Result<(), Box<dyn Error>> {
+    let d = scratch_dir("png-bad")?;
     let p = d.join("out.png");
     // The renderer failed and wrote an error message to the output path.
-    std::fs::write(&p, b"error: could not open display\n").unwrap();
+    std::fs::write(&p, b"error: could not open display\n")?;
     let f = verify_render(
         &p,
         &Expect {
@@ -333,11 +335,12 @@ fn an_output_that_isnt_the_format_is_blocking() {
         "{f:?}"
     );
     let _ = std::fs::remove_dir_all(&d);
+    Ok(())
 }
 
 #[test]
-fn a_missing_render_is_blocking() {
-    let d = scratch_dir("png-missing");
+fn a_missing_render_is_blocking() -> Result<(), Box<dyn Error>> {
+    let d = scratch_dir("png-missing")?;
     let f = verify_render(
         &d.join("nope.png"),
         &Expect {
@@ -348,13 +351,14 @@ fn a_missing_render_is_blocking() {
     );
     assert!(f.iter().any(|x| x.rule == "rendered at all"), "{f:?}");
     let _ = std::fs::remove_dir_all(&d);
+    Ok(())
 }
 
 #[test]
-fn a_gif_header_is_read_too() {
-    let d = scratch_dir("gif");
+fn a_gif_header_is_read_too() -> Result<(), Box<dyn Error>> {
+    let d = scratch_dir("gif")?;
     let p = d.join("out.gif");
-    std::fs::write(&p, gif_bytes(320, 240)).unwrap();
+    std::fs::write(&p, gif_bytes(320, 240))?;
     let f = verify_render(
         &p,
         &Expect {
@@ -365,17 +369,18 @@ fn a_gif_header_is_read_too() {
     );
     assert!(f.is_empty(), "a correct GIF should be clean: {f:?}");
     let _ = std::fs::remove_dir_all(&d);
+    Ok(())
 }
 
 #[test]
-fn render_runs_the_configured_command_then_checks_the_output() {
+fn render_runs_the_configured_command_then_checks_the_output() -> Result<(), Box<dyn Error>> {
     // A stub "renderer": `cp <fixture> {out}` produces a real PNG at the output
     // path, so the run+verify plumbing is exercised without a real rasteriser.
-    let d = scratch_dir("run");
+    let d = scratch_dir("run")?;
     let fixture = d.join("fixture.png");
-    std::fs::write(&fixture, png_bytes(480, 480)).unwrap();
+    std::fs::write(&fixture, png_bytes(480, 480))?;
     let svg = d.join("in.svg");
-    std::fs::write(&svg, "<svg/>").unwrap();
+    std::fs::write(&svg, "<svg/>")?;
     let out = d.join("out.png");
 
     // Use a script on Windows so paths containing spaces remain one argument.
@@ -387,8 +392,7 @@ fn render_runs_the_configured_command_then_checks_the_output() {
                 "$fixture = '{}'; Copy-Item -LiteralPath $fixture -Destination $args[0] -Force\n",
                 fixture.display().to_string().replace('\'', "''")
             ),
-        )
-        .unwrap();
+        )?;
         format!(
             "powershell -NoProfile -File \"{}\" \"{{out}}\"",
             script.display()
@@ -405,8 +409,7 @@ fn render_runs_the_configured_command_then_checks_the_output() {
             width: 480,
             height: 480,
         },
-    )
-    .expect("the stub renderer runs");
+    )?;
     assert!(
         findings.is_empty(),
         "the copied PNG matches the spec: {findings:?}"
@@ -416,11 +419,12 @@ fn render_runs_the_configured_command_then_checks_the_output() {
         "the render actually produced the output file"
     );
     let _ = std::fs::remove_dir_all(&d);
+    Ok(())
 }
 
 #[test]
-fn render_with_no_command_is_an_honest_error_not_a_pretend_success() {
-    let d = scratch_dir("empty");
+fn render_with_no_command_is_an_honest_error_not_a_pretend_success() -> Result<(), Box<dyn Error>> {
+    let d = scratch_dir("empty")?;
     let r = render(
         &d.join("in.svg"),
         &d.join("out.png"),
@@ -436,11 +440,12 @@ fn render_with_no_command_is_an_honest_error_not_a_pretend_success() {
         "no rasteriser configured must be an error, not empty findings"
     );
     let _ = std::fs::remove_dir_all(&d);
+    Ok(())
 }
 
 #[test]
-fn render_rejects_an_unterminated_renderer_quote_before_launch() {
-    let d = scratch_dir("malformed-command");
+fn render_rejects_an_unterminated_renderer_quote_before_launch() -> Result<(), Box<dyn Error>> {
+    let d = scratch_dir("malformed-command")?;
     let r = render(
         &d.join("in.svg"),
         &d.join("out.png"),
@@ -451,20 +456,26 @@ fn render_rejects_an_unterminated_renderer_quote_before_launch() {
             height: 1,
         },
     );
-    let error = r.expect_err("malformed renderer configuration must be rejected");
+    let error = match r {
+        Ok(findings) => {
+            panic!("malformed renderer configuration unexpectedly succeeded: {findings:?}")
+        }
+        Err(error) => error,
+    };
     assert!(error.contains("unterminated quote"), "{error}");
     let _ = std::fs::remove_dir_all(&d);
+    Ok(())
 }
 
 // --- end to end through the daemon -----------------------------------------
 
 #[test]
-fn animate_routes_through_the_daemon() {
+fn animate_routes_through_the_daemon() -> Result<(), Box<dyn Error>> {
     let dir = std::env::temp_dir().join(format!("atlas-motion-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::create_dir_all(&dir)?;
 
-    let c = Config::load(Path::new("config")).unwrap();
+    let c = Config::load(Path::new("config"))?;
     let p = MockPlatform::new(vec![Monitor {
         id: 1,
         x: 0,
@@ -490,4 +501,5 @@ fn animate_routes_through_the_daemon() {
         "with no model it should say it needs one, proving the branch was reached: {reply}"
     );
     let _ = std::fs::remove_dir_all(&dir);
+    Ok(())
 }

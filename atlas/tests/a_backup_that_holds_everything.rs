@@ -43,7 +43,8 @@ use std::path::{Path, PathBuf};
 fn tmp(tag: &str) -> PathBuf {
     let p = std::env::temp_dir().join(format!("atlas-bk-{tag}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&p);
-    std::fs::create_dir_all(&p).unwrap();
+    std::fs::create_dir_all(&p)
+        .unwrap_or_else(|error| panic!("create backup fixture {p:?}: {error}"));
     p
 }
 
@@ -51,18 +52,23 @@ fn tmp(tag: &str) -> PathBuf {
 /// subfolders that actually exist under it.
 fn a_state_folder(at: &Path) -> PathBuf {
     let state = at.join("state");
-    std::fs::create_dir_all(state.join("handoffs")).unwrap();
-    std::fs::create_dir_all(state.join("landed-over")).unwrap();
-    std::fs::write(state.join("thread.json"), b"{\"turns\":[]}").unwrap();
-    std::fs::write(state.join("memory.json"), b"{\"notes\":[]}").unwrap();
+    std::fs::create_dir_all(state.join("handoffs"))
+        .unwrap_or_else(|error| panic!("create handoffs fixture: {error}"));
+    std::fs::create_dir_all(state.join("landed-over"))
+        .unwrap_or_else(|error| panic!("create landed-over fixture: {error}"));
+    std::fs::write(state.join("thread.json"), b"{\"turns\":[]}")
+        .unwrap_or_else(|error| panic!("write thread fixture: {error}"));
+    std::fs::write(state.join("memory.json"), b"{\"notes\":[]}")
+        .unwrap_or_else(|error| panic!("write memory fixture: {error}"));
     // What someone sent you, which the inbox record names by this path.
-    std::fs::write(state.join("handoffs/1700-contract.pdf"), b"the actual file").unwrap();
+    std::fs::write(state.join("handoffs/1700-contract.pdf"), b"the actual file")
+        .unwrap_or_else(|error| panic!("write contract fixture: {error}"));
     // What Atlas replaced when it landed a fix on its own.
     std::fs::write(
         state.join("landed-over/panel.rs.before"),
         b"the version you had",
     )
-    .unwrap();
+    .unwrap_or_else(|error| panic!("write landed-over fixture: {error}"));
     state
 }
 
@@ -94,7 +100,8 @@ fn files_under(p: &Path) -> Vec<String> {
                 if path.file_name().and_then(|name| name.to_str())
                     == Some(".atlas-output-write.lock")
                 {
-                    let metadata = std::fs::symlink_metadata(&path).unwrap();
+                    let metadata = std::fs::symlink_metadata(&path)
+                        .unwrap_or_else(|error| panic!("read lease metadata {path:?}: {error}"));
                     assert!(metadata.is_file() && !metadata.file_type().is_symlink());
                     assert_eq!(metadata.len(), 0, "output lease contains no owner payload");
                     continue;

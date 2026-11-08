@@ -1244,6 +1244,12 @@ impl<'a> Daemon<'a> {
         c.prompt_chars = prompt_chars;
         c.reply_chars = reply_chars;
         c.failed = failed;
+        // Bind the provider payload to the call while this owner is creating
+        // the durable trace record. The turn receipt can then aggregate all
+        // calls it actually recorded instead of reading only the last global
+        // payload later.
+        c.server_timings = crate::models::take_last_timings();
+        c.execution_metadata = self.llm.as_ref().and_then(|llm| llm.execution_metadata());
         c.id = self.trace.next_id();
         let id = c.id;
         if !crate::trace::append(&self.trace_path(), &c) {
@@ -1770,13 +1776,9 @@ impl<'a> Daemon<'a> {
             for piece in &mut lib.pieces {
                 piece.embedding = meaning.get(&piece.title, &piece.text).cloned();
             }
-            if let Ok(mut slot) = pending.lock().or_else(crate::crash::unpoison) {
-                // Re-check while holding the same lock used by synchronous
-                // invalidation. This closes the check-then-publish race.
-                if current_generation.load(std::sync::atomic::Ordering::Acquire) == generation {
-                    *slot = Some((generation, lib));
-                }
-            }
+            // Re-check while holding the same lock used by synchronous
+            // invalidation. This closes the check-then-publish race.
+            Self::publish_library_if_current(&pending, &current_generation, generation, lib);
             Ok("research library rebuilt".into())
         });
         // unheard-ok: the rebuild is best-effort; the next research result retries it.
@@ -1815,6 +1817,19 @@ impl<'a> Daemon<'a> {
         match slot.take() {
             Some((generation, library)) if generation == current_generation => Some(library),
             _ => None,
+        }
+    }
+
+    fn publish_library_if_current(
+        pending: &std::sync::Mutex<Option<(u64, crate::recall::Library)>>,
+        current_generation: &std::sync::atomic::AtomicU64,
+        generation: u64,
+        library: crate::recall::Library,
+    ) {
+        if let Ok(mut slot) = pending.lock().or_else(crate::crash::unpoison) {
+            if current_generation.load(std::sync::atomic::Ordering::Acquire) == generation {
+                *slot = Some((generation, library));
+            }
         }
     }
 
@@ -3044,5 +3059,47 @@ mod library_generation_tests {
         let mut current = Some((4, crate::recall::Library::default()));
         assert!(Daemon::take_current_library(&mut current, 4).is_some());
         assert!(current.is_none(), "installing a result must consume it");
+    }
+
+    #[test]
+    fn stale_library_worker_cannot_publish_after_generation_advances() {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        use std::sync::{Arc, Barrier, Mutex};
+
+        let pending = Arc::new(Mutex::new(None));
+        let generation = Arc::new(AtomicU64::new(1));
+        let entered = Arc::new(Barrier::new(2));
+        let release = Arc::new(Barrier::new(2));
+        let worker_pending = pending.clone();
+        let worker_generation = generation.clone();
+        let worker_entered = entered.clone();
+        let worker_release = release.clone();
+        let worker = std::thread::spawn(move || {
+            worker_entered.wait();
+            worker_release.wait();
+            Daemon::publish_library_if_current(
+                &worker_pending,
+                &worker_generation,
+                1,
+                crate::recall::Library::default(),
+            );
+        });
+
+        entered.wait();
+        generation.store(2, Ordering::Release);
+        release.wait();
+        worker.join().expect("stale library worker joined");
+        assert!(
+            pending.lock().unwrap().is_none(),
+            "generation 1 must not publish after generation 2 is current"
+        );
+
+        Daemon::publish_library_if_current(
+            &pending,
+            &generation,
+            2,
+            crate::recall::Library::default(),
+        );
+        assert_eq!(pending.lock().unwrap().as_ref().map(|(g, _)| *g), Some(2));
     }
 }

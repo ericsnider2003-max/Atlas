@@ -18,7 +18,7 @@ use atlas::store::Store;
 use std::path::{Path, PathBuf};
 
 fn cfg() -> Config {
-    Config::load(Path::new("config")).unwrap()
+    Config::load(Path::new("config")).unwrap_or_else(|error| panic!("load shipped config: {error}"))
 }
 fn plat() -> MockPlatform {
     MockPlatform::new(vec![Monitor {
@@ -41,10 +41,12 @@ impl Person {
         let root =
             std::env::temp_dir().join(format!("atlas-owned-{test}-{who}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
-        std::fs::create_dir_all(root.join("state")).unwrap();
-        std::fs::create_dir_all(root.join("peers")).unwrap();
+        std::fs::create_dir_all(root.join("state"))
+            .unwrap_or_else(|error| panic!("create group state: {error}"));
+        std::fs::create_dir_all(root.join("peers"))
+            .unwrap_or_else(|error| panic!("create group peers: {error}"));
         let key = Identity::load_or_create(&root.join("peers"))
-            .unwrap()
+            .unwrap_or_else(|error| panic!("create group identity: {error}"))
             .public();
         Person { root, key }
     }
@@ -62,7 +64,8 @@ impl Person {
             peer.key = Some(other.key.clone());
             p.peers.push(peer);
         }
-        p.save(&self.peers()).unwrap();
+        p.save(&self.peers())
+            .unwrap_or_else(|error| panic!("save group pairings: {error}"));
     }
     fn daemon<'a>(&self, c: &'a Config, p: &'a MockPlatform) -> Daemon<'a> {
         let mut d = Daemon::new(
@@ -78,7 +81,10 @@ impl Person {
     }
     fn signed(&self, group: &str) -> atlas::groups::Signed {
         let g = Groups::load(&self.store());
-        g.named(group).expect("the group").signed.clone()
+        g.named(group)
+            .unwrap_or_else(|| panic!("group {group:?} exists"))
+            .signed
+            .clone()
     }
 }
 
@@ -115,7 +121,7 @@ fn setup(test: &str) -> (Person, Person, Person, String) {
         "Sam, Maya",
         "",
     )
-    .unwrap();
+    .unwrap_or_else(|error| panic!("create Friends group: {error}"));
     groups::act(
         &eric.store(),
         &eric.peers(),
@@ -124,10 +130,10 @@ fn setup(test: &str) -> (Person, Person, Person, String) {
         "Maya",
         "reader",
     )
-    .unwrap();
+    .unwrap_or_else(|error| panic!("set Friends role: {error}"));
     let gid = Groups::load(&eric.store())
         .named("Friends")
-        .unwrap()
+        .unwrap_or_else(|| panic!("Friends group exists"))
         .state
         .group_id
         .clone();

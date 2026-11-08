@@ -193,6 +193,26 @@ fn several_files_in_one_answer_each_keep_their_own_path() {
 }
 
 #[test]
+fn an_unnamed_later_block_does_not_inherit_an_earlier_path() {
+    let reply = "src/voice.rs:\n```rust\nfn a() {}\n```\n\
+                 ```rust\nfn b() {}\n```";
+    let blocks = extract_blocks(reply);
+    assert_eq!(blocks.len(), 2);
+    assert_eq!(blocks[0].path.as_deref(), Some("src/voice.rs"));
+    assert_eq!(blocks[1].path, None);
+}
+
+#[test]
+fn a_multi_file_answer_with_a_missing_path_is_not_admitted() {
+    let reply = "src/voice.rs:\n```rust\nfn a() {}\n```\n\
+                 ```rust\nfn b() {}\n```";
+    match read_answer(reply) {
+        Usable::NeedsCode(reason) => assert!(reason.contains("omitted a destination"), "{reason}"),
+        other => panic!("incomplete multi-file response was admitted: {other:?}"),
+    }
+}
+
+#[test]
 fn an_answer_that_asks_a_question_back_is_recognised_as_such() {
     // Common, and not a failure.
     let reply = "That's odd. Which version of the audio driver are you on?";
@@ -221,8 +241,46 @@ fn an_empty_code_fence_is_not_mistaken_for_an_answer() {
 }
 
 #[test]
+fn an_unclosed_code_fence_is_not_treated_as_a_testable_answer() {
+    match read_answer("Here is the fix:\n```rust\nfn listen() {") {
+        Usable::NeedsCode(reason) => assert!(reason.contains("cut off"), "{reason}"),
+        other => panic!("truncated code was admitted: {other:?}"),
+    }
+}
+
+#[test]
+fn an_escape_model_path_is_not_admitted_for_handoff() {
+    match read_answer("..\\outside.rs\n```rust\nfn main() {}\n```") {
+        Usable::NeedsCode(reason) => assert!(reason.contains("unsafe file path"), "{reason}"),
+        other => panic!("unsafe model path was admitted: {other:?}"),
+    }
+}
+
+#[test]
 fn the_language_of_each_block_is_kept() {
     let blocks = extract_blocks("```yaml\nkey: value\n```");
     assert_eq!(blocks[0].language, "yaml");
     assert!(blocks[0].code.contains("key: value"));
+}
+
+#[test]
+fn explicit_multi_file_markers_accept_fences_and_missing_final_end_marker() {
+    let reply = "===FILE:src/ports.mjs===\n```mjs\nexport const port = 3000;\n```\n===END FILE===\n===FILE:src/main.mjs===\n```mjs\nconsole.log(port);\n```";
+    match read_answer(reply) {
+        Usable::Apply(blocks) => {
+            assert_eq!(blocks.len(), 2);
+            assert_eq!(blocks[0].path.as_deref(), Some("src/ports.mjs"));
+            assert_eq!(blocks[0].language, "mjs");
+            assert!(blocks[1].code.contains("console.log(port)"));
+        }
+        other => panic!("explicit marker response was rejected: {other:?}"),
+    }
+}
+
+#[test]
+fn explicit_multi_file_markers_still_reject_unsafe_paths() {
+    match read_answer("===FILE:../outside.mjs===\nexport const x = 1;\n===END FILE===") {
+        Usable::NeedsCode(reason) => assert!(reason.contains("unsafe file path"), "{reason}"),
+        other => panic!("unsafe marker path was admitted: {other:?}"),
+    }
 }

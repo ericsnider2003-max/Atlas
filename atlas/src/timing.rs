@@ -41,11 +41,45 @@ pub struct ActionReceipt {
     pub status: String,
 }
 
+/// The identity of one model call projected into its containing turn.
+///
+/// The flight recorder remains the canonical call log. This bounded projection
+/// exists because a turn receipt must explain mixed-model or fallback turns
+/// without asking a reader to join two stores, and because the aggregate model
+/// fields below cannot honestly identify each call on their own.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ModelCallAttribution {
+    pub asked_by: String,
+    #[serde(default)]
+    pub seat: Option<String>,
+    pub model_id: String,
+    pub took_ms: u64,
+    #[serde(default)]
+    pub execution_metadata: Option<crate::execution::ExecutionMetadata>,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RuntimeReceipt {
     pub turn: Turn,
     pub model_id: String,
     pub context_tokens: u32,
+    /// Number of model calls observed in this turn. Older receipts deserialize
+    /// as zero, which is intentionally not treated as a measured call count.
+    #[serde(default)]
+    pub model_calls: u32,
+    /// True only when `server_timings` describes the whole turn. A server
+    /// payload is currently produced per call, so a multi-call turn cannot
+    /// honestly expose its last payload as a turn total.
+    #[serde(default)]
+    pub server_timings_complete: bool,
+    /// Speech engines that actually delivered audio during the turn. Empty
+    /// means the mouth could not prove its engine, not that no speech ran.
+    #[serde(default)]
+    pub speech_engines: Vec<String>,
+    /// Per-call identity for this turn. Empty means no model call was
+    /// observed, not that a call occurred without an identified owner.
+    #[serde(default)]
+    pub model_call_attribution: Vec<ModelCallAttribution>,
     pub prompt_tokens: Option<u64>,
     pub fallback_reason: Option<String>,
     pub terminal: String,
@@ -66,6 +100,10 @@ impl RuntimeReceipt {
             turn,
             model_id,
             context_tokens,
+            model_calls: 0,
+            server_timings_complete: false,
+            speech_engines: Vec::new(),
+            model_call_attribution: Vec::new(),
             prompt_tokens,
             fallback_reason,
             terminal,
@@ -76,6 +114,29 @@ impl RuntimeReceipt {
 
     pub fn with_server_timings(mut self, timings: ServerTimingsReceipt) -> Self {
         self.server_timings = Some(timings);
+        self
+    }
+
+    pub fn with_model_call_coverage(
+        mut self,
+        model_calls: usize,
+        server_timings_complete: bool,
+    ) -> Self {
+        self.model_calls = model_calls.min(u32::MAX as usize) as u32;
+        self.server_timings_complete = server_timings_complete;
+        self
+    }
+
+    pub fn with_speech_engines(mut self, speech_engines: Vec<String>) -> Self {
+        self.speech_engines = speech_engines;
+        self
+    }
+
+    pub fn with_model_call_attribution(
+        mut self,
+        model_call_attribution: Vec<ModelCallAttribution>,
+    ) -> Self {
+        self.model_call_attribution = model_call_attribution;
         self
     }
 
@@ -487,6 +548,88 @@ pub fn silence_before_first_sound(
 #[cfg(test)]
 mod laps_tests {
     use super::*;
+
+    #[test]
+    fn runtime_receipt_marks_multi_call_server_timings_incomplete() {
+        let receipt = RuntimeReceipt::new(
+            Turn::default(),
+            "model".into(),
+            1024,
+            None,
+            None,
+            "completed".into(),
+        )
+        .with_model_call_coverage(2, false);
+
+        assert_eq!(receipt.model_calls, 2);
+        assert!(!receipt.server_timings_complete);
+    }
+
+    #[test]
+    fn runtime_receipt_round_trip_preserves_coverage() {
+        let receipt = RuntimeReceipt::new(
+            Turn::default(),
+            "model".into(),
+            1024,
+            Some(7),
+            None,
+            "completed".into(),
+        )
+        .with_model_call_coverage(1, true);
+        let encoded = serde_json::to_vec(&receipt).unwrap();
+        let decoded: RuntimeReceipt = serde_json::from_slice(&encoded).unwrap();
+
+        assert_eq!(decoded.model_calls, 1);
+        assert!(decoded.server_timings_complete);
+        assert_eq!(decoded.prompt_tokens, Some(7));
+    }
+
+    #[test]
+    fn runtime_receipt_round_trip_preserves_speech_attribution() {
+        let receipt = RuntimeReceipt::new(
+            Turn::default(),
+            "model".into(),
+            1024,
+            None,
+            None,
+            "completed".into(),
+        )
+        .with_speech_engines(vec!["kokoro".into(), "piper".into()]);
+        let encoded = serde_json::to_vec(&receipt).unwrap();
+        let decoded: RuntimeReceipt = serde_json::from_slice(&encoded).unwrap();
+
+        assert_eq!(decoded.speech_engines, vec!["kokoro", "piper"]);
+    }
+
+    #[test]
+    fn runtime_receipt_round_trip_preserves_per_call_routing_identity() {
+        let receipt = RuntimeReceipt::new(
+            Turn::default(),
+            "aggregate-model".into(),
+            1024,
+            None,
+            None,
+            "completed".into(),
+        )
+        .with_model_call_attribution(vec![ModelCallAttribution {
+            asked_by: "research".into(),
+            seat: Some("reviewer".into()),
+            model_id: "free-model".into(),
+            took_ms: 42,
+            execution_metadata: Some(crate::execution::ExecutionMetadata {
+                routed_via: Some("fixture-provider".into()),
+                fallback_attempts: Some("0".into()),
+                fallback_trail: None,
+            }),
+        }]);
+        let encoded = serde_json::to_vec(&receipt).unwrap();
+        let decoded: RuntimeReceipt = serde_json::from_slice(&encoded).unwrap();
+
+        assert_eq!(
+            decoded.model_call_attribution,
+            receipt.model_call_attribution
+        );
+    }
 
     #[test]
     fn the_slowest_parts_are_named_slowest_first() {

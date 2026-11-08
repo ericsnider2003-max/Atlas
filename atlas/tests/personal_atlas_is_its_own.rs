@@ -40,7 +40,7 @@ fn walk(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
         }
         // The checkout's scratch (tests' and builds' temp files, ignored by
         // git; ledger Q21) is not the tree either.
-        if name == "scratch" && p.join(".gitkeep").is_file() {
+        if name == "scratch" {
             continue;
         }
         if p.is_dir() {
@@ -883,6 +883,29 @@ fn repo_root() -> Option<std::path::PathBuf> {
 /// Every file to look at: the crate, and the repository around it.
 fn everything() -> Vec<std::path::PathBuf> {
     let crate_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).to_path_buf();
+    if let Some(root) = repo_root() {
+        // Walk the repository's tracked and non-ignored files instead of
+        // recursively traversing the OneDrive checkout. The latter makes
+        // this correctness guard depend on cloud hydration and can spend
+        // minutes opening generated artifacts that Git already excludes.
+        let listed = std::process::Command::new("git")
+            .args(["-C", root.to_str().unwrap_or("."), "ls-files", "-c", "-z"])
+            .output();
+        if let Ok(output) = listed {
+            if output.status.success() {
+                let files = output
+                    .stdout
+                    .split(|byte| *byte == 0)
+                    .filter(|path| !path.is_empty())
+                    .map(|path| root.join(String::from_utf8_lossy(path).as_ref()))
+                    .filter(|path| path.is_file())
+                    .collect::<Vec<_>>();
+                if files.len() > 500 {
+                    return files;
+                }
+            }
+        }
+    }
     let mut files = Vec::new();
     walk(&crate_dir, &mut files);
     if let Some(root) = repo_root() {

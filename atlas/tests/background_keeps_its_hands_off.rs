@@ -90,7 +90,11 @@ fn a_research_job_runs_start_to_finish_without_touching_your_screen() {
         primary: true,
     }]);
     p.focus_on("winword.exe", "Quarterly report.docx");
-    let root = std::env::temp_dir().join(format!("atlas-hands-off-{}", std::process::id()));
+    let nonce = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("system clock is before the Unix epoch")
+        .as_nanos();
+    let root = std::env::temp_dir().join(format!("atlas-hands-off-{}-{nonce}", std::process::id()));
     let _ = std::fs::remove_dir_all(&root);
     let mut d = Daemon::new(
         &c,
@@ -107,7 +111,12 @@ fn a_research_job_runs_start_to_finish_without_touching_your_screen() {
         1,
         "the job should be running in the background"
     );
-    let deadline = Instant::now() + Duration::from_secs(5);
+    // This is an observation deadline for an asynchronous worker, not a
+    // product latency contract. The full aggregate suite can legitimately
+    // contend for Windows process and filesystem resources, so use the
+    // harness's measured load allowance rather than turning contention into
+    // a false lifecycle failure.
+    let deadline = Instant::now() + crate::common::allowed(Duration::from_secs(5));
     let mut t = 101;
     let mut answered = false;
     while Instant::now() < deadline && !answered {

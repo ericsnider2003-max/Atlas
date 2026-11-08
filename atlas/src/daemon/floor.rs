@@ -77,7 +77,7 @@ impl<'a> Daemon<'a> {
                 .warn(&format!("couldn't write down that \"{what}\" started: {e}"));
         }
         let hub = self.hub_jobs.start(crate::hub::Page::Status, what);
-        let done = work();
+        let mut done = work();
         let state = if done.ok {
             crate::job::State::Succeeded
         } else {
@@ -87,6 +87,7 @@ impl<'a> Daemon<'a> {
         if let Err(e) = crate::job::end(&self.store, &id, stage, state, &detail) {
             self.log
                 .warn(&format!("couldn't write down how \"{what}\" ended: {e}"));
+            done.said = crate::job::completion_receipt_warning(&done.said);
         }
         self.hub_jobs.finish(
             hub,
@@ -102,28 +103,45 @@ impl<'a> Daemon<'a> {
 
     /// "Create a text file named x.txt in my Desktop folder containing ...".
     pub(super) fn on_create_file(&mut self, raw: &str) -> String {
+        let intent = Intent::CreateFile(raw.to_string());
         let today = self.floor_today();
         let spec = match crate::floor::read_create(raw, &today) {
             Ok(s) => s,
-            Err(question) => return question,
+            Err(question) => {
+                self.execution_receipt =
+                    Some((intent, crate::taskloop::Outcome::Failed(question.clone())));
+                return question;
+            }
         };
         let Some(words) = spec.folder.clone() else {
-            return format!(
+            let question = format!(
                 "Where should I put {}? Say it like: create a text file named {} in my Documents folder.",
                 spec.name, spec.name
             );
+            self.execution_receipt =
+                Some((intent, crate::taskloop::Outcome::Failed(question.clone())));
+            return question;
         };
         let Some(folder) = crate::floor::folder_named(&words) else {
-            return format!(
+            let failure = format!(
                 "I couldn't find a folder called \"{words}\", so I didn't make {}. Name one that exists, like \"my Documents folder\" or a full path.",
                 spec.name
             );
+            self.execution_receipt =
+                Some((intent, crate::taskloop::Outcome::Failed(failure.clone())));
+            return failure;
         };
         let what = format!("Making {} in {}", spec.name, folder.display());
-        self.floor_job("create-file", "Make a file", &what, move || {
+        let done = self.floor_job("create-file", "Make a file", &what, move || {
             crate::floor::create_file(&spec, &folder)
-        })
-        .said
+        });
+        let outcome = if done.ok {
+            crate::taskloop::Outcome::Done(done.said.clone())
+        } else {
+            crate::taskloop::Outcome::Failed(done.said.clone())
+        };
+        self.execution_receipt = Some((intent, outcome));
+        done.said
     }
 
     /// "Read atlas-test.txt on my Desktop": changes nothing, so no job.
@@ -221,16 +239,30 @@ impl<'a> Daemon<'a> {
     }
 
     /// "Move x.txt from my Desktop to my Documents folder".
+    fn record_move_file_failure(&mut self, intent: &Intent, message: String) -> String {
+        let message = format!("That didn't work: {message}");
+        self.execution_receipt = Some((
+            intent.clone(),
+            crate::taskloop::Outcome::Failed(message.clone()),
+        ));
+        message
+    }
+
     pub(super) fn on_move_file(&mut self, raw: &str) -> String {
+        let intent = Intent::MoveFile(raw.to_string());
         let Some((name, from, to)) = crate::floor::read_move(raw) else {
-            return "Say it like: move notes.txt from my Desktop to my Documents folder.".into();
+            return self.record_move_file_failure(
+                &intent,
+                "Say it like: move notes.txt from my Desktop to my Documents folder.".into(),
+            );
         };
         let from = match from {
             Some(w) => match crate::floor::folder_named(&w) {
                 Some(p) => Some(p),
                 None => {
-                    return format!(
-                        "I couldn't find a folder called \"{w}\", so nothing was moved."
+                    return self.record_move_file_failure(
+                        &intent,
+                        format!("I couldn't find a folder called \"{w}\", so nothing was moved."),
                     )
                 }
             },
@@ -238,16 +270,27 @@ impl<'a> Daemon<'a> {
         };
         let src = match crate::floor::locate(&name, from.as_deref()) {
             Ok(p) => p,
-            Err(why) => return format!("{why} Nothing was moved."),
+            Err(why) => {
+                return self.record_move_file_failure(&intent, format!("{why} Nothing was moved."))
+            }
         };
         let Some(dest) = crate::floor::folder_named(&to) else {
-            return format!("I couldn't find a folder called \"{to}\", so nothing was moved.");
+            return self.record_move_file_failure(
+                &intent,
+                format!("I couldn't find a folder called \"{to}\", so nothing was moved."),
+            );
         };
         let what = format!("Moving {name} to {}", dest.display());
-        self.floor_job("move-file", "Move a file", &what, move || {
+        let done = self.floor_job("move-file", "Move a file", &what, move || {
             crate::floor::move_file(&src, &dest)
-        })
-        .said
+        });
+        let outcome = if done.ok {
+            crate::taskloop::Outcome::Done(done.said.clone())
+        } else {
+            crate::taskloop::Outcome::Failed(done.said.clone())
+        };
+        self.execution_receipt = Some((intent, outcome));
+        done.said
     }
 
     /// "Back up my Documents folder to D:\Backups". With no place said, asks,
@@ -361,20 +404,26 @@ impl<'a> Daemon<'a> {
             let detail = receipt_detail(&done.said);
             // The record is closed before the errand reports, so nothing can
             // read "finished" beside a job still shown running.
-            crate::heard!(crate::job::end(&store, &job_id, stage, state, &detail));
+            let said = if crate::heard!(crate::job::end(&store, &job_id, stage, state, &detail))
+                .is_some()
+            {
+                done.said.clone()
+            } else {
+                crate::job::completion_receipt_warning(&done.said)
+            };
             jobs.finish(
                 hub,
                 if done.ok {
-                    Ok(done.said.clone())
+                    Ok(said.clone())
                 } else {
-                    Err(done.said.clone())
+                    Err(said.clone())
                 },
                 false,
             );
             if done.ok {
-                Ok(done.said)
+                Ok(said)
             } else {
-                Err(done.said)
+                Err(said)
             }
         });
         // A topic of its own, so two asks are two backups and each record is
