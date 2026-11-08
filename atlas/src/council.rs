@@ -674,7 +674,10 @@ pub fn parse_opinion(seat: &str, reply: &str) -> Opinion {
     // reply that *opens* with "For" -- so a seat saying "For -- ship it. The
     // case against is thermals" was recorded as Against, the exact opposite of
     // what it said. Two different rules for the same word is how that happens.
-    let lean = match (word_at(&lower, "against"), word_at(&lower, "for")) {
+    let lean = match (
+        word_at_not_negated(&lower, "against"),
+        word_at_not_negated(&lower, "for"),
+    ) {
         // Both present: whichever is stated first is the seat's own position,
         // because the second is nearly always "the argument for X is...".
         (Some(a), Some(f)) => {
@@ -724,6 +727,25 @@ fn word_at(hay: &str, needle: &str) -> Option<usize> {
             return Some(at);
         }
         from = at + needle.len();
+    }
+    None
+}
+
+/// Like `word_at`, but do not treat a directly negated mention as the seat's
+/// position. A model commonly says "I am not against it" before giving its
+/// actual recommendation; counting that first mention as an Against vote
+/// silently reverses the answer.
+fn word_at_not_negated(hay: &str, needle: &str) -> Option<usize> {
+    let mut from = 0;
+    while let Some(at) = word_at(&hay[from..], needle).map(|i| from + i) {
+        let prefix = hay[..at].trim_end();
+        if !prefix.ends_with("not") {
+            return Some(at);
+        }
+        from = at + needle.len();
+        if from >= hay.len() {
+            break;
+        }
     }
     None
 }

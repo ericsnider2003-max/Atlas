@@ -7,7 +7,8 @@ use std::path::Path;
 
 fn copy_config(to: &Path) {
     let from = Path::new(env!("CARGO_MANIFEST_DIR")).join("config");
-    std::fs::create_dir_all(to).unwrap();
+    std::fs::create_dir_all(to)
+        .unwrap_or_else(|error| panic!("create test config directory {}: {error}", to.display()));
     for f in [
         "apps.yaml",
         "layouts.yaml",
@@ -16,7 +17,12 @@ fn copy_config(to: &Path) {
         "indexing.yaml",
         "tools.yaml",
     ] {
-        std::fs::copy(from.join(f), to.join(f)).unwrap();
+        std::fs::copy(from.join(f), to.join(f)).unwrap_or_else(|error| {
+            panic!(
+                "copy shipped test config {f} into {}: {error}",
+                to.display()
+            )
+        });
     }
 }
 

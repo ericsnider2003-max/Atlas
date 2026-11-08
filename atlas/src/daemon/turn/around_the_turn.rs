@@ -19,6 +19,15 @@ impl<'a> Daemon<'a> {
 
     /// A request for a new ability, its yes or no, or the list (`growth`).
     pub(in crate::daemon) fn ability_request(&mut self, said: &str, t: u64) -> Option<String> {
+        // Code requests can contain the words "add a feature" or "add a
+        // capability". Let the intent parser's concrete Build route win over
+        // the broader growth vocabulary; otherwise a request to modify a
+        // named project is recorded as a request to change Atlas itself.
+        if matches!(self.parser.parse(said), crate::intent::Intent::Build(_))
+            || crate::build_it::folder_named(said).is_some()
+        {
+            return None;
+        }
         let mut wanted: crate::growth::WantedAbilities = self.store.load(crate::growth::STORE);
         if crate::growth::asks_for_the_list(said) {
             return Some(wanted.spoken());

@@ -291,8 +291,10 @@ fn send_with_curl(url: &str, body: &str) -> Result<String> {
         .map(|s| s.to_string())
         .collect(),
         stdin_text: true,
+        current_dir: None,
         result_file: None,
         timeout_secs: 190,
+        expected_sha256: None,
     };
     tool.run(&Default::default(), Some(body))
 }

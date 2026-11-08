@@ -671,6 +671,10 @@ fn what_you_say_to_it_is_read_as_whole_sentences() {
         Some(Said::NotInterested(0))
     );
     assert_eq!(
+        hunt::understand("not interested in 1", 3),
+        Some(Said::NotInterested(0))
+    );
+    assert_eq!(
         hunt::understand("save opportunity 3", 3),
         Some(Said::Save(2))
     );
@@ -928,9 +932,13 @@ fn spoken_to_today_the_list_has_its_full_top_three_whatever_the_calendar_says() 
     dated_as_of_now(&d);
     let list = d.turn("any opportunities?", NOW + 10);
     assert!(
-        list.contains("
-3. ") && !list.contains("
-4. "),
+        list.contains(
+            "
+3. "
+        ) && !list.contains(
+            "
+4. "
+        ),
         "the top three: {list}"
     );
 }

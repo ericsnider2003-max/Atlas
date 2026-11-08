@@ -11,6 +11,7 @@ use std::io::Read;
 use std::path::PathBuf;
 
 const MAX_VOICE_WAV_BYTES: u64 = 256 * 1024 * 1024;
+static NEXT_VOICE_OPERATION: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
 
 fn read_voice_wav(path: &std::path::Path) -> std::io::Result<Vec<u8>> {
     let file = std::fs::File::open(path)?;
@@ -135,6 +136,11 @@ pub struct ToolsConfig {
     pub uia: UiaConfig,
     #[serde(default)]
     pub models: crate::models::ModelsConfig,
+    /// Optional user-owned voice/reasoning providers. Enabled manifests are
+    /// validated before model selection; invalid providers never trigger a
+    /// silent downgrade.
+    #[serde(default)]
+    pub private_models: crate::private_models::PrivateModelsConfig,
     #[serde(default)]
     pub browser: crate::browser::BrowserConfig,
     #[serde(default)]
@@ -486,16 +492,20 @@ impl Default for VideoConfig {
             ffmpeg: ExternalTool {
                 command: "ffmpeg".into(),
                 args: vec![],
+                current_dir: None,
                 stdin_text: false,
                 result_file: None,
                 timeout_secs: 120,
+                expected_sha256: None,
             },
             ffprobe: ExternalTool {
                 command: "ffprobe".into(),
                 args: vec![],
+                current_dir: None,
                 stdin_text: false,
                 result_file: None,
                 timeout_secs: 120,
+                expected_sha256: None,
             },
         }
     }
@@ -764,7 +774,9 @@ impl<'a> Voice<'a> {
             note_asr(AsrDecision {
                 engine: "none".into(),
                 why: "canceled before recognition".into(),
-                ..Default::default()
+                asr_ms: 0,
+                audio_ms: 0,
+                dropped_hallucination: false,
             });
             return Ok(String::new());
         }
@@ -859,8 +871,9 @@ impl<'a> Voice<'a> {
             note_asr(AsrDecision {
                 engine: "none".into(),
                 why: "canceled before whisper".into(),
+                asr_ms: 0,
                 audio_ms,
-                ..Default::default()
+                dropped_hallucination: false,
             });
             return Ok(String::new());
         }
@@ -954,13 +967,15 @@ impl<'a> Voice<'a> {
     fn vars(&self) -> Result<Vars> {
         let dir = PathBuf::from(&self.cfg.work_dir);
         std::fs::create_dir_all(&dir)?;
+        reclaim_stale_scratch(&dir);
         let mut v: Vars = self.cfg.vars.clone();
         // The microphone picked again since start, if it was (`set_microphone`).
         if let Some((name, device)) = microphone_override() {
             v.insert("mic_name".into(), name);
             v.insert("mic_device".into(), device);
         }
-        let stem = dir.join("turn");
+        let operation = NEXT_VOICE_OPERATION.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let stem = dir.join(format!("turn-{}-{operation}", std::process::id()));
         v.insert("work_dir".into(), dir.display().to_string());
         v.insert("in_wav".into(), format!("{}.wav", stem.display()));
         v.insert("out_wav".into(), format!("{}_out.wav", stem.display()));
@@ -1281,6 +1296,12 @@ impl<'a> Voice<'a> {
     /// engine — stays as configured, so what you hear is what you would get
     /// rather than a demo tuned to flatter.
     pub fn say_as(&self, voice_id: &str, text: &str) -> Result<()> {
+        if self.cfg.private_models.voice.enabled {
+            // Auditioning must use the same authoritative private provider as
+            // normal speech; routing this one path through public TTS would
+            // silently violate the user's private-model choice.
+            return self.speak_with_piper_for(text, Some(voice_id));
+        }
         let mut vars = self.vars()?;
         vars.insert("voice_id".into(), voice_id.to_string());
         vars.insert(
@@ -1337,12 +1358,66 @@ impl<'a> Voice<'a> {
 
     /// The configured speech command (piper), for the whole of `text`.
     fn speak_with_piper(&self, text: &str) -> Result<()> {
+        self.speak_with_piper_for(text, None)
+    }
+
+    fn speak_with_piper_for(&self, text: &str, voice_override: Option<&str>) -> Result<()> {
         let vars = self.speech_command_vars()?;
+        let mut vars = vars;
+        if let Some(voice_id) = voice_override {
+            vars.insert("voice_id".into(), voice_id.to_string());
+            vars.insert(
+                "voice_file".into(),
+                self.cfg.tts_engine.voice_file_for(voice_id),
+            );
+        }
         let t0 = std::time::Instant::now();
         // Said the way it should sound: "EURUSD" as "euro dollar", "VPS" as
         // "V P S", "→" as "to" (`pronounce`). The words on screen are unchanged.
         let spoken = crate::pronounce::for_speech(text, &self.cfg.pronounce);
-        self.cfg.tts.run(&vars, Some(&spoken))?;
+        if self.cfg.private_models.voice.enabled {
+            let Ok(Some((entrypoint, artifact_dir, timeout_seconds, expected_sha256))) =
+                crate::private_models::voice_command(&self.cfg.private_models)
+            else {
+                return Err(crate::error::AtlasError::Config(
+                    "enabled private voice provider is unavailable".into(),
+                ));
+            };
+            let tool = crate::tools::ExternalTool {
+                command: entrypoint.to_string_lossy().into_owned(),
+                stdin_text: true,
+                current_dir: Some(artifact_dir.to_string_lossy().into_owned()),
+                timeout_secs: timeout_seconds,
+                expected_sha256: Some(expected_sha256),
+                ..Default::default()
+            };
+            let out_wav = vars.get("out_wav").ok_or_else(|| {
+                crate::error::AtlasError::Config("voice output path is missing".into())
+            })?;
+            let request = serde_json::json!({
+                "protocol": 1,
+                "text": spoken,
+                "voice_id": vars.get("voice_id").cloned().unwrap_or_default(),
+                "speed": vars.get("speed").cloned().unwrap_or_default(),
+                "variation": vars.get("variation").cloned().unwrap_or_default(),
+                "sentence_gap": vars.get("sentence_gap").cloned().unwrap_or_default(),
+                "artifact_dir": artifact_dir,
+                "output_wav": out_wav,
+            });
+            tool.run(&vars, Some(&request.to_string()))?;
+            if !std::path::Path::new(out_wav).is_file() {
+                return Err(crate::error::AtlasError::Platform(
+                    "private voice provider did not create output_wav".into(),
+                ));
+            }
+            read_voice_wav(std::path::Path::new(out_wav)).map_err(|e| {
+                crate::error::AtlasError::Platform(format!(
+                    "private voice provider returned an invalid WAV: {e}"
+                ))
+            })?;
+        } else {
+            self.cfg.tts.run(&vars, Some(&spoken))?;
+        }
         // Speaking volume (Sound & voice), applied to the audio itself.
         if self.cfg.sound.volume < 100 {
             if let Some(p) = vars.get("out_wav") {
@@ -1440,6 +1515,40 @@ impl<'a> Voice<'a> {
             self.cfg.voice_settings.speed,
             self.cfg.sound.volume,
         )
+    }
+}
+
+/// Remove only Atlas-owned voice scratch files that are old enough to be
+/// abandoned by a crashed process. Active operations remain untouched, and
+/// unrelated files in the configured work directory are never considered.
+fn reclaim_stale_scratch(dir: &std::path::Path) {
+    const MAX_AGE: std::time::Duration = std::time::Duration::from_secs(24 * 60 * 60);
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    let now = std::time::SystemTime::now();
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
+            continue;
+        };
+        if !name.starts_with("turn-") {
+            continue;
+        }
+        let Ok(metadata) = entry.metadata() else {
+            continue;
+        };
+        if !metadata.is_file() {
+            continue;
+        }
+        let Ok(modified) = metadata.modified() else {
+            continue;
+        };
+        if now.duration_since(modified).is_ok_and(|age| age >= MAX_AGE) {
+            // unheard-ok: stale Atlas-owned scratch cleanup is best effort;
+            // a later startup can safely retry it.
+            let _ = std::fs::remove_file(path); // unheard-ok: stale Atlas-owned scratch cleanup is best effort
+        }
     }
 }
 
@@ -2543,7 +2652,10 @@ fn parakeet_is_the_backup(stt_engine: &str, english: bool, resident_whisper_read
     english
         && !setting.eq_ignore_ascii_case("whisper")
         && !setting.eq_ignore_ascii_case("parakeet")
-        && matches!(pick_ear(stt_engine, resident_whisper_ready), Ear::Whisper(_))
+        && matches!(
+            pick_ear(stt_engine, resident_whisper_ready),
+            Ear::Whisper(_)
+        )
 }
 
 #[cfg(test)]
@@ -2579,9 +2691,14 @@ mod recognition_cancel_tests {
     use super::*;
     #[test]
     fn canceled_request_never_starts_whisper_and_next_request_is_independent() {
-        let mut cfg = ToolsConfig::default();
-        cfg.stt_engine = "whisper".into();
-        cfg.stt.command = "atlas-disposable-nonexistent-stt-proof".into();
+        let cfg = ToolsConfig {
+            stt_engine: "whisper".into(),
+            stt: crate::tools::ExternalTool {
+                command: "atlas-disposable-nonexistent-stt-proof".into(),
+                ..crate::tools::ExternalTool::default()
+            },
+            ..ToolsConfig::default()
+        };
         let voice = Voice::new(&cfg);
         let vars = Vars::new();
         assert_eq!(voice.transcribe_heard_until(&vars, &|| true).unwrap(), "");
@@ -2601,5 +2718,24 @@ mod recognition_cancel_tests {
             voice.transcribe_heard_until(&vars, &|| false).is_err(),
             "next request must reach its own configured engine rather than inherit cancellation"
         );
+    }
+}
+
+#[cfg(test)]
+mod scratch_lifecycle_tests {
+    use super::reclaim_stale_scratch;
+
+    #[test]
+    fn scratch_reclamation_is_scoped_to_atlas_voice_names() {
+        let root =
+            std::env::temp_dir().join(format!("atlas-voice-scratch-scope-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(root.join("turn-current.wav"), b"active").unwrap();
+        std::fs::write(root.join("user-recording.wav"), b"keep").unwrap();
+        reclaim_stale_scratch(&root);
+        assert!(root.join("turn-current.wav").exists());
+        assert!(root.join("user-recording.wav").exists());
+        let _ = std::fs::remove_dir_all(root);
     }
 }

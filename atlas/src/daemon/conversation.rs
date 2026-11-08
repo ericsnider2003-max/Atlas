@@ -420,6 +420,19 @@ impl<'a> Daemon<'a> {
         // What else they told you that bears on this (relevance, importance
         // and recency), beyond the core above.
         if !handed_over {
+            if let Some(capsule) = self
+                .project_capsule(said)
+                .strip_prefix("LOCAL PROJECT CAPSULE")
+            {
+                now.push_str("LOCAL PROJECT CAPSULE");
+                now.push_str(capsule);
+                now.push('\n');
+            }
+            let policy = self.local_policy_capsule(said);
+            if !policy.is_empty() {
+                now.push_str(&policy);
+                now.push('\n');
+            }
             let core: Vec<String> = self
                 .facts
                 .core(FACTS_IN_PROMPT)

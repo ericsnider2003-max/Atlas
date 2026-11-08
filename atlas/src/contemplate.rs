@@ -25,7 +25,8 @@ const DRAFT_SYSTEM: &str =
 Be specific and honest about what you don't know. No preamble. Keep it under 250 words.";
 
 /// What Muse is told when asked outright or to think hard: the same voice.
-pub const MUSE_SYSTEM: &str = "You are answering for Atlas, a personal assistant, out loud to its owner. \
+pub const MUSE_SYSTEM: &str =
+    "You are answering for Atlas, a personal assistant, out loud to its owner. \
 Be specific, honest about what you don't know, and as brief as the question allows. No preamble.";
 
 const MERGE_SYSTEM: &str = "You are Atlas. Several drafts answered the same question. Write the one best \

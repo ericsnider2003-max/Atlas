@@ -130,6 +130,10 @@ impl Journal {
     /// (`anchor_path`) when it has moved: a line nothing ever rewrites, so a
     /// log rewritten wholesale — seals and all — no longer matches it.
     pub fn save(&self, store: &Store) -> Result<()> {
+        // The journal and its integrity head are one persistence operation.
+        // Hold the store transaction across both writes so concurrent Atlas
+        // processes cannot make the check-then-append decision independently.
+        let _transaction = store.transaction()?;
         store.save("activity", self)?;
         if let Some(last) = self.events.last().filter(|e| !e.hash.is_empty()) {
             let path = anchor_path(store.root());
@@ -160,6 +164,7 @@ impl Journal {
                     .open(&path)
                 {
                     crate::kept!(writeln!(f, "{line}"));
+                    crate::kept!(f.sync_all());
                 }
             }
         }

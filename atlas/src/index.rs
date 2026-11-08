@@ -93,7 +93,7 @@ pub struct Entry {
     pub class: AssetClass,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct IndexConfig {
     /// Allowlist. Nothing outside these is ever touched.
     pub roots: Vec<String>,

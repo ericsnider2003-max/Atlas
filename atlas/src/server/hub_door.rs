@@ -1180,7 +1180,10 @@ mod readonly_tests {
         );
         door.publish_live(
             Reply::ok("{\"status\":\"live copy\"}"),
-            vec![("home".to_string(), Reply::ok("{\"v\":\"7\",\"busy\":false}"))],
+            vec![(
+                "home".to_string(),
+                Reply::ok("{\"v\":\"7\",\"busy\":false}"),
+            )],
         );
         for (path, wants) in [
             ("/hub", "copy of /hub"),
@@ -1341,7 +1344,9 @@ mod icon_tests {
         ];
         for (name, reply) in served {
             let html = String::from_utf8_lossy(reply.body.as_ref()).to_string();
-            let end = html.find("</head>").unwrap_or_else(|| panic!("{name}: no </head>"));
+            let end = html
+                .find("</head>")
+                .unwrap_or_else(|| panic!("{name}: no </head>"));
             assert!(
                 html[..end].contains("<link rel=icon href=data:,>"),
                 "{name}: head declares no icon"
@@ -1364,7 +1369,10 @@ mod icon_tests {
             while let Some(i) = lower[from..].find("<!doctype html") {
                 let at = from + i;
                 let tail = &lower[at..];
-                let head_end = tail.find("</head>").or_else(|| tail.find("<style>")).unwrap_or(900);
+                let head_end = tail
+                    .find("</head>")
+                    .or_else(|| tail.find("<style>"))
+                    .unwrap_or(900);
                 let head = &tail[..head_end.min(tail.len())];
                 assert!(
                     head.contains("rel=icon") || head.contains("rel=\"icon\""),
@@ -1374,6 +1382,9 @@ mod icon_tests {
                 from = at + 10;
             }
         }
-        assert!(pages >= 10, "expected to inspect the hand-written pages, saw {pages}");
+        assert!(
+            pages >= 10,
+            "expected to inspect the hand-written pages, saw {pages}"
+        );
     }
 }

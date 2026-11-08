@@ -356,15 +356,43 @@ pub fn path_in(said: &str, exts: &[&str]) -> Option<String> {
             }
         }
     }
-    said.split_whitespace()
-        .map(|w| w.trim_matches(|c: char| c == ',' || c == '?' || c == '!' || c == ':'))
-        .map(|w| w.trim_end_matches('.'))
-        .find(|w| {
-            let l = w.to_lowercase();
-            exts.iter()
-                .any(|e| l.ends_with(&format!(".{e}")) && l.len() > e.len() + 1)
-        })
-        .map(String::from)
+    let words: Vec<&str> = said.split_whitespace().collect();
+    let start = words.iter().position(|w| {
+        w.starts_with('/')
+            || w.starts_with('~')
+            || w.chars().nth(1) == Some(':')
+            || w.starts_with("\\\\")
+    })?;
+    let mut end = None;
+    for (offset, word) in words[start..].iter().enumerate() {
+        if offset > 0
+            && (word.starts_with('/')
+                || word.starts_with('~')
+                || word.chars().nth(1) == Some(':')
+                || word.starts_with("\\\\"))
+        {
+            break;
+        }
+        let clean = word
+            .trim_matches(|c: char| c == ',' || c == '?' || c == '!' || c == ':')
+            .trim_end_matches('.');
+        let lower = clean.to_lowercase();
+        if exts
+            .iter()
+            .any(|e| lower.ends_with(&format!(".{e}")) && lower.len() > e.len() + 1)
+        {
+            end = Some(start + offset);
+            break;
+        }
+    }
+    let end = end?;
+    (end >= start).then(|| {
+        words[start..=end]
+            .join(" ")
+            .trim_matches(|c: char| c == ',' || c == '?' || c == '!' || c == ':')
+            .trim_end_matches('.')
+            .to_string()
+    })
 }
 
 /// What Atlas offers after a scan.

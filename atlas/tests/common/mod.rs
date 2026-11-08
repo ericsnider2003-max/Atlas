@@ -784,10 +784,16 @@ pub fn push_module(
 pub fn printing(text: &str) -> atlas::tools::ExternalTool {
     static N: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
     let n = N.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-    let dir = std::env::temp_dir().join(format!("atlas-printing-{}", std::process::id()));
-    std::fs::create_dir_all(&dir).expect("a folder for the stand-in's text");
+    let nonce = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let dir = std::env::temp_dir().join(format!("atlas-printing-{}-{nonce}", std::process::id()));
+    std::fs::create_dir_all(&dir)
+        .unwrap_or_else(|error| panic!("a folder for the stand-in's text: {error}"));
     let file = dir.join(format!("{n}.txt"));
-    std::fs::write(&file, format!("{text}\n")).expect("the stand-in's text");
+    std::fs::write(&file, format!("{text}\n"))
+        .unwrap_or_else(|error| panic!("the stand-in's text: {error}"));
     let file = file.display().to_string();
     if cfg!(windows) {
         atlas::tools::ExternalTool {
@@ -881,4 +887,21 @@ pub fn assert_prompt(took: Duration, bound: Duration, what: &str) {
         is_prompt(took, bound, factor),
         "{what}: took {took:?}, over the {bound:?} bound (widened x{factor:.1} for this machine's load)"
     );
+}
+
+/// Allocate a private disposable path for tests that may run concurrently.
+/// Fixed names in the system temp directory make unrelated tests delete or
+/// rewrite each other's state when the consolidated target uses >1 thread.
+pub fn unique_temp(tag: &str) -> std::path::PathBuf {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static NEXT: AtomicU64 = AtomicU64::new(0);
+    std::env::temp_dir().join(format!(
+        "atlas-test-{tag}-{}-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or_default(),
+        NEXT.fetch_add(1, Ordering::Relaxed)
+    ))
 }

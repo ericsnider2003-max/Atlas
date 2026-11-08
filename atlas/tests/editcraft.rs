@@ -281,5 +281,5 @@ fn capturing_across_the_week_gets_no_comment() {
 #[test]
 fn too_little_to_judge_says_nothing_rather_than_guessing() {
     assert!(is_scheduling_rather_than_capturing(&[1, 2, 3]).is_none());
-    assert!(is_scheduling_rather_than_capturing(&vec![0u32; 28]).is_none());
+    assert!(is_scheduling_rather_than_capturing(&[0u32; 28]).is_none());
 }

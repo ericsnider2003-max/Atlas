@@ -1844,6 +1844,17 @@ impl ScheduleRuns {
         bound_schedule_claims(&mut value)?;
         store.save(SCHEDULE_RUNS, &value)
     }
+
+    /// Persist a claim while the caller already owns the state transaction.
+    /// The scheduler holds that transaction across load/validate/claim/save
+    /// so two workers cannot reserve the same occurrence.  `Store::save`
+    /// takes the lock itself and is therefore not valid in that critical
+    /// section on Windows.
+    pub(crate) fn save_held(&self, store: &Store) -> crate::error::Result<()> {
+        let mut value = self.clone();
+        bound_schedule_claims(&mut value)?;
+        store.save_held(SCHEDULE_RUNS, &value)
+    }
     /// It ran (or started) now.
     pub fn ran(&mut self, key: &str, now: u64) {
         self.last.insert(key.to_string(), now);

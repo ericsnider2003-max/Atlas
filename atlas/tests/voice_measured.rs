@@ -14,10 +14,11 @@ use atlas::speaker::{clip_frames, Background};
 use atlas::voiceid::{cosine, VoiceIdConfig};
 
 fn wav(name: &str) -> Vec<i16> {
-    let (s, r) = atlas::diarize::read_wav(
-        &std::fs::read(format!("tests/fixtures/speech/corpus/{name}.wav")).unwrap(),
-    )
-    .unwrap();
+    let path = format!("tests/fixtures/speech/corpus/{name}.wav");
+    let bytes =
+        std::fs::read(&path).unwrap_or_else(|error| panic!("read voice fixture {path}: {error}"));
+    let (s, r) = atlas::diarize::read_wav(&bytes)
+        .unwrap_or_else(|error| panic!("decode voice fixture {path}: {error}"));
     assert_eq!(r, 16000);
     s
 }
@@ -54,7 +55,7 @@ fn pad(s: &[i16]) -> Vec<i16> {
     v
 }
 
-fn q(v: &mut Vec<f32>, p: f32) -> f32 {
+fn q(v: &mut [f32], p: f32) -> f32 {
     v.sort_by(|a, b| a.total_cmp(b));
     v[((v.len() - 1) as f32 * p) as usize]
 }
@@ -234,7 +235,10 @@ fn a_three_way_call_is_split_by_voice_with_the_builtin_encoder() {
         .iter()
         .flat_map(|s| (0..10).map(move |i| format!("{s}_s{i}")))
         .chain((6..10).map(|i| format!("A_s{i}")))
-        .map(|n| clip_frames(&wav(&n), 16000).unwrap())
+        .map(|n| {
+            clip_frames(&wav(&n), 16000)
+                .unwrap_or_else(|| panic!("voice fixture {n} produced no clip frames"))
+        })
         .collect();
     let machine = Background::of(&heard);
     let own: Vec<Option<Vec<f32>>> = atlas::speaker::recording_embeddings(&call, 16000, &machine)
@@ -260,7 +264,7 @@ fn a_three_way_call_is_split_by_voice_with_the_builtin_encoder() {
         let t = truth
             .iter()
             .max_by_key(|(a, b, _)| (*b).min(e).saturating_sub((*a).max(s)))
-            .unwrap()
+            .unwrap_or_else(|| panic!("no truth interval overlaps diarized line {s}..{e}"))
             .2;
         pairs.push((l.speaker.clone(), t));
     }
@@ -317,7 +321,10 @@ fn a_call(
         .iter()
         .filter(|s| !order.iter().any(|o| o.0 == **s))
         .flat_map(|s| (0..10).map(move |i| format!("{s}_s{i}")))
-        .map(|n| clip_frames(&wav(&n), 16000).unwrap())
+        .map(|n| {
+            clip_frames(&wav(&n), 16000)
+                .unwrap_or_else(|| panic!("voice fixture {n} produced no clip frames"))
+        })
         .collect();
     let machine = Background::of(&heard);
     let own: Vec<Option<Vec<f32>>> = atlas::speaker::recording_embeddings(&call, 16000, &machine)
@@ -350,7 +357,7 @@ fn score(
         let t = truth
             .iter()
             .max_by_key(|(a, b, _)| (*b).min(e).saturating_sub((*a).max(s)))
-            .unwrap()
+            .unwrap_or_else(|| panic!("no truth interval overlaps diarized line {s}..{e}"))
             .2
             .clone();
         pairs.push((l.speaker.clone(), t));

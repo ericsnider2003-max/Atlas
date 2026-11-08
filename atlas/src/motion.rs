@@ -1115,12 +1115,15 @@ pub fn render(
     if command.trim().is_empty() {
         return Err("no rasterizer is configured, so it stays an SVG".into());
     }
-    let mut parts = command.split_whitespace().map(|tok| {
-        tok.replace("{in}", &svg_path.to_string_lossy())
-            .replace("{out}", &out_path.to_string_lossy())
-            .replace("{w}", &expect.width.to_string())
-            .replace("{h}", &expect.height.to_string())
-    });
+    let mut parts = command_words(command)
+        .map_err(|error| format!("invalid renderer command: {error}"))?
+        .into_iter()
+        .map(|tok| {
+            tok.replace("{in}", &svg_path.to_string_lossy())
+                .replace("{out}", &out_path.to_string_lossy())
+                .replace("{w}", &expect.width.to_string())
+                .replace("{h}", &expect.height.to_string())
+        });
     let program = parts.next().ok_or("the render command is empty")?;
     let args: Vec<String> = parts.collect();
     crate::heard!(std::fs::remove_file(out_path));
@@ -1132,6 +1135,35 @@ pub fn render(
         return Err(format!("the renderer ({program}) exited with an error"));
     }
     Ok(verify_render(out_path, expect))
+}
+
+/// Split a configured renderer command without destroying quoted Windows paths.
+/// Renderer commands are configuration, not shell programs, so this deliberately
+/// supports only whitespace and matching single/double quotes; shell expansion and
+/// metacharacters remain unavailable.
+fn command_words(command: &str) -> Result<Vec<String>, &'static str> {
+    let mut words = Vec::new();
+    let mut word = String::new();
+    let mut quote = None;
+    for ch in command.chars() {
+        match (quote, ch) {
+            (Some(q), c) if c == q => quote = None,
+            (None, '\'' | '"') => quote = Some(ch),
+            (None, c) if c.is_whitespace() => {
+                if !word.is_empty() {
+                    words.push(std::mem::take(&mut word));
+                }
+            }
+            (_, c) => word.push(c),
+        }
+    }
+    if quote.is_some() {
+        return Err("unterminated quote");
+    }
+    if !word.is_empty() {
+        words.push(word);
+    }
+    Ok(words)
 }
 
 /// PNG width/height, from the IHDR chunk: the first chunk, its width at bytes

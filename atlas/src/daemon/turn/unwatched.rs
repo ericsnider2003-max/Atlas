@@ -7,7 +7,12 @@ use super::*;
 
 impl<'a> Daemon<'a> {
     /// The turn itself.
-    pub(super) fn turn_dropping_stale_questions(&mut self, said: &str, t: u64, how: Arrival) -> String {
+    pub(super) fn turn_dropping_stale_questions(
+        &mut self,
+        said: &str,
+        t: u64,
+        how: Arrival,
+    ) -> String {
         // "What time?" is answered by the very next turn or not at all: a
         // turn handled by anything else ("later" -> "I'll be here.") drops
         // it, so a time said afterwards schedules nothing (22 Oct 2026).

@@ -107,7 +107,11 @@ fn tool_list() -> Value {
                 "properties": { "text": { "type": "string", "description": "What to say to Atlas, in plain words." } },
                 "required": ["text"]
             },
-            "annotations": { "readOnlyHint": false, "destructiveHint": false, "openWorldHint": false }
+            // These are client-facing risk hints, never authorization. An
+            // atlas_ask may start an owner-approved task that changes local or
+            // external state, so the conservative hints must not understate
+            // that possibility. The hub and Atlas policy remain authoritative.
+            "annotations": { "readOnlyHint": false, "destructiveHint": true, "openWorldHint": true }
         }
     ])
 }

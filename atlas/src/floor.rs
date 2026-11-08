@@ -497,11 +497,19 @@ pub fn read_move(raw: &str) -> Option<(String, Option<String>, String)> {
     let said = strip_leading(raw);
     let lower = said.to_ascii_lowercase();
     let (p, n) = earliest(&lower, &[" to ", " into "], 0)?;
-    // The last "to": a folder may be called "go to".
-    let (p, n) = [" to ", " into "]
+    // Prefer a boundary whose suffix is a valid full path. A Windows path can
+    // itself contain " to " (for example `NEEDS TO BE SORTED`), so blindly
+    // taking the first or last occurrence can truncate the destination.
+    let separators: Vec<(usize, usize)> = [" to ", " into "]
         .iter()
-        .filter_map(|m| lower.rfind(m).map(|p| (p, m.len())))
-        .max_by_key(|(p, _)| *p)
+        .flat_map(|m| lower.match_indices(m).map(move |(p, _)| (p, m.len())))
+        .collect();
+    let (p, n) = separators
+        .iter()
+        .rev()
+        .find(|(p, n)| crate::organize::full_path(&said[p + n..]).is_some())
+        .copied()
+        .or_else(|| separators.iter().max_by_key(|(p, _)| *p).copied())
         .unwrap_or((p, n));
     let dest = folder_words(&said[p + n..]);
     let left = &said[..p];
@@ -534,11 +542,25 @@ pub fn read_backup(raw: &str) -> Option<(String, Option<String>)> {
     };
     let rest = &said[start..];
     let rl = rest.to_ascii_lowercase();
-    let (folder, dest) = match [" to ", " into ", " onto "]
+    // A Windows path may itself contain "to". Prefer a separator whose
+    // suffix is a valid full path, then fall back to the last separator for
+    // named-folder phrasing.
+    let separators: Vec<(usize, usize)> = [" to ", " into ", " onto "]
         .iter()
-        .filter_map(|m| rl.find(m).map(|p| (p, m.len())))
-        .min_by_key(|(p, _)| *p)
-    {
+        .flat_map(|m| rl.match_indices(m).map(move |(p, _)| (p, m.len())))
+        .collect();
+    let boundary = separators
+        .iter()
+        .rev()
+        .find(|(p, n)| crate::organize::full_path(&rest[p + n..]).is_some())
+        .copied()
+        .or_else(|| {
+            let has_absolute_path = rest.contains(":\\") || rest.starts_with("\\\\");
+            (!has_absolute_path)
+                .then(|| separators.iter().max_by_key(|(p, _)| *p).copied())
+                .flatten()
+        });
+    let (folder, dest) = match boundary {
         Some((p, n)) => (&rest[..p], Some(folder_words(&rest[p + n..]))),
         None => (rest, None),
     };
@@ -1430,10 +1452,22 @@ pub struct JobView {
 /// The kinds of work a status question can name: the word said, what the
 /// answer calls it, and what its job's label contains.
 const SUBJECTS: &[(&[&str], &str, &[&str])] = &[
-    (&["backup", "backups", "backing"], "backup", &["backing up", "backup", "back up"]),
-    (&["download", "downloads", "downloading"], "download", &["download"]),
+    (
+        &["backup", "backups", "backing"],
+        "backup",
+        &["backing up", "backup", "back up"],
+    ),
+    (
+        &["download", "downloads", "downloading"],
+        "download",
+        &["download"],
+    ),
     (&["move", "moved", "moving"], "move", &["moving"]),
-    (&["restore", "restoring", "restored"], "restore", &["restor"]),
+    (
+        &["restore", "restoring", "restored"],
+        "restore",
+        &["restor"],
+    ),
     (&["research", "researching"], "research", &["research"]),
 ];
 
@@ -1471,7 +1505,14 @@ fn status_ask(raw: &str, pronoun_ok: bool) -> Option<StatusAsk> {
     let asks_done = matches!(
         w.first().map(String::as_str),
         Some("is" | "are" | "has" | "have" | "did" | "does" | "was")
-    ) && has(&["finished", "finish", "done", "complete", "completed", "ready"]);
+    ) && has(&[
+        "finished",
+        "finish",
+        "done",
+        "complete",
+        "completed",
+        "ready",
+    ]);
     let asks_going = has(&["how's", "hows"])
         || (w.first().map(String::as_str) == Some("how")
             && matches!(w.get(1).map(String::as_str), Some("is" | "are")));
@@ -1675,7 +1716,9 @@ pub(crate) fn backup_destination(said: &str) -> Option<String> {
         .unwrap_or(t);
     let l = t.to_lowercase();
     // A path, or a folder by name -- not a sentence.
-    (names_a_folder(&l) && t.split_whitespace().count() <= 8).then(|| folder_words(t))
+    (names_a_folder(&l)
+        && (crate::organize::full_path(t).is_some() || t.split_whitespace().count() <= 8))
+        .then(|| folder_words(t))
 }
 
 /// Whether the whole reply is a plain yes. It used to be the first word, so
@@ -1941,10 +1984,18 @@ mod tests {
     #[test]
     fn status_questions_are_read_and_other_talk_is_not() {
         for (said, subject, detail) in [
-            ("is the backup of src finished?", Some("backup"), Some("src")),
+            (
+                "is the backup of src finished?",
+                Some("backup"),
+                Some("src"),
+            ),
             ("Is the backup done?", Some("backup"), None),
             ("how's the backup going", Some("backup"), None),
-            ("did the backup of Documents finish", Some("backup"), Some("documents")),
+            (
+                "did the backup of Documents finish",
+                Some("backup"),
+                Some("documents"),
+            ),
             ("has the download finished", Some("download"), None),
             ("please, is the back up finished?", Some("backup"), None),
         ] {
@@ -1954,7 +2005,12 @@ mod tests {
         }
         // With a job in context a pronoun is that job; without one (the plain
         // reading) it is still nothing.
-        for said in ["is it done?", "is it done yet", "is that finished", "how's it going"] {
+        for said in [
+            "is it done?",
+            "is it done yet",
+            "is that finished",
+            "how's it going",
+        ] {
             let ask = status_question_about_it(said).unwrap_or_else(|| panic!("{said:?}"));
             assert_eq!(ask.subject, None, "{said:?}");
             assert!(status_question(said).is_none(), "{said:?}");
@@ -1970,7 +2026,10 @@ mod tests {
             "how's that going",
             "finish the backup",
         ] {
-            assert!(status_question(not).is_none(), "{not:?} is not a status question");
+            assert!(
+                status_question(not).is_none(),
+                "{not:?} is not a status question"
+            );
         }
     }
 
@@ -1982,7 +2041,10 @@ mod tests {
         // Running: says so, and does not claim it is done.
         let said = status_said(&ask, &[view(label, Life::Running, None)], now, 0);
         assert!(said.starts_with("Not yet"), "{said}");
-        assert!(said.contains("still running") && said.contains("src"), "{said}");
+        assert!(
+            said.contains("still running") && said.contains("src"),
+            "{said}"
+        );
         // Done: when and where.
         let said = status_said(
             &ask,
@@ -1995,20 +2057,35 @@ mod tests {
             0,
         );
         assert!(said.starts_with("Yes"), "{said}");
-        assert!(said.contains("5 minutes ago") && said.contains("D:\\b"), "{said}");
+        assert!(
+            said.contains("5 minutes ago") && said.contains("D:\\b"),
+            "{said}"
+        );
         // Failed: why.
         let said = status_said(
             &ask,
-            &[view(label, Life::Failed("the disk is full".into()), Some(now - 30))],
+            &[view(
+                label,
+                Life::Failed("the disk is full".into()),
+                Some(now - 30),
+            )],
             now,
             0,
         );
-        assert!(said.starts_with("No") && said.contains("the disk is full"), "{said}");
+        assert!(
+            said.starts_with("No") && said.contains("the disk is full"),
+            "{said}"
+        );
         // Another folder's backup is not this one's, and nothing at all is said as it is.
         let other = view("Backing up C:\\work\\docs to D:\\b", Life::Running, None);
         let said = status_said(&ask, &[other], now, 0);
         assert_eq!(said, "I don't have a backup of src running or recently finished. Anything still open is on the Outstanding page.");
-        let said = status_said(&status_question("is the backup finished?").unwrap(), &[], now, 0);
+        let said = status_said(
+            &status_question("is the backup finished?").unwrap(),
+            &[],
+            now,
+            0,
+        );
         assert_eq!(said, "I don't have a backup running or recently finished. Anything still open is on the Outstanding page.");
     }
 
@@ -2016,13 +2093,33 @@ mod tests {
     fn a_running_job_is_picked_before_a_finished_one_and_a_name_narrows_it() {
         let now = 1_000_000;
         let jobs = [
-            view("Backing up C:\\a to D:\\x", Life::Done("ok".into()), Some(now - 100)),
+            view(
+                "Backing up C:\\a to D:\\x",
+                Life::Done("ok".into()),
+                Some(now - 100),
+            ),
             view("Backing up C:\\b to D:\\x", Life::Running, None),
         ];
-        let said = status_said(&status_question("is the backup finished").unwrap(), &jobs, now, 0);
-        assert!(said.starts_with("Not yet") && said.contains("C:\\b"), "{said}");
+        let said = status_said(
+            &status_question("is the backup finished").unwrap(),
+            &jobs,
+            now,
+            0,
+        );
+        assert!(
+            said.starts_with("Not yet") && said.contains("C:\\b"),
+            "{said}"
+        );
         assert!(said.contains("latest of 2"), "{said}");
-        let said = status_said(&status_question("is the backup of c:\\a finished").unwrap(), &jobs, now, 0);
-        assert!(said.starts_with("Yes") && !said.contains("latest of"), "{said}");
+        let said = status_said(
+            &status_question("is the backup of c:\\a finished").unwrap(),
+            &jobs,
+            now,
+            0,
+        );
+        assert!(
+            said.starts_with("Yes") && !said.contains("latest of"),
+            "{said}"
+        );
     }
 }

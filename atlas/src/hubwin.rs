@@ -141,7 +141,10 @@ fn note(dir: &std::path::Path, what: &str) {
 /// hub region on a machine nobody is looking at).
 #[cfg_attr(not(windows), allow(dead_code))]
 fn browser_args() -> String {
-    let mut args = String::from("--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection");
+    // Keep WebView2's SmartScreen protection enabled. Atlas does not need to
+    // disable browser malware/phishing checks for its local hub; external
+    // links are handed to the system browser by `turn_away`.
+    let mut args = String::from("--disable-features=msWebOOUI,msPdfOOUI");
     if let Some(port) = std::env::var("ATLAS_DEV")
         .ok()
         .and_then(|v| v.strip_prefix("hub-inspect:").map(str::to_string))

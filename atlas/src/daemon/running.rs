@@ -118,7 +118,10 @@ impl<'a> Daemon<'a> {
         }
 
         let mut failed: Vec<(&'static str, String)> = Vec::new();
-        let _transaction = match self.store.transaction() {
+        // Persistence is a completion boundary, but this runs on the daemon
+        // control loop. Retry briefly so a worker can finish its tiny write;
+        // never wait on the worker's long transaction timeout here.
+        let _transaction = match self.store.transaction_briefly() {
             Ok(guard) => guard,
             Err(error) => {
                 if self.persist_failures.is_empty() {
@@ -232,7 +235,7 @@ impl<'a> Daemon<'a> {
         // these lived only in memory and a restart dropped them silently
         // (research report, Stage 1 item 6). Kept as words: they're named
         // after a restart and asked again, never carried out on an old yes.
-        if self.left_waiting_read {
+        if self.left_waiting_read && self.left_waiting_recovery_required.is_none() {
             let mut waiting: Vec<LeftWaiting> = self
                 .session
                 .all_approvals()
@@ -271,7 +274,10 @@ impl<'a> Daemon<'a> {
                 .filter(|j| j.state == crate::scheduler::JobState::AwaitingApproval)
             {
                 let q = format!("Scheduled: {}. Go ahead?", j.command);
-                wanted.push((crate::job::approval_key("sched", &format!("{}:{}", j.id, j.command)), q));
+                wanted.push((
+                    crate::job::approval_key("sched", &format!("{}:{}", j.id, j.command)),
+                    q,
+                ));
             }
             for (_, d) in self.session.all_approvals() {
                 if !wanted.iter().any(|(_, q)| *q == d) {
@@ -291,11 +297,13 @@ impl<'a> Daemon<'a> {
             // A workflow, whole, so one waiting on your yes is asked again
             // after a restart rather than lost (research report, Stage 1
             // item 6: `current_flow` was never saved).
-            note(
-                &mut failed,
-                "current_flow",
-                self.store.save(FLOW_LEFT, &self.current_flow),
-            );
+            if self.workflow_recovery_required.is_none() {
+                note(
+                    &mut failed,
+                    "current_flow",
+                    self.store.save(FLOW_LEFT, &self.current_flow),
+                );
+            }
         }
         // What research taught it. Absent from this list when `learned`
         // gained its first caller, which would have made the knowledge
@@ -1131,7 +1139,13 @@ impl<'a> Daemon<'a> {
     /// of the doing was the model (from the flight recorder's calls made
     /// during the turn). Numbers only -- never the words, which the
     /// flight recorder promises too (`trace::STORES_NO_CONTENT`).
-    fn log_turn_timing(&self, t: &crate::timing::Turn, calls_before: u64, speaking_ms: u64) {
+    fn log_turn_timing(
+        &self,
+        t: &crate::timing::Turn,
+        calls_before: u64,
+        speaking_ms: u64,
+        reply: &str,
+    ) {
         let calls = self.trace.recorded_since(calls_before);
         let model_ms: u64 = calls.iter().map(|c| c.took_ms).sum();
         let mut line = String::from("timing: turn");
@@ -1161,7 +1175,8 @@ impl<'a> Daemon<'a> {
         // What the model server itself counted for the last call: a whole
         // prompt read again (a cache miss) reads very differently from a
         // long reply (29 Sep 2026).
-        if let Some(st) = crate::models::take_last_timings() {
+        let server_timings = crate::models::take_last_timings();
+        if let Some(st) = server_timings {
             line.push_str(&format!("; {}", st.line()));
         }
         // Which ear heard this turn and why (`voicelat`).
@@ -1169,6 +1184,49 @@ impl<'a> Daemon<'a> {
         if let Some(a) = &asr {
             line.push_str(&format!("; {}", a.line()));
         }
+        let model_cfg = &self.tools_cfg().models;
+        let model_id = if model_cfg.talk.trim().is_empty() {
+            model_cfg.prefer.clone()
+        } else {
+            model_cfg.talk.clone()
+        };
+        let failed = reply.trim_start().starts_with("Model unreachable:")
+            || matches!(
+                self.execution_receipt.as_ref(),
+                Some((_, crate::taskloop::Outcome::Failed(_)))
+            );
+        let receipt = crate::timing::RuntimeReceipt::new(
+            t.clone(),
+            if model_id.trim().is_empty() {
+                "configured-model".into()
+            } else {
+                model_id
+            },
+            model_cfg.context.min(u64::from(u32::MAX)) as u32,
+            server_timings.map(|st| st.read),
+            failed.then(|| "model_unreachable".into()),
+            if failed { "failed" } else { "completed" }.into(),
+        );
+        let receipt = match server_timings {
+            Some(st) => receipt.with_server_timings(crate::timing::ServerTimingsReceipt {
+                cached_prompt_tokens: st.cached,
+                prompt_tokens: st.read,
+                prompt_ms: st.read_ms,
+                completion_tokens: st.wrote,
+                completion_ms: st.wrote_ms,
+            }),
+            None => receipt,
+        };
+        let receipt = match self.last_reached() {
+            Some(action) => {
+                receipt.with_action(action, if failed { "failed" } else { "completed" }.into())
+            }
+            None => receipt,
+        };
+        line.push_str(&format!(
+            "; receipt={}",
+            serde_json::to_string(&receipt).unwrap_or_else(|_| "{}".into())
+        ));
         self.log.info(&line);
         crate::voicelat::record(
             &crate::roots::store(),
@@ -2259,7 +2317,7 @@ impl<'a> Daemon<'a> {
                     heard_ms,
                     first_sound,
                 ));
-            self.log_turn_timing(&timed, calls_before, speaking_ms);
+            self.log_turn_timing(&timed, calls_before, speaking_ms, &reply);
             self.timing.add(timed);
             self.last_spoke_at = clock();
             self.own_speech.borrow_mut().finished(self.last_spoke_at);
@@ -2709,7 +2767,20 @@ impl Drop for Daemon<'_> {
         // this ordering a worker can finish during `persist_at_exit` and leave
         // a stale left-waiting checkpoint for the next daemon instance.
         self.crew.wait_for_stop();
+        // The index writer owns the same state transaction used by the
+        // daemon. Join it before the final persistence boundary so its lock
+        // cannot leak into the next daemon/test in this process.
+        if let Some((_, writer)) = self.index_saving.take() {
+            let _ = writer.join();
+        }
         self.persist_at_exit();
+        // The final persist may start a fresh index writer after the first
+        // join above.  Do not release the daemon's state transaction until
+        // that writer has also completed; otherwise the next daemon opened
+        // by a restart can observe a false "state busy" condition.
+        if let Some((_, writer)) = self.index_saving.take() {
+            let _ = writer.join();
+        }
     }
 }
 
@@ -2786,7 +2857,10 @@ mod closing_checkpoint {
         let snapshot = std::thread::spawn(move || {
             let _guard = held_store.transaction().unwrap();
             ready.send(()).unwrap();
-            std::thread::sleep(std::time::Duration::from_millis(100));
+            // `persist` deliberately retries a brief transaction for roughly
+            // 250 ms. Hold the fixture beyond that window so this test proves
+            // the non-blocking busy path rather than racing the retry.
+            std::thread::sleep(std::time::Duration::from_millis(400));
         });
         received.recv().unwrap();
         daemon.persist();

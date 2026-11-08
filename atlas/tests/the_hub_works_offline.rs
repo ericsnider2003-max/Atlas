@@ -112,7 +112,11 @@ fn light_dark_and_contrast_follow_the_system_with_no_script() {
     // Appearance adapts to the system through media queries — no script, no
     // stored round-trip, no network. The hooks for a stored override are in the
     // CSS, applied server-side, so the manual switch stays script-free too.
-    let html = styled(hub::shell_at(Some(Page::Dashboard), "Dashboard", "<p>x</p>"));
+    let html = styled(hub::shell_at(
+        Some(Page::Dashboard),
+        "Dashboard",
+        "<p>x</p>",
+    ));
     assert!(
         !html.to_lowercase().contains("<script"),
         "appearance needs no script"

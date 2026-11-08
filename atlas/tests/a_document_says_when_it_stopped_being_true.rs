@@ -83,6 +83,7 @@ const CURRENT: &[&str] = &[
     "NOT_GETTING_STUCK.md",
     "OFFLINE.md",
     "ON_YOUR_PHONE.md",
+    "QUALITY_REVIEW_CHARTER.md",
     "REFERENCES.md",
     "SENDING_FROM_YOUR_PHONE.md",
     "SETTING_UP.md",

@@ -23,12 +23,17 @@ impl Log {
 
     pub fn write(&self, level: &str, msg: &str) {
         self.rotate_if_needed();
+        // Logs are a durable sink, not a trusted prompt boundary. Reuse the
+        // same scrubber that protects model prompts so a token or personal
+        // number in an error cannot become a long-lived local secret leak.
+        let mut scrubber = crate::redact::Scrubber::default();
+        let safe_msg = scrubber.scrub(msg);
         if let Ok(mut f) = std::fs::OpenOptions::new()
             .create(true)
             .append(true)
             .open(&self.path)
         {
-            crate::kept!(writeln!(f, "{} {level} {msg}", crate::store::now()));
+            crate::kept!(writeln!(f, "{} {level} {safe_msg}", crate::store::now()));
         }
     }
 

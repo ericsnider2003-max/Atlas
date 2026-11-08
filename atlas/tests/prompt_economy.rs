@@ -24,7 +24,11 @@ impl Llm for Records {
     fn native_chat(&self) -> bool {
         true
     }
-    fn chat(&self, req: &ChatRequest, _on_text: &mut dyn FnMut(&str) -> bool) -> atlas::error::Result<ChatReply> {
+    fn chat(
+        &self,
+        req: &ChatRequest,
+        _on_text: &mut dyn FnMut(&str) -> bool,
+    ) -> atlas::error::Result<ChatReply> {
         self.0.lock().unwrap().push(req.clone());
         Ok(ChatReply {
             text: "Sunlight scatters off the air, and blue scatters most.".into(),
@@ -53,15 +57,31 @@ const PROMPT_BASELINE_CHARS: usize = 2238;
 
 fn measured() -> (usize, Vec<(String, usize)>) {
     let c = Config::load(Path::new("config")).unwrap();
-    let p = MockPlatform::new(vec![Monitor { id: 1, x: 0, y: 0, width: 1920, height: 1040, primary: true }]);
+    let p = MockPlatform::new(vec![Monitor {
+        id: 1,
+        x: 0,
+        y: 0,
+        width: 1920,
+        height: 1040,
+        primary: true,
+    }]);
     let root = std::env::temp_dir().join(format!("atlas-prompt-economy-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&root);
     let seen = Arc::new(Mutex::new(Vec::new()));
     let llm: Arc<dyn Llm> = Arc::new(Records(seen.clone()));
-    let mut d = Daemon::new(&c, &p, Some(llm), Store::new(&root), Proactive::new(ProactiveConfig::default()));
+    let mut d = Daemon::new(
+        &c,
+        &p,
+        Some(llm),
+        Store::new(&root),
+        Proactive::new(ProactiveConfig::default()),
+    );
     d.turn("why is the sky blue?", atlas::store::now());
     let reqs = seen.lock().unwrap().clone();
-    let first = reqs.first().expect("the question reached the model").clone();
+    let first = reqs
+        .first()
+        .expect("the question reached the model")
+        .clone();
     let mut parts: Vec<(String, usize)> = Vec::new();
     for (i, m) in first.messages.iter().enumerate() {
         let role = match m.role {
@@ -73,8 +93,11 @@ fn measured() -> (usize, Vec<(String, usize)>) {
     }
     if std::env::var("ATLAS_SHOW_PROMPT").is_ok() {
         for m in &first.messages {
-            eprintln!("---- {:?}
-{}", m.role, m.content);
+            eprintln!(
+                "---- {:?}
+{}",
+                m.role, m.content
+            );
         }
     }
     let tools: usize = first.tools.iter().map(|t| t.to_string().len()).sum();
@@ -88,7 +111,10 @@ fn one_ordinary_question_costs_what_it_costs_and_no_more() {
     let (total, parts) = measured();
     eprintln!("PROMPT one question: {total} chars, about {} tokens (estimate, {CHARS_PER_TOKEN} chars/token)", total / CHARS_PER_TOKEN);
     for (what, n) in &parts {
-        eprintln!("PROMPT   {what}: {n} chars, about {} tokens", n / CHARS_PER_TOKEN);
+        eprintln!(
+            "PROMPT   {what}: {n} chars, about {} tokens",
+            n / CHARS_PER_TOKEN
+        );
     }
     assert!(
         total <= BUDGET_CHARS,
@@ -109,35 +135,75 @@ fn the_prompts_never_hold_two_length_rules() {
     // What the model gets on one ordinary question.
     {
         let c = Config::load(Path::new("config")).unwrap();
-        let p = MockPlatform::new(vec![Monitor { id: 1, x: 0, y: 0, width: 1920, height: 1040, primary: true }]);
+        let p = MockPlatform::new(vec![Monitor {
+            id: 1,
+            x: 0,
+            y: 0,
+            width: 1920,
+            height: 1040,
+            primary: true,
+        }]);
         let root = std::env::temp_dir().join(format!("atlas-prompt-length-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         let seen = Arc::new(Mutex::new(Vec::new()));
         let llm: Arc<dyn Llm> = Arc::new(Records(seen.clone()));
-        let mut d = Daemon::new(&c, &p, Some(llm), Store::new(&root), Proactive::new(ProactiveConfig::default()));
+        let mut d = Daemon::new(
+            &c,
+            &p,
+            Some(llm),
+            Store::new(&root),
+            Proactive::new(ProactiveConfig::default()),
+        );
         d.turn("why is the sky blue?", atlas::store::now());
-        let first = seen.lock().unwrap().first().cloned().expect("reached the model");
+        let first = seen
+            .lock()
+            .unwrap()
+            .first()
+            .cloned()
+            .expect("reached the model");
         let all: Vec<String> = first.messages.iter().map(|m| m.content.clone()).collect();
         texts.push(("the first request".into(), all.join("\n")));
     }
     // The prompts built for each register, and the per-turn line.
     // The standard persona and the shipped one (config: eight).
     for max in [3usize, 8] {
-        let persona = Persona { max_spoken_sentences: max, ..Persona::default() };
-        for r in [Register::Working, Register::Chatting, Register::AboutAtlas, Register::Rough] {
-            let both = format!("{}\n{}", persona.prompt_for(r), persona.for_this_turn_on(r, 3, "why is the sky blue?", false));
+        let persona = Persona {
+            max_spoken_sentences: max,
+            ..Persona::default()
+        };
+        for r in [
+            Register::Working,
+            Register::Chatting,
+            Register::AboutAtlas,
+            Register::Rough,
+        ] {
+            let both = format!(
+                "{}\n{}",
+                persona.prompt_for(r),
+                persona.for_this_turn_on(r, 3, "why is the sky blue?", false)
+            );
             texts.push((format!("{r:?} prompt plus turn line at {max}"), both));
         }
     }
     let persona = Persona::default();
     for (what, t) in &texts {
-        assert!(t.matches(LENGTH_RULE).count() <= 1, "{what}: the length rule is said more than once");
+        assert!(
+            t.matches(LENGTH_RULE).count() <= 1,
+            "{what}: the length rule is said more than once"
+        );
         let rest = t.replace(LENGTH_RULE, "");
         let lower = rest.to_lowercase();
         assert!(
             !lower.contains("sentences"),
             "{what}: a second length rule outside LENGTH_RULE: {:?}",
-            lower.split("sentences").next().map(|s| s.chars().rev().take(60).collect::<String>().chars().rev().collect::<String>())
+            lower.split("sentences").next().map(|s| s
+                .chars()
+                .rev()
+                .take(60)
+                .collect::<String>()
+                .chars()
+                .rev()
+                .collect::<String>())
         );
     }
     // The system prompt and the character both carry the one rule.
@@ -150,7 +216,13 @@ fn the_prompts_never_hold_two_length_rules() {
 #[test]
 fn a_persona_tells_the_model_the_length_it_is_cut_at() {
     use atlas::persona::{Persona, LENGTH_RULE};
-    let with = |n: usize| Persona { max_spoken_sentences: n, ..Persona::default() }.length_rule();
+    let with = |n: usize| {
+        Persona {
+            max_spoken_sentences: n,
+            ..Persona::default()
+        }
+        .length_rule()
+    };
     assert_eq!(with(3), LENGTH_RULE);
     assert_eq!(with(8), LENGTH_RULE);
     assert!(with(2).contains("at most 2 sentences"), "{}", with(2));
@@ -167,23 +239,79 @@ fn a_persona_tells_the_model_the_length_it_is_cut_at() {
 fn no_prompt_in_the_source_states_its_own_answer_length() {
     // (file, a fragment of the line, what the job is)
     const OTHER_JOBS: &[(&str, &str, &str)] = &[
-        ("src/callnotes.rs", "in one sentence", "a field of a call summary"),
-        ("src/camera_ask.rs", "plain sentences", "describing a webcam picture"),
-        ("src/camwatch.rs", "In one short sentence", "a caption for a watched frame"),
-        ("src/capability.rs", "the few tools a sentence needs", "prose, not a prompt"),
-        ("src/council.rs", "in one sentence", "a question a reviewer asks of a product"),
-        ("src/explain.rs", "short sentences", "the depth the owner chose for explaining code"),
+        (
+            "src/callnotes.rs",
+            "in one sentence",
+            "a field of a call summary",
+        ),
+        (
+            "src/camera_ask.rs",
+            "plain sentences",
+            "describing a webcam picture",
+        ),
+        (
+            "src/camwatch.rs",
+            "In one short sentence",
+            "a caption for a watched frame",
+        ),
+        (
+            "src/capability.rs",
+            "the few tools a sentence needs",
+            "prose, not a prompt",
+        ),
+        (
+            "src/council.rs",
+            "in one sentence",
+            "a question a reviewer asks of a product",
+        ),
+        (
+            "src/explain.rs",
+            "short sentences",
+            "the depth the owner chose for explaining code",
+        ),
         ("src/online.rs", "one sentence naming", "a one-line verdict"),
-        ("src/operate.rs", "in one sentence", "fields of a step record"),
+        (
+            "src/operate.rs",
+            "in one sentence",
+            "fields of a step record",
+        ),
         ("src/persona.rs", "sentence", "the rule itself"),
-        ("src/picture_talk.rs", "plain sentences", "describing a picture to someone who can't see it"),
-        ("src/voiceid.rs", "a sentence or two", "asking the owner to speak, not a model"),
+        (
+            "src/picture_talk.rs",
+            "plain sentences",
+            "describing a picture to someone who can't see it",
+        ),
+        (
+            "src/voiceid.rs",
+            "a sentence or two",
+            "asking the owner to speak, not a model",
+        ),
         ("src/stance.rs", "in one sentence", "a coaching line"),
-        ("src/studio.rs", "sentences, for posting", "a video description"),
-        ("src/watchvideo.rs", "sentences", "describing a video frame and a video"),
-        ("src/daemon/execute.rs", "short sentences. X:", "a LinkedIn post"),
-        ("src/daemon/making.rs", "plain sentences. Use only", "a written summary"),
-        ("src/social/analysis.rs", "plain sentences: what stands out", "a written analysis"),
+        (
+            "src/studio.rs",
+            "sentences, for posting",
+            "a video description",
+        ),
+        (
+            "src/watchvideo.rs",
+            "sentences",
+            "describing a video frame and a video",
+        ),
+        (
+            "src/daemon/execute.rs",
+            "short sentences. X:",
+            "a LinkedIn post",
+        ),
+        (
+            "src/daemon/making.rs",
+            "plain sentences. Use only",
+            "a written summary",
+        ),
+        (
+            "src/social/analysis.rs",
+            "plain sentences: what stands out",
+            "a written analysis",
+        ),
     ];
     fn files(dir: &Path, out: &mut Vec<std::path::PathBuf>) {
         for e in std::fs::read_dir(dir).unwrap().flatten() {
@@ -229,7 +357,9 @@ fn no_prompt_in_the_source_states_its_own_answer_length() {
                         .any(|p| counts.contains(p) || p.parse::<u32>().is_ok())
             });
             if in_text && states_a_count {
-                let named = OTHER_JOBS.iter().any(|(file, frag, _)| name == *file && code.contains(frag));
+                let named = OTHER_JOBS
+                    .iter()
+                    .any(|(file, frag, _)| name == *file && code.contains(frag));
                 if !named {
                     found.push(format!("{name}:{}: {}", n + 1, code.trim()));
                 }

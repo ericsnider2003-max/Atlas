@@ -5,31 +5,39 @@
 // ---- vad: thresholds measured on real (synthesized) speech, round-3 gap -------------------
 
 fn speech_fixture(room: &str) -> (Vec<i16>, u32) {
-    atlas::diarize::read_wav(
-        &std::fs::read(format!("tests/fixtures/speech/call_{room}.wav")).unwrap(),
-    )
-    .unwrap()
+    let path = format!("tests/fixtures/speech/call_{room}.wav");
+    let bytes =
+        std::fs::read(&path).unwrap_or_else(|error| panic!("read VAD fixture {path}: {error}"));
+    atlas::diarize::read_wav(&bytes)
+        .unwrap_or_else(|error| panic!("decode VAD fixture {path}: {error}"))
 }
 
 fn truth() -> (Vec<bool>, Vec<(usize, usize, String)>) {
-    let v: serde_json::Value =
-        serde_json::from_str(&std::fs::read_to_string("tests/fixtures/speech/truth.json").unwrap())
-            .unwrap();
+    let text = std::fs::read_to_string("tests/fixtures/speech/truth.json")
+        .unwrap_or_else(|error| panic!("read VAD truth fixture: {error}"));
+    let v: serde_json::Value = serde_json::from_str(&text)
+        .unwrap_or_else(|error| panic!("parse VAD truth fixture: {error}"));
     let t = v["truth"]
         .as_array()
-        .unwrap()
+        .unwrap_or_else(|| panic!("VAD truth fixture has no truth array"))
         .iter()
         .map(|x| x.as_i64() == Some(1))
         .collect();
     let turns = v["turns"]
         .as_array()
-        .unwrap()
+        .unwrap_or_else(|| panic!("VAD truth fixture has no turns array"))
         .iter()
         .map(|x| {
             (
-                x[0].as_u64().unwrap() as usize,
-                x[1].as_u64().unwrap() as usize,
-                x[2].as_str().unwrap().to_string(),
+                x[0].as_u64()
+                    .unwrap_or_else(|| panic!("VAD turn start is not an integer: {x}"))
+                    as usize,
+                x[1].as_u64()
+                    .unwrap_or_else(|| panic!("VAD turn end is not an integer: {x}"))
+                    as usize,
+                x[2].as_str()
+                    .unwrap_or_else(|| panic!("VAD turn speaker is not a string: {x}"))
+                    .to_string(),
             )
         })
         .collect();

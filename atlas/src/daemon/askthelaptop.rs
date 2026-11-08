@@ -59,9 +59,7 @@ const MY_ASKS_KEY: &str = "asked_of_the_laptop";
 impl Daemon<'_> {
     /// The phone's outbox, and when your other devices were last heard from:
     /// the newest event of theirs this device holds (24 Oct 2026).
-    pub(crate) fn phone_outbox(
-        &self,
-    ) -> crate::error::Result<(crate::remote::Queue, Option<u64>)> {
+    pub(crate) fn phone_outbox(&self) -> crate::error::Result<(crate::remote::Queue, Option<u64>)> {
         let q = self
             .store
             .load_checked::<crate::remote::Queue>(MY_ASKS_KEY)?
@@ -90,7 +88,10 @@ impl Daemon<'_> {
             .requests
             .into_iter()
             .filter(|r| {
-                matches!(r.state, crate::remote::State::Waiting | crate::remote::State::Running)
+                matches!(
+                    r.state,
+                    crate::remote::State::Waiting | crate::remote::State::Running
+                )
             })
             .map(|r| {
                 let s = crate::remote::queue_status(&r, heard, now);
@@ -331,7 +332,8 @@ impl Daemon<'_> {
                     // Judged whole by `needs_your_yes` above, so it runs
                     // whole: not cut into parts the judgement never saw.
                     let relayed = RelayedGuard::set(&self.relayed_from_phone);
-                    let reply = self.unless_owner_idle(|d| d.turn_from(&a.what, t, Arrival::Directed));
+                    let reply =
+                        self.unless_owner_idle(|d| d.turn_from(&a.what, t, Arrival::Directed));
                     drop(relayed);
                     let watch = self
                         .last_crew_handoff
@@ -921,7 +923,15 @@ mod phone_requests_and_a_person_at_the_laptop {
 
     #[test]
     fn a_phone_request_cannot_take_the_front_from_someone_typing_but_can_in_a_gap() {
-        assert_eq!(focus_from_the_phone(0, "typing"), 0, "it took the front from a person typing");
-        assert_eq!(focus_from_the_phone(60, "away"), 1, "it never ran, so the check above proves nothing");
+        assert_eq!(
+            focus_from_the_phone(0, "typing"),
+            0,
+            "it took the front from a person typing"
+        );
+        assert_eq!(
+            focus_from_the_phone(60, "away"),
+            1,
+            "it never ran, so the check above proves nothing"
+        );
     }
 }

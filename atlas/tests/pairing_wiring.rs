@@ -22,7 +22,7 @@ use atlas::store::Store;
 use std::path::Path;
 
 fn cfg() -> Config {
-    Config::load(Path::new("config")).unwrap()
+    Config::load(Path::new("config")).unwrap_or_else(|error| panic!("load pairing config: {error}"))
 }
 
 fn parser() -> Parser {
@@ -43,7 +43,8 @@ fn plat() -> MockPlatform {
 fn tmp(tag: &str) -> std::path::PathBuf {
     let p = std::env::temp_dir().join(format!("atlas-pairwire-{tag}"));
     let _ = std::fs::remove_dir_all(&p);
-    std::fs::create_dir_all(&p).unwrap();
+    std::fs::create_dir_all(&p)
+        .unwrap_or_else(|error| panic!("create pairing fixture {}: {error}", p.display()));
     p
 }
 

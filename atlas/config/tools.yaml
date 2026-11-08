@@ -300,6 +300,10 @@ research:
   # On by default (Eric, 27 Sep 2026): when Atlas doesn't know, it looks it
   # up. That sends the question to a search engine; Settings turns it off.
   enabled: true
+  # Background local-model research may need several minutes on a cold CPU
+  # model after the network fetches finish. Cancellation still wins at every
+  # checkpoint; this is a wall budget, not an instruction to wait blindly.
+  deadline_secs: 600
   max_sources: 4
   max_chars_per_source: 6000
   notes_dir: "data/notes"
@@ -307,9 +311,13 @@ research:
   # "http://127.0.0.1:8888". Empty: the search below. Its settings.yml needs
   # `json` under search.formats. Settings -> "Own search engine".
   searxng_url: ""
+  structured_sources:
+    - all: ["rust"]
+      any: ["release", "schedule"]
+      url: "https://api.github.com/repos/rust-lang/rust/releases?per_page=10"
   search:
     command: curl
-    args: ["-s", "-A", "Mozilla/5.0", "https://html.duckduckgo.com/html/?q={query}"]
+    args: ["-s", "-A", "Mozilla/5.0", "--max-time", "20", "https://html.duckduckgo.com/html/?q={query}"]
   fetch:
     # --headless is a second, invisible Chrome. It does not touch your windows.
     command: "{browser}"

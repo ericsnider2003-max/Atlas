@@ -1126,6 +1126,30 @@ pub fn reports_dir(real_root: &Path) -> PathBuf {
     real_root.join("data").join("selftest")
 }
 
+/// Set on the test's own process and everything it starts.
+pub const IN_A_TEST: &str = "ATLAS_SELFTEST";
+
+/// Said when something in a test would have started another Atlas.
+pub const NO_SECOND_ATLAS: &str =
+    "this is the self-test's copy of Atlas, which never starts another Atlas";
+
+/// Is this process (or the one that started it) the self-test?
+///
+/// The test runs on a copy of the install (`ATLAS_HOME` pointed at it), and
+/// "show me settings" there opened Atlas's window -- which, finding no Atlas
+/// running *in the copy*, started a background one there (30 Sep 2026). It
+/// outlived the test: a second Atlas with its own hub, typing box,
+/// microphone and model server, answering Eric from the temp folder while
+/// the real one ran beside it, and the settings he changed went into the
+/// copy. Starting another Atlas (`firstlaunch::spawn_quietly`,
+/// `open_atlas_window`) is refused while this is set.
+/// What anything that would start a window or another Atlas says inside the
+/// self-test, instead of doing it.
+pub const NOT_IN_A_TEST: &str = "the self-test never opens a window or starts another Atlas";
+
+pub fn in_a_test() -> bool {
+    std::env::var_os(IN_A_TEST).is_some_and(|v| !v.is_empty())
+}
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1275,29 +1299,4 @@ mod tests {
         assert_eq!(tier("open_app"), Tier::StandIn);
         assert_eq!(tier("clock"), Tier::Run);
     }
-}
-
-/// Set on the test's own process and everything it starts.
-pub const IN_A_TEST: &str = "ATLAS_SELFTEST";
-
-/// Said when something in a test would have started another Atlas.
-pub const NO_SECOND_ATLAS: &str =
-    "this is the self-test's copy of Atlas, which never starts another Atlas";
-
-/// Is this process (or the one that started it) the self-test?
-///
-/// The test runs on a copy of the install (`ATLAS_HOME` pointed at it), and
-/// "show me settings" there opened Atlas's window -- which, finding no Atlas
-/// running *in the copy*, started a background one there (30 Sep 2026). It
-/// outlived the test: a second Atlas with its own hub, typing box,
-/// microphone and model server, answering Eric from the temp folder while
-/// the real one ran beside it, and the settings he changed went into the
-/// copy. Starting another Atlas (`firstlaunch::spawn_quietly`,
-/// `open_atlas_window`) is refused while this is set.
-/// What anything that would start a window or another Atlas says inside the
-/// self-test, instead of doing it.
-pub const NOT_IN_A_TEST: &str = "the self-test never opens a window or starts another Atlas";
-
-pub fn in_a_test() -> bool {
-    std::env::var_os(IN_A_TEST).is_some_and(|v| !v.is_empty())
 }

@@ -474,7 +474,8 @@ fn a_single_turn_after_reading_mail_asks_before_acting() {
     );
     let reply = e.turn("deal with notepad", 1_790_740_000);
     assert!(
-        !reply.ends_with("Do you want me to do it?") && !matches!(e.session.pending, Pending::Approval(..)),
+        !reply.ends_with("Do you want me to do it?")
+            && !matches!(e.session.pending, Pending::Approval(..)),
         "{reply}"
     );
 }
@@ -551,7 +552,10 @@ fn answering_an_approval_does_not_lift_the_taint() {
             "{tag}: the answer lifted the taint"
         );
         let reply = d.turn("deal with notepad", 1_790_740_010);
-        assert!(reply.ends_with("Do you want me to do it?"), "{tag}: {reply}");
+        assert!(
+            reply.ends_with("Do you want me to do it?"),
+            "{tag}: {reply}"
+        );
         assert!(
             matches!(&d.session.pending, Pending::Approval(Intent::OpenApp(_), _)),
             "{tag}: {:?}",

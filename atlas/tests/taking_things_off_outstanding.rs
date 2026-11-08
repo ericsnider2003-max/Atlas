@@ -22,7 +22,8 @@ use atlas::store::Store;
 use std::path::{Path, PathBuf};
 
 fn cfg() -> Config {
-    Config::load(Path::new("config")).unwrap()
+    Config::load(Path::new("config"))
+        .unwrap_or_else(|error| panic!("outstanding test config: {error}"))
 }
 fn plat() -> MockPlatform {
     MockPlatform::new(vec![Monitor {
@@ -40,8 +41,10 @@ fn install(tag: &str) -> PathBuf {
         std::process::id()
     ));
     let _ = std::fs::remove_dir_all(&root);
-    std::fs::create_dir_all(root.join("data/state")).unwrap();
-    std::fs::create_dir_all(root.join("peers")).unwrap();
+    std::fs::create_dir_all(root.join("data/state"))
+        .unwrap_or_else(|error| panic!("outstanding state directory: {error}"));
+    std::fs::create_dir_all(root.join("peers"))
+        .unwrap_or_else(|error| panic!("outstanding peers directory: {error}"));
     root
 }
 fn daemon<'a>(root: &Path, c: &'a Config, p: &'a MockPlatform) -> Daemon<'a> {
@@ -70,8 +73,14 @@ fn key_beside(html: &str, what: &str) -> String {
         .find("action=/hub/outstanding")
         .unwrap_or_else(|| panic!("no remove button after {what:?}"));
     let rest = &rest[form..];
-    let v = rest.find("name=key value='").unwrap() + "name=key value='".len();
-    rest[v..v + rest[v..].find('\'').unwrap()].to_string()
+    let v = rest
+        .find("name=key value='")
+        .unwrap_or_else(|| panic!("remove button has no key: {rest}"))
+        + "name=key value='".len();
+    let end = rest[v..]
+        .find('\'')
+        .unwrap_or_else(|| panic!("remove button key is not closed: {rest}"));
+    rest[v..v + end].to_string()
 }
 
 /// Press it the way the browser does: the form body through the server's
@@ -85,7 +94,8 @@ fn press(d: &mut Daemon, key: &str) -> String {
         token_from_url: false,
         body: format!("what=drop&key={}", key.replace(':', "%3A")),
     };
-    let action = route(&req).expect("the Outstanding button reaches nothing");
+    let action =
+        route(&req).unwrap_or_else(|| panic!("the Outstanding button reaches nothing: {req:?}"));
     let r: Reply = atlas::hublive::reply(d, action);
     assert_eq!(
         r.status, 303,
@@ -93,7 +103,12 @@ fn press(d: &mut Daemon, key: &str) -> String {
         r.body
     );
     assert!(r.body.starts_with("/hub/outstanding?said="), "{}", r.body);
-    let q = r.body.split_once('?').unwrap().1.to_string();
+    let q = r
+        .body
+        .split_once('?')
+        .unwrap_or_else(|| panic!("redirect has no query: {}", r.body))
+        .1
+        .to_string();
     atlas::hublive::reply(d, Action::HubQ(Page::Outstanding, q)).body
 }
 

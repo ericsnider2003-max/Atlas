@@ -54,7 +54,12 @@ fn home() -> PathBuf {
     let p = std::env::temp_dir().join("atlas-saying-youre-back");
     ONCE.call_once(|| {
         let _ = std::fs::remove_dir_all(&p);
-        std::fs::create_dir_all(p.join("data").join("state")).unwrap();
+        std::fs::create_dir_all(p.join("data").join("state")).unwrap_or_else(|error| {
+            panic!(
+                "create handover test state directory {}: {error}",
+                p.display()
+            )
+        });
         std::env::set_var("ATLAS_HOME", &p);
     });
     p
@@ -83,20 +88,22 @@ fn a_vault_with_a_passphrase() {
     no_vault_yet();
     let mut v = Vault::default();
     v.open(PASSPHRASE, 100, &VaultConfig::default())
-        .expect("first open sets it");
+        .unwrap_or_else(|error| panic!("first vault open sets the fixture passphrase: {error}"));
     assert!(v.has_a_passphrase());
     v.lock();
     v.open(PASSPHRASE, 100, &VaultConfig::default())
-        .expect("second open verifies");
+        .unwrap_or_else(|error| panic!("second vault open verifies the fixture: {error}"));
     assert!(v.proved_it(), "the fixture's vault cannot prove anything");
     v.lock();
-    v.save(&install()).expect("the daemon loads this from disk");
+    v.save(&install())
+        .unwrap_or_else(|error| panic!("save vault fixture for the daemon: {error}"));
 }
 
 fn handed_over(note: &str) {
     let mut h = Handover::default();
     h.hand_over(note, 1_000);
-    h.save(&install()).unwrap();
+    h.save(&install())
+        .unwrap_or_else(|error| panic!("save handover fixture: {error}"));
 }
 
 fn on_disk() -> Handover {
@@ -104,7 +111,7 @@ fn on_disk() -> Handover {
 }
 
 fn cfg() -> Config {
-    Config::load(Path::new("config")).unwrap()
+    Config::load(Path::new("config")).unwrap_or_else(|error| panic!("load test config: {error}"))
 }
 
 fn plat() -> MockPlatform {
@@ -121,7 +128,8 @@ fn plat() -> MockPlatform {
 fn daemon<'a>(c: &'a Config, p: &'a MockPlatform, tag: &str) -> Daemon<'a> {
     let dir = home().join(format!("person-{tag}"));
     let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::create_dir_all(&dir)
+        .unwrap_or_else(|error| panic!("create daemon test directory {}: {error}", dir.display()));
     // A daemon on its own profile directory reads the vault from there, not
     // from the install's state (`keeps_the_install_vault`), so give it the
     // vault the fixture just saved.
@@ -159,13 +167,19 @@ impl Types {
         }
     }
     fn prompts(&self) -> Vec<String> {
-        self.asked.lock().unwrap().clone()
+        self.asked
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .clone()
     }
 }
 
 impl AsksQuietly for Types {
     fn ask(&self, prompt: &str) -> Option<String> {
-        self.asked.lock().unwrap().push(prompt.to_string());
+        self.asked
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .push(prompt.to_string());
         self.answer.clone()
     }
 }

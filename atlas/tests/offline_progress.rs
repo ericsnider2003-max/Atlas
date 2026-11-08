@@ -14,8 +14,10 @@ use std::path::Path;
 fn run(tag: &str, reach: Reach, setup: impl FnOnce(&mut Daemon), check: impl FnOnce(&str)) {
     let root =
         std::env::temp_dir().join(format!("atlas-offline-label-{tag}-{}", std::process::id()));
-    std::fs::create_dir_all(&root).unwrap();
-    let c = Config::load(Path::new("config")).unwrap();
+    std::fs::create_dir_all(&root)
+        .unwrap_or_else(|error| panic!("create offline-progress fixture root {root:?}: {error}"));
+    let c = Config::load(Path::new("config"))
+        .unwrap_or_else(|error| panic!("load offline-progress config: {error}"));
     let p = MockPlatform::new(vec![Monitor {
         id: 1,
         x: 0,
@@ -33,16 +35,20 @@ fn run(tag: &str, reach: Reach, setup: impl FnOnce(&mut Daemon), check: impl FnO
     );
     d.connectivity.set(reach, atlas::store::now());
     setup(&mut d);
-    let before = serde_json::to_value(&d.publisher).unwrap();
-    let outbox_before = serde_json::to_value(atlas::outbox::Outbox::load(&d.store)).unwrap();
+    let before = serde_json::to_value(&d.publisher)
+        .unwrap_or_else(|error| panic!("serialize publisher before offline render: {error}"));
+    let outbox_before = serde_json::to_value(atlas::outbox::Outbox::load(&d.store))
+        .unwrap_or_else(|error| panic!("serialize outbox before offline render: {error}"));
     let html = atlas::hublive::reply(&mut d, Action::Hub(Page::Offline)).body;
     assert_eq!(
         outbox_before,
-        serde_json::to_value(atlas::outbox::Outbox::load(&d.store)).unwrap()
+        serde_json::to_value(atlas::outbox::Outbox::load(&d.store))
+            .unwrap_or_else(|error| panic!("serialize outbox after offline render: {error}"))
     );
     assert_eq!(
         before,
-        serde_json::to_value(&d.publisher).unwrap(),
+        serde_json::to_value(&d.publisher)
+            .unwrap_or_else(|error| panic!("serialize publisher after offline render: {error}")),
         "rendering must not approve, send, or modify publication"
     );
     assert!(!html.contains("Anything queued is going out"));
@@ -56,7 +62,9 @@ fn post(d: &mut Daemon, approval: bool) -> u64 {
     let id = d
         .publisher
         .draft(Channel::X, "Synthetic offline label <draft>");
-    d.publisher.request_approval(id).unwrap();
+    d.publisher
+        .request_approval(id)
+        .unwrap_or_else(|| panic!("request approval for offline fixture post {id} failed"));
     if approval {
         assert!(d.publisher.approve(id));
     }
@@ -130,9 +138,17 @@ fn offline_labels_restart_and_failure_keep_real_state() {
         |d| {
             let id = post(d, false);
             d.publisher.mark_sent(id, "Synthetic rejection", false);
-            let saved = serde_json::to_vec(&d.publisher).unwrap();
-            d.publisher = serde_json::from_slice(&saved).unwrap();
-            assert_eq!(d.publisher.get(id).unwrap().state, PostState::Failed);
+            let saved = serde_json::to_vec(&d.publisher)
+                .unwrap_or_else(|error| panic!("serialize rejected offline publisher: {error}"));
+            d.publisher = serde_json::from_slice(&saved)
+                .unwrap_or_else(|error| panic!("restore rejected offline publisher: {error}"));
+            assert_eq!(
+                d.publisher
+                    .get(id)
+                    .unwrap_or_else(|| panic!("rejected offline post {id} missing after restore"))
+                    .state,
+                PostState::Failed
+            );
         },
         |h| {
             assert!(h.contains("Failed; check the publication result"));
@@ -167,8 +183,11 @@ fn offline_labels_waiting_mail_keeps_authorization_unknown_on_reconnect() {
                 "id": "synthetic", "account": "local", "to_address": "nobody@example.invalid",
                 "to_name": "Synthetic Person", "subject": "Fixture", "body": "No send", "kind": "client",
                 "critique": [], "created_at": 1, "status": "waiting"
-            }]})).unwrap();
-                outbox.save(&d.store).unwrap();
+            }]}))
+                .unwrap_or_else(|error| panic!("build offline outbox fixture: {error}"));
+                outbox
+                    .save(&d.store)
+                    .unwrap_or_else(|error| panic!("save offline outbox fixture: {error}"));
             },
             |h| {
                 assert!(h.contains("A reply to Synthetic Person"));

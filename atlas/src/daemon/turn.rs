@@ -140,7 +140,8 @@ impl<'a> Daemon<'a> {
     /// (`notes_as_hints`) instead of answering on their own -- a note that
     /// shared one word with "what should I eat" was the whole reply.
     fn answer_before_the_model(&mut self, raw: &str, t: u64) -> Option<String> {
-        self.asked_of_a_helper(raw, t)
+        self.resource_policy_answer(raw)
+            .or_else(|| self.asked_of_a_helper(raw, t))
             .or_else(|| self.learn_stated(raw))
             .or_else(|| self.exact_fact(raw, t))
             .or_else(|| {
@@ -157,6 +158,20 @@ impl<'a> Daemon<'a> {
                     None
                 }
             })
+    }
+
+    /// A resource-conflict question has a deterministic answer from Atlas's
+    /// measured fit and relief policy. Keep it off the model path so a small
+    /// local model cannot turn a safety invariant into a guess.
+    fn resource_policy_answer(&self, raw: &str) -> Option<String> {
+        crate::resource_policy::answer(
+            raw,
+            self.fit.tier.name(),
+            self.fit.model.unwrap_or("none"),
+            self.fit.keep_model_warm,
+            self.fit.concurrency,
+            self.helpers.sup.memory_mb(),
+        )
     }
 
     /// A fact asked for by its exact slot: "what kind of car do I have".

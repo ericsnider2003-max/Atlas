@@ -33,7 +33,8 @@ const BACKUP: &str = "back up the folder C:\\Users\\erics\\Documents to C:\\temp
 const DELETE: &str = "delete the file notes.txt";
 
 fn cfg() -> atlas::config::Config {
-    let mut c = atlas::config::Config::load(Path::new("config")).unwrap();
+    let mut c = atlas::config::Config::load(Path::new("config"))
+        .unwrap_or_else(|error| panic!("load SEC2 test config: {error}"));
     c.indexing = None;
     c
 }
@@ -52,7 +53,8 @@ fn plat() -> MockPlatform {
 fn tmp(tag: &str) -> PathBuf {
     let p = std::env::temp_dir().join(format!("atlas-sec2-{tag}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&p);
-    std::fs::create_dir_all(&p).unwrap();
+    std::fs::create_dir_all(&p)
+        .unwrap_or_else(|error| panic!("create SEC2 fixture {}: {error}", p.display()));
     p
 }
 
@@ -188,7 +190,12 @@ fn injected_commands_in_an_email_do_not_run() {
 #[test]
 fn an_action_the_email_told_the_model_to_take_is_asked_about_with_its_source() {
     let (c, p) = (cfg(), plat());
-    let mut d = daemon(&c, &p, "ask", vec![("close_app", json!({"arg": "notepad"}))]);
+    let mut d = daemon(
+        &c,
+        &p,
+        "ask",
+        vec![("close_app", json!({"arg": "notepad"}))],
+    );
     has_read(
         &mut d,
         "read my latest email",
@@ -255,14 +262,22 @@ fn the_owners_own_commands_after_an_email_still_run() {
         "your own command was held: {reply}"
     );
     // Your own words run, but do not wash what was read.
-    assert!(d.session.tainted_by_outside, "your own words washed the taint");
+    assert!(
+        d.session.tainted_by_outside,
+        "your own words washed the taint"
+    );
 }
 
 /// A page read, not an email: the source is named as a page.
 #[test]
 fn an_instruction_from_a_web_page_names_the_page() {
     let (c, p) = (cfg(), plat());
-    let mut d = daemon(&c, &p, "page", vec![("close_app", json!({"arg": "notepad"}))]);
+    let mut d = daemon(
+        &c,
+        &p,
+        "page",
+        vec![("close_app", json!({"arg": "notepad"}))],
+    );
     has_read(
         &mut d,
         "look up how to fix it",
@@ -292,7 +307,9 @@ fn the_ask_text_is_one_wording() {
         Some("a document")
     );
     assert_eq!(atlas::brain::outside_source(&Intent::QuitAtlas), None);
-    assert!(atlas::brain::safe_after_outside_text(&Intent::WhatsUsingMemory));
+    assert!(atlas::brain::safe_after_outside_text(
+        &Intent::WhatsUsingMemory
+    ));
     assert!(atlas::brain::safe_after_outside_text(&Intent::Clock));
     for i in [
         Intent::QuitAtlas,
@@ -339,7 +356,10 @@ fn reading_a_stored_email_aloud_taints_and_what_follows_is_asked() {
     );
     let read = d.turn("read me the email from Sam", T);
     assert!(read.contains("close notepad"), "{read}");
-    assert!(d.session.tainted_by_outside, "reading the letter did not taint");
+    assert!(
+        d.session.tainted_by_outside,
+        "reading the letter did not taint"
+    );
     assert_eq!(d.session.outside_source.as_deref(), Some("an email"));
     let reply = d.turn("go through that email, notepad first", T + 5);
     asked_naming(&d, &reply, "an email");
@@ -370,7 +390,10 @@ fn a_phrase_turn_between_does_not_let_the_model_act_on_the_email() {
         let reply = d.turn("what time is it", T + 5);
         assert!(!reply.contains("That instruction came from"), "{reply}");
         let reply = d.turn("do what the email says, notepad", T + 10);
-        assert!(!atlas::goodbye::asked_to_stop(), "{tag}: Atlas stopped: {reply}");
+        assert!(
+            !atlas::goodbye::asked_to_stop(),
+            "{tag}: Atlas stopped: {reply}"
+        );
         assert_eq!(closes(&p), 0, "{tag}");
         if tag == "close" {
             asked_naming(&d, &reply, "an email");
@@ -404,8 +427,14 @@ fn reading_the_calendar_taints_and_names_an_invite() {
     let (c, p) = (cfg(), plat());
     let mut d = daemon(&c, &p, "agenda", vec![]);
     let _ = d.turn("what's on my calendar today", T);
-    assert!(d.session.tainted_by_outside, "an invite's text was read untainted");
-    assert_eq!(d.session.outside_source.as_deref(), Some("a calendar invite"));
+    assert!(
+        d.session.tainted_by_outside,
+        "an invite's text was read untainted"
+    );
+    assert_eq!(
+        d.session.outside_source.as_deref(),
+        Some("a calendar invite")
+    );
 }
 
 /// Crew news arriving in a long session: the taint is stamped from now, so

@@ -347,9 +347,16 @@ impl<'a> Daemon<'a> {
             self.model_look_at = t + 60;
             if let Some(tc) = self.tools_ref().cloned() {
                 if tc.llm.is_none() {
-                    self.llm = crate::models::connection(&tc);
+                    let connection = crate::models::connection_checked(&tc);
+                    self.llm = connection.as_ref().ok().and_then(|model| model.clone());
                     // Why not, said once and kept for the replies.
-                    if self.llm.is_none() {
+                    if let Err(error) = connection {
+                        let why = error.to_string();
+                        if self.model_server_trouble.as_deref() != Some(why.as_str()) {
+                            self.log.warn(&why);
+                            self.model_server_trouble = Some(why);
+                        }
+                    } else if self.llm.is_none() {
                         let why = crate::models::why_no_model(&tc.models);
                         if self.model_server_trouble.as_deref() != Some(why.as_str()) {
                             self.log.warn(&format!("no language model: {why}"));
@@ -484,7 +491,15 @@ impl<'a> Daemon<'a> {
             .ok()
             .and_then(|g| *g)
         {
-            Some((at, up)) if at.elapsed() < MODEL_SERVER_RECHECK => up,
+            Some((at, up, generation))
+                if at.elapsed() < MODEL_SERVER_RECHECK
+                    && generation
+                        == self
+                            .model_probe_generation
+                            .load(std::sync::atomic::Ordering::Acquire) =>
+            {
+                up
+            }
             _ => match self.probe_model_server(&cfg, &vars, wait) {
                 Some(up) => up,
                 // Still asking: decided on a later turn.
@@ -599,8 +614,8 @@ impl<'a> Daemon<'a> {
         };
         s.lowest_mb = s.lowest_mb.min(available);
         let ready_for = self.model_started.map(|t| t.elapsed());
-        let window = MODEL_SERVER_LOADING
-            + std::time::Duration::from_secs(crate::models::COST_SETTLE_SECS);
+        let window =
+            MODEL_SERVER_LOADING + std::time::Duration::from_secs(crate::models::COST_SETTLE_SECS);
         if s.settled_cost_mb.is_none() && ready_for.is_some_and(|d| d >= window) {
             let cost = crate::models::measured_cost_mb(s.before_mb, s.lowest_mb);
             s.settled_cost_mb = Some(cost);
@@ -783,6 +798,10 @@ impl<'a> Daemon<'a> {
     ) -> Option<bool> {
         use std::sync::atomic::Ordering;
         if !self.model_probe_busy.swap(true, Ordering::SeqCst) {
+            let generation = self
+                .model_probe_generation
+                .fetch_add(1, Ordering::AcqRel)
+                .saturating_add(1);
             let (seen, busy, cfg, vars) = (
                 self.model_server_seen.clone(),
                 self.model_probe_busy.clone(),
@@ -794,7 +813,7 @@ impl<'a> Daemon<'a> {
                 .spawn(move || {
                     let up = crate::models::is_running(&cfg, &crate::models::server_get(), &vars);
                     if let Ok(mut g) = seen.lock().or_else(crate::crash::unpoison) {
-                        *g = Some((std::time::Instant::now(), up));
+                        *g = Some((std::time::Instant::now(), up, generation));
                     }
                     busy.store(false, Ordering::SeqCst);
                 });
@@ -804,17 +823,25 @@ impl<'a> Daemon<'a> {
             }
         }
         let until = std::time::Instant::now() + wait;
-        while std::time::Instant::now() < until {
-            if let Some((at, up)) = self
+        loop {
+            if let Some((at, up, generation)) = self
                 .model_server_seen
                 .lock()
                 .or_else(crate::crash::unpoison)
                 .ok()
                 .and_then(|g| *g)
             {
-                if at.elapsed() < MODEL_SERVER_RECHECK {
+                if at.elapsed() < MODEL_SERVER_RECHECK
+                    && generation
+                        == self
+                            .model_probe_generation
+                            .load(std::sync::atomic::Ordering::Acquire)
+                {
                     return Some(up);
                 }
+            }
+            if std::time::Instant::now() >= until {
+                break;
             }
             std::thread::sleep(std::time::Duration::from_millis(20));
         }
@@ -1199,7 +1226,20 @@ impl<'a> Daemon<'a> {
         reply_chars: usize,
         failed: Option<String>,
     ) -> u64 {
+        self.record_model_call_with_seat(asked_by, None, took_ms, prompt_chars, reply_chars, failed)
+    }
+
+    pub(crate) fn record_model_call_with_seat(
+        &mut self,
+        asked_by: &str,
+        seat: Option<&str>,
+        took_ms: u64,
+        prompt_chars: usize,
+        reply_chars: usize,
+        failed: Option<String>,
+    ) -> u64 {
         let mut c = crate::trace::Call::new(asked_by, &self.model_in_use(), crate::store::now());
+        c.seat = seat.map(str::to_string);
         c.took_ms = took_ms;
         c.prompt_chars = prompt_chars;
         c.reply_chars = reply_chars;
@@ -1662,6 +1702,14 @@ impl<'a> Daemon<'a> {
     }
 
     pub fn reload_library(&mut self) {
+        // A synchronous reload is the authoritative snapshot. Invalidate
+        // every asynchronous rebuild before reading from disk and discard a
+        // result that may already have reached the hand-off slot.
+        self.library_generation
+            .fetch_add(1, std::sync::atomic::Ordering::AcqRel);
+        if let Ok(mut slot) = self.pending_library.lock().or_else(crate::crash::unpoison) {
+            *slot = None;
+        }
         // Through `notes_dir()` rather than reading the config again here —
         // a second place declaring the same path is exactly how
         // `backup.dir` and this function ended up looking at a folder that
@@ -1702,6 +1750,162 @@ impl<'a> Daemon<'a> {
             crate::kept!(self.meaning.save(&self.store));
         }
         self.library = lib;
+    }
+
+    /// Build the derived library away from the tick thread. Only the final
+    /// pointer-sized ownership swap is performed by `install_pending_library`.
+    pub(super) fn schedule_library_reload(&mut self, t: u64) {
+        let pending = self.pending_library.clone();
+        let generation = self
+            .library_generation
+            .fetch_add(1, std::sync::atomic::Ordering::AcqRel)
+            .saturating_add(1);
+        let current_generation = self.library_generation.clone();
+        let dir = self.notes_dir();
+        let reading_dir = crate::roots::data_sub("reading");
+        let meaning = self.meaning.clone();
+        let work: crate::crew::Work = Box::new(move |_control| {
+            let mut lib = crate::recall::library_from_dir(&dir);
+            crate::recall::add_readings(&mut lib, &reading_dir);
+            for piece in &mut lib.pieces {
+                piece.embedding = meaning.get(&piece.title, &piece.text).cloned();
+            }
+            if let Ok(mut slot) = pending.lock().or_else(crate::crash::unpoison) {
+                // Re-check while holding the same lock used by synchronous
+                // invalidation. This closes the check-then-publish race.
+                if current_generation.load(std::sync::atomic::Ordering::Acquire) == generation {
+                    *slot = Some((generation, lib));
+                }
+            }
+            Ok("research library rebuilt".into())
+        });
+        // unheard-ok: the rebuild is best-effort; the next research result retries it.
+        let _ = self.hand_off(
+            "research-library",
+            t,
+            work,
+            // A rebuild is generation-specific. Using the bare job name as
+            // the crew key would join a newer request to an older worker;
+            // that worker then publishes only its stale generation and the
+            // newer request has no worker left to produce its snapshot.
+            Some(generation.to_string()),
+            super::SpeakPolicy::ViaWatcher,
+        );
+    }
+
+    pub(super) fn install_pending_library(&mut self) {
+        let Ok(mut slot) = self.pending_library.lock().or_else(crate::crash::unpoison) else {
+            return;
+        };
+        let current = self
+            .library_generation
+            .load(std::sync::atomic::Ordering::Acquire);
+        if let Some(library) = Self::take_current_library(&mut slot, current) {
+            self.library = library;
+        }
+    }
+
+    /// Consume a completed rebuild only when it belongs to the current
+    /// generation. Keeping this decision in one small function makes the
+    /// stale-result rule directly testable without starting a crew worker.
+    fn take_current_library(
+        slot: &mut Option<(u64, crate::recall::Library)>,
+        current_generation: u64,
+    ) -> Option<crate::recall::Library> {
+        match slot.take() {
+            Some((generation, library)) if generation == current_generation => Some(library),
+            _ => None,
+        }
+    }
+
+    /// Persist the post-research memory snapshots away from the tick thread.
+    /// The in-memory mutation has already happened; this worker only writes
+    /// owned snapshots, so a slow filesystem cannot delay the spoken result.
+    pub(super) fn schedule_research_persistence(&mut self, t: u64) {
+        let generation = self
+            .research_memory_generation
+            .fetch_add(1, std::sync::atomic::Ordering::AcqRel)
+            .saturating_add(1);
+        let current_generation = self.research_memory_generation.clone();
+        let persistence = self.research_memory_persistence.clone();
+        let store = self.store.clone();
+        let known = self.known.clone();
+        let facts = self.facts.clone();
+        // The worker is still useful for retrying a transient filesystem
+        // failure and for keeping the normal tick responsive, but it cannot
+        // be the first durable copy: a clean shutdown or process crash after
+        // handoff would otherwise lose the research result. Take the same
+        // generation lock and make one durable attempt before returning.
+        if let Ok(_guard) = self
+            .research_memory_persistence
+            .lock()
+            .or_else(crate::crash::unpoison)
+        {
+            if Self::memory_snapshot_is_current(
+                self.research_memory_generation
+                    .load(std::sync::atomic::Ordering::Acquire),
+                generation,
+            ) {
+                let mut durable_facts = facts.clone();
+                if let Err(error) = self.store.save("known", &self.known) {
+                    self.log
+                        .warn(&format!("research memory durable save deferred: {error}"));
+                } else if let Err(error) = durable_facts.save(&self.store) {
+                    self.log
+                        .warn(&format!("research facts durable save deferred: {error}"));
+                }
+            }
+        }
+        let work: crate::crew::Work = Box::new(move |_control| {
+            let _guard = persistence
+                .lock()
+                .or_else(crate::crash::unpoison)
+                .map_err(|_| "research memory persistence lock unavailable".to_string())?;
+            if !Self::memory_snapshot_is_current(
+                current_generation.load(std::sync::atomic::Ordering::Acquire),
+                generation,
+            ) {
+                return Ok("stale research memory snapshot discarded".into());
+            }
+            store
+                .save("known", &known)
+                .map_err(|error| error.to_string())?;
+            let mut facts = facts;
+            facts.save(&store).map_err(|error| error.to_string())?;
+            Ok("research memory saved".into())
+        });
+        // A generation-specific key is intentional: joining the existing
+        // `research-memory` job would discard this newer snapshot. If the
+        // bounded crew queue is full, save this snapshot on the control path
+        // rather than silently dropping the only durable copy.
+        if self
+            .hand_off_as(
+                "research-memory",
+                t,
+                work,
+                Some(format!("snapshot-{generation}")),
+                super::SpeakPolicy::ViaWatcher,
+            )
+            .is_none()
+        {
+            let _guard = self
+                .research_memory_persistence
+                .lock()
+                .or_else(crate::crash::unpoison);
+            if Self::memory_snapshot_is_current(
+                self.research_memory_generation
+                    .load(std::sync::atomic::Ordering::Acquire),
+                generation,
+            ) {
+                let mut facts = self.facts.clone();
+                crate::kept!(self.store.save("known", &self.known));
+                crate::kept!(facts.save(&self.store));
+            }
+        }
+    }
+
+    fn memory_snapshot_is_current(current_generation: u64, snapshot_generation: u64) -> bool {
+        current_generation == snapshot_generation
     }
 
     /// Answer from what Atlas has already written down, if it can.
@@ -2305,7 +2509,9 @@ impl<'a> Daemon<'a> {
             *seen = None;
         }
         // Built for the new model (its own template), once its server is up.
-        self.llm = crate::models::connection(&tc);
+        self.llm = crate::models::connection_checked(&tc)
+            .ok()
+            .and_then(|model| model);
     }
 
     /// The Connections page's section on the two models: which one talks
@@ -2669,6 +2875,7 @@ const MODEL_MEMORY_LOOK: std::time::Duration = std::time::Duration::from_secs(2)
 struct DaemonHolders<'h> {
     helpers: &'h mut crate::lifecycle::Helpers,
     server_let_go: bool,
+    talking: bool,
 }
 
 impl crate::relief::Holders for DaemonHolders<'_> {
@@ -2691,7 +2898,8 @@ impl crate::relief::Holders for DaemonHolders<'_> {
             && r.ram_used_gb / r.ram_total_gb >= crate::health::HealthConfig::default().ram_urgent
     }
     fn busy(&self, step: crate::relief::Step) -> bool {
-        matches!(step, crate::relief::Step::ModelServer) && !self.helpers.is_idle("model-server")
+        matches!(step, crate::relief::Step::ModelServer)
+            && (self.talking || !self.helpers.is_idle("model-server"))
     }
     fn release(&mut self, step: crate::relief::Step) -> bool {
         use crate::relief::Step;
@@ -2730,6 +2938,7 @@ impl<'a> Daemon<'a> {
         let mut holders = DaemonHolders {
             helpers: &mut self.helpers,
             server_let_go: false,
+            talking: self.deep.gate.talking(),
         };
         let report = crate::relief::relieve(
             &mut holders,
@@ -2758,7 +2967,7 @@ struct DaemonRoom<'a> {
     running_id: &'a mut Option<String>,
     started: &'a mut Option<std::time::Instant>,
     start_tried: &'a mut Option<std::time::Instant>,
-    seen: &'a std::sync::Arc<std::sync::Mutex<Option<(std::time::Instant, bool)>>>,
+    seen: &'a std::sync::Arc<std::sync::Mutex<Option<(std::time::Instant, bool, u64)>>>,
     talking: bool,
 }
 
@@ -2807,11 +3016,33 @@ fn label_without_local_model(online_second: bool) -> &'static str {
 
 #[cfg(test)]
 mod model_label_tests {
-    use super::label_without_local_model;
+    use super::{label_without_local_model, Daemon};
 
     #[test]
     fn no_local_model_label_names_free_online_when_it_answers() {
         assert_eq!(label_without_local_model(true), "free-online");
         assert_eq!(label_without_local_model(false), "none");
+    }
+
+    #[test]
+    fn stale_memory_snapshot_cannot_pass_the_generation_gate() {
+        assert!(!Daemon::memory_snapshot_is_current(2, 1));
+        assert!(Daemon::memory_snapshot_is_current(2, 2));
+    }
+}
+
+#[cfg(test)]
+mod library_generation_tests {
+    use super::Daemon;
+
+    #[test]
+    fn stale_library_generation_is_discarded_but_current_is_installed() {
+        let mut stale = Some((3, crate::recall::Library::default()));
+        assert!(Daemon::take_current_library(&mut stale, 4).is_none());
+        assert!(stale.is_none(), "discarding a stale result must consume it");
+
+        let mut current = Some((4, crate::recall::Library::default()));
+        assert!(Daemon::take_current_library(&mut current, 4).is_some());
+        assert!(current.is_none(), "installing a result must consume it");
     }
 }

@@ -20,13 +20,32 @@ impl Daemon<'_> {
                 self.log
                     .warn(&format!("what needs you couldn't be kept: {e}"));
             }
+            let _ = self.store.save(
+                crate::needs_you::CHECK_IN_LAST_KEY,
+                &(0u64, Vec::<String>::new()),
+            );
             return Some(crate::needs_you::said(&all));
         }
         if crate::needs_you::puts_off(said) {
             // Only right after the list: "not now" to something else is
             // somebody else's answer.
-            let (when, keys): (u64, Vec<String>) = self.store.load(crate::needs_you::LAST_KEY);
-            if keys.is_empty() || t.saturating_sub(when) > 10 * 60 {
+            let check_in: (u64, Vec<String>) = self.store.load(crate::needs_you::CHECK_IN_LAST_KEY);
+            let explicit: (u64, Vec<String>) = self.store.load(crate::needs_you::LAST_KEY);
+            let (when, keys, requires_surface) =
+                if !check_in.1.is_empty() && check_in.0 >= explicit.0 {
+                    (check_in.0, check_in.1, true)
+                } else {
+                    (explicit.0, explicit.1, false)
+                };
+            let surfaced: crate::needs_you::Surfaced =
+                self.store.load(crate::needs_you::SURFACED_KEY);
+            let was_durably_surfaced = !keys.is_empty()
+                && (!requires_surface
+                    || (surfaced.last_check_in == when
+                        && keys
+                            .iter()
+                            .all(|key| surfaced.at.get(key).is_some_and(|said| *said >= when))));
+            if !was_durably_surfaced || t.saturating_sub(when) > 10 * 60 {
                 return None;
             }
             let mut sn: crate::needs_you::Snoozed = self.store.load(crate::needs_you::SNOOZED_KEY);
@@ -39,6 +58,10 @@ impl Daemon<'_> {
             let _ = self
                 .store
                 .save(crate::needs_you::LAST_KEY, &(0u64, Vec::<String>::new()));
+            let _ = self.store.save(
+                crate::needs_you::CHECK_IN_LAST_KEY,
+                &(0u64, Vec::<String>::new()),
+            );
             return Some(format!(
                 "Put off until {}. Anything new still comes through.",
                 crate::localclock::hhmm_here(t + crate::needs_you::SNOOZE_SECS)
@@ -68,7 +91,8 @@ impl Daemon<'_> {
             return None;
         }
         self.needs_you_looked = t;
-        let mut surfaced: crate::needs_you::Surfaced = self.store.load(crate::needs_you::SURFACED_KEY);
+        let mut surfaced: crate::needs_you::Surfaced =
+            self.store.load(crate::needs_you::SURFACED_KEY);
         if !surfaced.due(t) {
             return None;
         }
@@ -77,15 +101,31 @@ impl Daemon<'_> {
         if fresh.is_empty() {
             return None;
         }
-        surfaced.mark(&fresh, t);
-        if let Err(e) = self.store.save(crate::needs_you::SURFACED_KEY, &surfaced) {
+        // Persist the conversation key before marking the items surfaced. If
+        // this fails, do not speak: "not now" would otherwise have nothing
+        // durable to identify after the response.
+        let keys: Vec<String> = fresh.iter().map(|n| n.key.clone()).collect();
+        if let Err(e) = self
+            .store
+            .save(crate::needs_you::CHECK_IN_LAST_KEY, &(t, &keys))
+        {
             self.log
-                .warn(&format!("what was said about what needs you couldn't be kept: {e}"));
+                .warn(&format!("what needs you could not be kept for reply: {e}"));
             return None;
         }
-        // "Not now" right after refers to what was just said.
-        let keys: Vec<String> = fresh.iter().map(|n| n.key.clone()).collect();
-        let _ = self.store.save(crate::needs_you::LAST_KEY, &(t, keys));
+        surfaced.mark(&fresh, t);
+        if let Err(e) = self.store.save(crate::needs_you::SURFACED_KEY, &surfaced) {
+            self.log.warn(&format!(
+                "what was said about what needs you couldn't be kept: {e}"
+            ));
+            // The list was not spoken, so prevent a stale conversation key
+            // from making a later "not now" suppress unseen work.
+            let _ = self.store.save(
+                crate::needs_you::CHECK_IN_LAST_KEY,
+                &(0u64, Vec::<String>::new()),
+            );
+            return None;
+        }
         Some(crate::needs_you::said(&fresh))
     }
 
@@ -121,13 +161,22 @@ mod check_in_tests {
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_nanos())
             .unwrap_or(0);
-        let p = std::env::temp_dir().join(format!("atlas-checkin-{tag}-{}-{stamp}", std::process::id()));
+        let p = std::env::temp_dir().join(format!(
+            "atlas-checkin-{tag}-{}-{stamp}",
+            std::process::id()
+        ));
         std::fs::create_dir_all(&p).unwrap();
         p
     }
 
     fn daemon<'a>(c: &'a Config, p: &'a MockPlatform, root: &std::path::Path) -> Daemon<'a> {
-        Daemon::new(c, p, None, Store::new(root), Proactive::new(ProactiveConfig::default()))
+        Daemon::new(
+            c,
+            p,
+            None,
+            Store::new(root),
+            Proactive::new(ProactiveConfig::default()),
+        )
     }
 
     /// The approvals waiting, as a whole set (that is how they are synced).
@@ -150,7 +199,9 @@ mod check_in_tests {
         let mut d = daemon(&c, &p, &r);
         ask(&d.store, &["Send the invoice to Harbor Lane?"]);
 
-        let said = d.needs_you_check_in(T, true).expect("something new needs you");
+        let said = d
+            .needs_you_check_in(T, true)
+            .expect("something new needs you");
         assert!(said.contains("Send the invoice"), "{said}");
         // Said once: not at the next look, nor the one after the interval.
         assert_eq!(d.needs_you_check_in(T + 120, true), None);
@@ -163,15 +214,36 @@ mod check_in_tests {
 
         // Something new is said, alone, once the interval since the last
         // check-in has passed (that was at T).
-        ask(&d.store, &["Send the invoice to Harbor Lane?", "Close the old Chrome windows?"]);
-        let said = d.needs_you_check_in(T + 3 * HALF_HOUR, true).expect("a new item");
+        ask(
+            &d.store,
+            &[
+                "Send the invoice to Harbor Lane?",
+                "Close the old Chrome windows?",
+            ],
+        );
+        let said = d
+            .needs_you_check_in(T + 3 * HALF_HOUR, true)
+            .expect("a new item");
         assert!(said.contains("Close the old Chrome"), "{said}");
         assert!(!said.contains("Send the invoice"), "{said}");
         assert!(said.starts_with("One thing needs you."), "{said}");
         // And the interval holds between two check-ins.
-        ask(&d.store, &["Send the invoice to Harbor Lane?", "Close the old Chrome windows?", "Reply to Dana?"]);
-        assert_eq!(d.needs_you_check_in(T + 3 * HALF_HOUR + 120, true), None, "inside the half hour");
-        assert!(d.needs_you_check_in(T + 4 * HALF_HOUR + 120, true).is_some());
+        ask(
+            &d.store,
+            &[
+                "Send the invoice to Harbor Lane?",
+                "Close the old Chrome windows?",
+                "Reply to Dana?",
+            ],
+        );
+        assert_eq!(
+            d.needs_you_check_in(T + 3 * HALF_HOUR + 120, true),
+            None,
+            "inside the half hour"
+        );
+        assert!(d
+            .needs_you_check_in(T + 4 * HALF_HOUR + 120, true)
+            .is_some());
     }
 
     #[test]
@@ -185,7 +257,10 @@ mod check_in_tests {
             at: 0,
         };
         s.mark(&[n("ask:old")], T);
-        s.mark(&[n("ask:new")], T + crate::needs_you::SURFACED_KEEP_SECS + 1);
+        s.mark(
+            &[n("ask:new")],
+            T + crate::needs_you::SURFACED_KEEP_SECS + 1,
+        );
         assert!(!s.at.contains_key("ask:old"));
         assert!(s.at.contains_key("ask:new"));
         let many: Vec<_> = (0..300).map(|i| n(&format!("ask:{i}"))).collect();
@@ -212,9 +287,16 @@ mod check_in_tests {
         assert!(held.at.is_empty());
         // The same moment, outside quiet hours, but Atlas may not speak.
         let mut c2 = Config::load(std::path::Path::new("config")).unwrap();
-        c2.tools.get_or_insert_with(Default::default).sound.quiet_hours = false;
+        c2.tools
+            .get_or_insert_with(Default::default)
+            .sound
+            .quiet_hours = false;
         let mut d2 = daemon(&c2, &p, &r);
-        assert_eq!(d2.needs_you_check_in(T, false), None, "the interrupt gate says no");
+        assert_eq!(
+            d2.needs_you_check_in(T, false),
+            None,
+            "the interrupt gate says no"
+        );
         // Once it may speak, it says it.
         assert!(d2.needs_you_check_in(T + 120, true).is_some());
     }

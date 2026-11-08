@@ -22,7 +22,9 @@ const NOW: u64 = 1_790_596_800;
 const DAY: u64 = 86_400;
 
 fn fx(p: &str) -> PathBuf {
-    Path::new("tests/fixtures/social").join(p)
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/social")
+        .join(p)
 }
 
 fn text(p: &str) -> String {

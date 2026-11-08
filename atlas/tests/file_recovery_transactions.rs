@@ -7,9 +7,14 @@ struct Area(std::path::PathBuf);
 impl Area {
     fn new() -> Self {
         static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("system clock is before UNIX epoch")
+            .as_nanos();
         let path = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!(
-            "atlas-recovery-{}-{}",
+            "atlas-recovery-{}-{}-{}",
             std::process::id(),
+            nonce,
             NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
         ));
         fs::create_dir_all(&path).unwrap();

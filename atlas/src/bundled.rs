@@ -284,14 +284,8 @@ mod tests {
     fn the_meaning_layer_lands_where_the_meaning_encoder_reads_it() {
         let home = Path::new("/h");
         let models = Path::new("/m");
-        assert_eq!(
-            place(&PIECES[0], home, models),
-            home.join(MEANING_MODEL)
-        );
-        assert_eq!(
-            place(&PIECES[1], home, models),
-            home.join(MEANING_VOCAB)
-        );
+        assert_eq!(place(&PIECES[0], home, models), home.join(MEANING_MODEL));
+        assert_eq!(place(&PIECES[1], home, models), home.join(MEANING_VOCAB));
         assert_eq!(
             place(&PIECES[2], home, models),
             models.join("Qwen3-0.6B-Q4_K_M.gguf")
@@ -343,13 +337,15 @@ mod the_real_bundle {
         // And the phone's meaning layer is the bundled one, and works.
         #[cfg(feature = "onnx")]
         {
-        let mut meaning =
-            crate::meaningnative::Native::load(&home).expect("the meaning layer loads");
-        let a = meaning.embed("remind me to call mum at six").expect("it means something");
-        let b = meaning.embed("ping mum at 6pm").unwrap();
-        let c = meaning.embed("how full is my disk").unwrap();
-        let cos = |x: &[f32], y: &[f32]| x.iter().zip(y).map(|(p, q)| p * q).sum::<f32>();
-        assert!(cos(&a, &b) > cos(&a, &c), "close meanings are closer");
+            let mut meaning =
+                crate::meaningnative::Native::load(&home).expect("the meaning layer loads");
+            let a = meaning
+                .embed("remind me to call mum at six")
+                .expect("it means something");
+            let b = meaning.embed("ping mum at 6pm").unwrap();
+            let c = meaning.embed("how full is my disk").unwrap();
+            let cos = |x: &[f32], y: &[f32]| x.iter().zip(y).map(|(p, q)| p * q).sum::<f32>();
+            assert!(cos(&a, &b) > cos(&a, &c), "close meanings are closer");
         }
         println!(
             "BUNDLE adopted {} files, {} bytes, checked and moved in {:?}",

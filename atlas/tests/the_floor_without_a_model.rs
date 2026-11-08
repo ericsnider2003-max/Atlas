@@ -33,7 +33,8 @@ use std::time::{Duration, Instant};
 const T0: u64 = 1_790_740_000;
 
 fn cfg() -> atlas::config::Config {
-    let mut c = atlas::config::Config::load(Path::new("config")).unwrap();
+    let mut c = atlas::config::Config::load(Path::new("config"))
+        .unwrap_or_else(|error| panic!("test config must load: {error}"));
     c.indexing = None;
     c
 }
@@ -41,7 +42,8 @@ fn cfg() -> atlas::config::Config {
 fn tmp(tag: &str) -> PathBuf {
     let p = std::env::temp_dir().join(format!("atlas-floor-{tag}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&p);
-    std::fs::create_dir_all(&p).unwrap();
+    std::fs::create_dir_all(&p)
+        .unwrap_or_else(|error| panic!("temporary test directory must be creatable: {error}"));
     p
 }
 
@@ -397,19 +399,31 @@ fn is_the_backup_finished_is_answered_from_the_job_with_no_model() {
     assert!(!none.contains("brief"), "{none}");
     let said = format!("back up {} to {}", src.display(), dest.display());
     let started = d.turn(&said, T0 + 1);
-    assert!(started.contains("I'll tell you when it's done"), "{started}");
+    assert!(
+        started.contains("I'll tell you when it's done"),
+        "{started}"
+    );
     // What it promised is collected when the backup ends.
     let news = d.errands_done_for_test();
     assert!(
-        news.iter().any(|n| n.contains("Backed up") && n.contains("SHA-256")),
+        news.iter()
+            .any(|n| n.contains("Backed up") && n.contains("SHA-256")),
         "the completion is handed back to be said: {news:?}"
     );
     let done = d.turn("is the backup of src finished?", T0 + 2);
     assert!(done.starts_with("Yes"), "{done}");
-    assert!(done.contains("src") && done.contains(&dest.display().to_string()), "{done}");
+    assert!(
+        done.contains("src") && done.contains(&dest.display().to_string()),
+        "{done}"
+    );
     assert!(done.contains("finished at"), "says when: {done}");
     // Several words for the same question, and a pronoun with a job behind it.
-    for q in ["is the backup done", "did the backup of src finish", "how's the backup going", "is it done?"] {
+    for q in [
+        "is the backup done",
+        "did the backup of src finish",
+        "how's the backup going",
+        "is it done?",
+    ] {
         let r = d.turn(q, T0 + 3);
         assert!(r.starts_with("Yes"), "{q:?} -> {r}");
     }

@@ -466,6 +466,13 @@ impl Store {
         Ok(state_transaction(&self.root)?)
     }
 
+    /// Bounded retry for the daemon control loop. This preserves restore-
+    /// journal recovery while never blocking the loop for the worker wait
+    /// timeout.
+    pub fn transaction_briefly(&self) -> Result<StateGuard> {
+        Ok(state_transaction_briefly(&self.root)?)
+    }
+
     /// The same, for a worker thread with something to keep: waits (up to ten
     /// seconds) for whoever holds the lock instead of failing at once. The
     /// control loop uses `transaction`, which never waits.
@@ -682,6 +689,43 @@ impl Store {
         name: &str,
         maximum: u64,
     ) -> Result<Option<T>> {
+        // Atomic saves can replace the file after the metadata snapshot but
+        // before the final stamp check. That is a transient writer/read race,
+        // not evidence of corruption; retry only that exact condition. All
+        // malformed, oversized, and other read failures remain fail-closed.
+        for attempt in 0..3 {
+            match self.load_checked_bounded_once(name, maximum) {
+                Err(crate::error::AtlasError::Io(error))
+                    if error.kind() == std::io::ErrorKind::InvalidData
+                        && error.to_string().contains("state changed or exceeded")
+                        && attempt < 2 =>
+                {
+                    std::thread::sleep(std::time::Duration::from_millis(2));
+                }
+                result => return result,
+            }
+        }
+        unreachable!("bounded checked-load retry loop always returns")
+    }
+
+    /// Read a checked snapshot while the caller already owns the state
+    /// transaction. This is intentionally crate-visible: read/decide/write
+    /// owners such as the durable job journal must inspect the latest bytes
+    /// under the same lock they use to commit, rather than load a snapshot and
+    /// later overwrite a newer writer.
+    pub(crate) fn load_checked_bounded_held<T: DeserializeOwned + Serialize>(
+        &self,
+        name: &str,
+        maximum: u64,
+    ) -> Result<Option<T>> {
+        self.load_checked_bounded_once(name, maximum)
+    }
+
+    fn load_checked_bounded_once<T: DeserializeOwned + Serialize>(
+        &self,
+        name: &str,
+        maximum: u64,
+    ) -> Result<Option<T>> {
         use std::io::Read;
         let maximum = maximum.min(16 * 1024 * 1024);
         let path = self.path(name);
@@ -839,8 +883,26 @@ impl Store {
         self.save(name, value)
     }
 
+    /// Save a completion receipt while waiting for a competing worker to
+    /// release the state lock. A task that has actually finished must not be
+    /// reported as unverified solely because its evidence write overlapped a
+    /// background persistence operation.
+    pub(crate) fn save_for_completion<T: Serialize>(&self, name: &str, value: &T) -> Result<()> {
+        let _guard = state_lock::acquire_for_completion(&self.root)?;
+        self.save_held(name, value)
+    }
+
     pub fn save<T: Serialize>(&self, name: &str, value: &T) -> Result<()> {
         self.save_bounded(name, value, MAX_LOAD_BYTES)
+    }
+
+    /// Save a record while the caller already owns this store's state
+    /// transaction.  State transactions are deliberately non-reentrant on
+    /// Windows; attempting to call `save` from inside one would try to take
+    /// the same lock a second time and turn an otherwise valid atomic update
+    /// into a spurious `WouldBlock` failure.
+    pub(crate) fn save_held<T: Serialize>(&self, name: &str, value: &T) -> Result<()> {
+        self.save_in(name, value, MAX_LOAD_BYTES, Layout::Pretty)
     }
 
     /// `save` that refuses to write a record larger than `max_bytes` (20 Oct
@@ -1547,6 +1609,32 @@ mod install_root_tests {
                 d.display()
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod checked_held_tests {
+    use super::Store;
+
+    #[test]
+    fn load_checked_bounded_held_reads_a_valid_snapshot_under_its_transaction() {
+        let dir = std::env::temp_dir().join(format!(
+            "atlas-checked-held-{}-{}",
+            std::process::id(),
+            super::now()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let store = Store::new(&dir);
+        let expected = vec!["one".to_string(), "two".to_string()];
+        store.save("held", &expected).unwrap();
+        let _transaction = store.transaction_briefly().unwrap();
+        let actual: Vec<String> = store
+            .load_checked_bounded_held("held", 1024)
+            .unwrap()
+            .unwrap();
+        assert_eq!(actual, expected);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
 

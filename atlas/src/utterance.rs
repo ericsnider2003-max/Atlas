@@ -595,7 +595,7 @@ mod tests {
         s.extend(room(1500));
         let mut seg = Segmenter::new(&EndpointConfig::default());
         let mut done = Vec::new();
-        for w in s.chunks_exact(WINDOW) {
+        for w in s.as_chunks::<WINDOW>().0 {
             if let Seg::Done(u) = seg.feed(w) {
                 done.push(u.len());
             }

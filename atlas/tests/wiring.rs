@@ -81,9 +81,15 @@ use std::path::Path;
 // 5 -> 3 (18 Sep). `overnight` was wired to the tick and the backlog, and
 // `delegate` became reachable through it. What is left is `afterme`,
 // `confirmed` and `consent`.
-const UNWIRED_CEILING: usize = 3;
+// Three modules remain intentionally explicit because they are not yet
+// user-facing capabilities.
+const UNWIRED_CEILING: usize = 4;
 
 const UNWIRED_BASELINE: &[&str] = &[
+    // capability_boundary is a pure policy-admission foundation seam. It is
+    // intentionally not reachable from the daemon until a provider execution
+    // boundary owns the durable receipt and operating-system enforcement.
+    "capability_boundary",
     // creative was added as a gated workspace slice, but Goal 3 is frozen
     // until Goal 2 has owner acceptance. Its tested helpers stay measured;
     // no runtime caller is claimed in the current release.

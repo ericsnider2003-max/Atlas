@@ -1,4 +1,5 @@
 use atlas::awareness::Signals;
+use atlas::brain::Llm;
 use atlas::config::Config;
 use atlas::daemon::{Autonomy, Daemon};
 use atlas::index::Changes;
@@ -10,6 +11,19 @@ use atlas::proactive::{detect, Proactive, ProactiveConfig};
 use atlas::session::Pending;
 use atlas::store::Store;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
+
+struct CountingLlm {
+    calls: AtomicUsize,
+}
+
+impl Llm for CountingLlm {
+    fn complete(&self, _system: &str, _user: &str) -> atlas::error::Result<String> {
+        self.calls.fetch_add(1, Ordering::SeqCst);
+        Ok("the model should not have been called".into())
+    }
+}
 
 fn tmp(tag: &str) -> PathBuf {
     let p = std::env::temp_dir().join(format!("atlas-d-{tag}"));
@@ -72,6 +86,36 @@ fn a_spoken_command_executes_and_replies_in_one_line() {
     // `tests/a_conversation_not_a_script.rs` owns the wording rules.
     assert!(reply.starts_with("Workspace online"), "got: {reply}");
     assert!(reply.len() < 40, "spoken replies stay short");
+}
+
+#[test]
+fn resource_conflict_is_answered_before_the_model() {
+    let (c, p) = (cfg(), plat());
+    let llm = Arc::new(CountingLlm {
+        calls: AtomicUsize::new(0),
+    });
+    let mut d = Daemon::new(
+        &c,
+        &p,
+        Some(llm.clone() as Arc<dyn Llm>),
+        Store::new(tmp("resource-policy-before-model")),
+        Proactive::new(ProactiveConfig::default()),
+    );
+
+    let reply = d.turn(
+        "What should Atlas do when memory pressure conflicts with voice and reasoning?",
+        100,
+    );
+
+    assert!(
+        reply.contains("protect the active voice or reasoning turn"),
+        "got: {reply}"
+    );
+    assert!(
+        reply.contains("release idle voice/helper state first"),
+        "got: {reply}"
+    );
+    assert_eq!(llm.calls.load(Ordering::SeqCst), 0);
 }
 
 #[test]
@@ -894,7 +938,8 @@ fn the_hourly_reclaim_sweep_actually_looks_in_this_daemons_own_store() {
     // instantly). Tick until the crew is idle rather than assuming one tick
     // is enough: what's being tested is that the sweep reclaims the file, not
     // how many workers the machine happens to have.
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    let deadline =
+        std::time::Instant::now() + crate::common::allowed(std::time::Duration::from_secs(30));
     let mut t = atlas::store::now() + 7200;
     loop {
         d.tick(t);

@@ -28,9 +28,13 @@ fn plat() -> MockPlatform {
 }
 
 fn tmp(tag: &str) -> PathBuf {
-    let p = std::env::temp_dir().join(format!("atlas-adapt-{tag}"));
-    let _ = std::fs::remove_dir_all(&p);
-    std::fs::create_dir_all(&p).unwrap();
+    let nonce = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_else(|error| panic!("system clock is before the Unix epoch: {error}"))
+        .as_nanos();
+    let p = std::env::temp_dir().join(format!("atlas-adapt-{tag}-{}-{nonce}", std::process::id()));
+    std::fs::create_dir_all(&p)
+        .unwrap_or_else(|error| panic!("create adapt scratch directory {}: {error}", p.display()));
     p
 }
 
@@ -48,7 +52,9 @@ fn no_shipped_config_contains_anyones_home_directory() {
         "tools.yaml",
         "policy.yaml",
     ] {
-        let text = std::fs::read_to_string(Path::new("config").join(f)).unwrap();
+        let path = Path::new("config").join(f);
+        let text = std::fs::read_to_string(&path)
+            .unwrap_or_else(|error| panic!("read shipped config {}: {error}", path.display()));
         assert_eq!(
             leaks_a_username(&text),
             None,
@@ -78,7 +84,10 @@ fn a_personal_path_is_detected_and_the_generic_form_is_not() {
 #[test]
 fn the_dry_run_fixture_carries_nobodys_real_monitor_ids() {
     let src = crate::common::source_of("main");
-    let fixture = src.split("fn fake_monitors").nth(1).unwrap();
+    let fixture = src
+        .split("fn fake_monitors")
+        .nth(1)
+        .expect("main source should contain the fake_monitors fixture");
     for real in [
         "1247003",
         "106696887",
@@ -142,13 +151,28 @@ fn what_it_could_not_find_is_recorded_rather_than_silently_dropped() {
 
 #[test]
 fn the_machine_layer_overrides_the_generic_one() {
-    let mut cfg = Config::load(Path::new("config")).unwrap();
-    let before = cfg.apps.get("chrome").unwrap().launch.clone();
+    let mut cfg = Config::load(Path::new("config"))
+        .unwrap_or_else(|error| panic!("load shipped config: {error}"));
+    let before = cfg
+        .apps
+        .get("chrome")
+        .expect("shipped config should define chrome")
+        .launch
+        .clone();
     let n = apply(&mut cfg, &machine());
     assert!(n >= 1);
-    assert_ne!(cfg.apps.get("chrome").unwrap().launch, before);
+    assert_ne!(
+        cfg.apps
+            .get("chrome")
+            .expect("chrome should remain configured after adaptation")
+            .launch,
+        before
+    );
     assert!(
-        cfg.apps.get("claude").unwrap().store,
+        cfg.apps
+            .get("claude")
+            .expect("shipped config should define claude")
+            .store,
         "store flag comes across too"
     );
 }
@@ -156,8 +180,10 @@ fn the_machine_layer_overrides_the_generic_one() {
 #[test]
 fn the_machine_file_round_trips() {
     let d = tmp("save");
-    machine().save(&d).unwrap();
-    let back = Machine::load(&d).unwrap();
+    machine()
+        .save(&d)
+        .unwrap_or_else(|error| panic!("save machine fixture in {}: {error}", d.display()));
+    let back = Machine::load(&d).expect("saved machine fixture should reload");
     assert_eq!(back.apps.len(), 2);
     assert_eq!(back.monitors.len(), 2);
 }
@@ -165,8 +191,12 @@ fn the_machine_file_round_trips() {
 #[test]
 fn the_machine_file_warns_against_sharing_itself() {
     let d = tmp("warn");
-    machine().save(&d).unwrap();
-    let text = std::fs::read_to_string(d.join("machine.yaml")).unwrap();
+    machine()
+        .save(&d)
+        .unwrap_or_else(|error| panic!("save machine warning fixture in {}: {error}", d.display()));
+    let path = d.join("machine.yaml");
+    let text = std::fs::read_to_string(&path)
+        .unwrap_or_else(|error| panic!("read machine fixture {}: {error}", path.display()));
     assert!(
         text.contains("Do not share"),
         "it holds paths and device names"
@@ -184,7 +214,9 @@ fn the_machine_file_warns_against_sharing_itself() {
 #[test]
 fn changing_your_monitors_is_noticed_so_setup_can_be_rerun() {
     let m = machine();
-    let same = plat().monitors().unwrap();
+    let same = plat()
+        .monitors()
+        .unwrap_or_else(|error| panic!("read mock monitor list: {error}"));
     assert!(m.matches(&same));
 
     let one_unplugged = vec![Monitor {

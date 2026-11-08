@@ -715,15 +715,22 @@ impl<'a> Daemon<'a> {
         if self.left_waiting_read {
             return;
         }
-        self.last_run_left = self.store.load(super::running::LEFT_WAITING);
-        if crate::kept!(self.store.save(
-            super::running::LEFT_WAITING,
-            &Vec::<super::running::LeftWaiting>::new(),
-        ))
-        .is_some()
-        {
-            self.left_waiting_read = true;
+        match self
+            .store
+            .load_checked_bounded::<Vec<super::running::LeftWaiting>>(
+                super::running::LEFT_WAITING,
+                2 * 1_048_576,
+            ) {
+            Ok(Some(left)) => self.last_run_left = left,
+            Ok(None) => self.last_run_left = Vec::new(),
+            Err(error) => {
+                self.left_waiting_recovery_required = Some(error.to_string());
+                self.last_run_left = Vec::new();
+            }
         }
+        // Do not let normal checkpoint persistence overwrite a marker whose
+        // contents were not safely understood.
+        self.left_waiting_read = true;
     }
 
     /// The first tick after a start: what the last run left unfinished.
@@ -735,6 +742,12 @@ impl<'a> Daemon<'a> {
         self.read_left_waiting();
         if !self.left_pickup_done {
             self.left_pickup_done = true;
+            if let Some(error) = self.left_waiting_recovery_required.as_deref() {
+                out.push(format!(
+                    "I found restart work, but its saved handoff could not be read safely ({error}). I left it in place; recovery is required before I clear it."
+                ));
+                return out;
+            }
             // Reconciling the job journal happened when this Daemon was made
             // (`cut_off_by_restart`), before any page could be served, and was
             // saved then. Doing it here too would be wrong now: by the first
@@ -775,38 +788,65 @@ impl<'a> Daemon<'a> {
             // asked again -- the step is checked afresh when you answer
             // (`approved_flow_step`); one that was running is named, not
             // carried on, since its next step may be one to ask about.
-            let flow: Option<crate::flow::Run> = self.store.load(super::running::FLOW_LEFT);
-            if let Err(error) = self
-                .store
-                .save(super::running::FLOW_LEFT, &None::<crate::flow::Run>)
-            {
-                self.log.warn(&format!(
-                    "couldn't clear the recovered workflow marker ({error})"
-                ));
-            }
-            if let Some(run) =
-                flow.filter(|r| t.saturating_sub(r.started) < 86_400 && !r.finished())
-            {
-                match run.state {
+            let flow = match self.store.load_checked_bounded::<Option<crate::flow::Run>>(
+                super::running::FLOW_LEFT,
+                2 * 1_048_576,
+            ) {
+                Ok(flow) => flow.flatten(),
+                Err(error) => {
+                    self.workflow_recovery_required = Some(error.to_string());
+                    out.push(format!(
+                        "I found a saved workflow, but could not read it safely ({error}). I left it in place; recovery is required before I clear it."
+                    ));
+                    None
+                }
+            };
+            if let Some(saved_run) = flow {
+                if t.saturating_sub(saved_run.started) < 86_400 && !saved_run.finished() {
+                    match saved_run.state {
                     crate::flow::RunState::AwaitingApproval if self.current_flow.is_none() => {
-                        let step = run.current().map(|s| s.command.clone()).unwrap_or_default();
+                        let step = saved_run.current().map(|s| s.command.clone()).unwrap_or_default();
                         let q = format!(
                             "Before I restarted, the \"{}\" workflow was waiting for your yes to: {step}. Go ahead?",
-                            run.workflow
+                            saved_run.workflow
                         );
-                        self.current_flow = Some(run);
+                        self.current_flow = Some(saved_run);
                         self.session.ask(&q);
                         out.push(q);
                     }
                     crate::flow::RunState::Running => out.push(format!(
                         "I was on step {} of {} of the \"{}\" workflow when I stopped. Say \"run {}\" to start it again.",
-                        run.position + 1,
-                        run.steps.len(),
-                        run.workflow,
-                        run.workflow
+                        saved_run.position + 1,
+                        saved_run.steps.len(),
+                        saved_run.workflow,
+                        saved_run.workflow
                     )),
                     _ => {}
                 }
+                }
+                // A checked, valid marker is acknowledged only after the
+                // recovery state/message has been materialized above. If this
+                // write fails, the marker remains available for the next
+                // launch rather than being treated as recovered.
+                if let Err(error) = self
+                    .store
+                    .save(super::running::FLOW_LEFT, &None::<crate::flow::Run>)
+                {
+                    self.log.warn(&format!(
+                        "couldn't clear the recovered workflow marker ({error})"
+                    ));
+                }
+            }
+            // Clear only after the recovery message/state has been
+            // materialized. A crash before this write leaves the durable
+            // marker for the next launch instead of losing the handoff.
+            if crate::kept!(self.store.save(
+                super::running::LEFT_WAITING,
+                &Vec::<super::running::LeftWaiting>::new(),
+            ))
+            .is_some()
+            {
+                self.left_waiting_read = true;
             }
         }
         // Windows first: a conversation you left Atlas carrying on is picked
@@ -937,6 +977,7 @@ impl<'a> Daemon<'a> {
     /// the same reason `contents.rs`'s and `revise.rs`'s single-source
     /// rules exist.
     pub(super) fn take_crew_news(&mut self, t: u64) -> Vec<String> {
+        self.install_pending_library();
         let mut out = Vec::new();
         for news in self.crew.settle(t) {
             let Some(link) = self.crew_links.remove(&news.id) else {
@@ -1408,8 +1449,9 @@ impl<'a> Daemon<'a> {
                 match serde_json::from_str::<CouncilOutcome>(&result) {
                     Ok(outcome) => {
                         for c in &outcome.calls {
-                            let id = self.record_model_call(
+                            let id = self.record_model_call_with_seat(
                                 "council",
+                                c.seat.as_deref(),
                                 c.took_ms,
                                 c.prompt_chars,
                                 c.reply_chars,
@@ -1592,11 +1634,10 @@ impl<'a> Daemon<'a> {
                         None => "research".to_string(),
                     };
                     self.learned(&result, &source, now);
-                    crate::kept!(self.store.save("known", &self.known));
                     // Immediately, not on next start — a note you cannot
                     // find until you restart is a note you will not know
                     // you have.
-                    self.reload_library();
+                    self.schedule_library_reload(now);
                     // And into the one fact book, so "what do you know about
                     // <topic>" answers from what Atlas researched as well as
                     // from what you stated — a single indexed place for
@@ -1624,8 +1665,8 @@ impl<'a> Daemon<'a> {
                             now,
                         );
                         self.facts.trim(crate::facts::MEMORY_BUDGET_BYTES, now);
-                        crate::kept!(self.facts.save(&self.store));
                     }
+                    self.schedule_research_persistence(now);
                 } else {
                     if let Some(i) = self.connections.get_mut(crate::integrations::INTERNET) {
                         i.failed(now, &result);
@@ -1867,7 +1908,23 @@ fn errand_stage(name: &str) -> (String, bool) {
 /// for the daemon, not words for the page.
 fn errand_outcome(ending: &crew::Ending) -> (crate::job::State, String) {
     use crate::job::State;
-    let short = |s: &str| -> String { s.chars().take(300).collect() };
+    let short = |s: &str| -> String {
+        const LIMIT: usize = 300;
+        let chars: Vec<char> = s.chars().collect();
+        if chars.len() <= LIMIT {
+            return s.to_string();
+        }
+        // Preserve both the identity at the front and the verification or
+        // failure evidence usually written at the end. Taking only the front
+        // made long Windows paths erase a backup's SHA-256 confirmation from
+        // its durable receipt.
+        let head = 140;
+        let tail = LIMIT - head - 5;
+        let mut out: String = chars[..head].iter().collect();
+        out.push_str(" ... ");
+        out.extend(chars[chars.len() - tail..].iter());
+        out
+    };
     match ending {
         crew::Ending::Done(Ok(said)) => {
             let said = said.trim();

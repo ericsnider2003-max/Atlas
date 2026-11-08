@@ -130,7 +130,18 @@ fn a_tor_bundle_unpacks_into_tor_beside_atlas() {
     let piece = atlas::getpieces::Piece {
         name: "Tor",
         for_what: "friends reaching your Atlas from anywhere",
-        url: Box::leak(format!("file://{}", tgz.display()).into_boxed_str()),
+        // Use a real file URI. `file://C:\...` is parsed as a malformed host
+        // by curl; Windows paths in a URI are rooted after the third slash.
+        url: Box::leak(
+            format!(
+                "file:///{}",
+                tgz.display()
+                    .to_string()
+                    .replace('\\', "/")
+                    .replace(' ', "%20")
+            )
+            .into_boxed_str(),
+        ),
         sha256: Box::leak(sha.into_boxed_str()),
         bytes: bytes.len() as u64,
         lands: atlas::getpieces::Lands::Zip {

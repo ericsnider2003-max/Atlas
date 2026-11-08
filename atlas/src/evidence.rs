@@ -221,8 +221,13 @@ pub(crate) fn task_outcome(
         crate::taskloop::Outcome::Failed(_) => 20,
     };
     let text = outcome.text().to_string();
+    // Task-loop evidence is not a reusable answer to a generic question: it
+    // is the receipt for this exact durable job. Binding the subject to the
+    // job prevents a later task with identical outcome text from reusing an
+    // earlier task's receipt and provenance.
+    let subject = format!("atlas-task-loop:{job_id}");
     let mut bundle = Bundle::create(
-        "atlas-task-loop",
+        subject,
         job_id,
         "working-tree",
         observed_at,
@@ -324,6 +329,34 @@ pub(crate) fn media_outcome(
     Ok(bundle)
 }
 
+/// Build typed evidence for a kept media file and bind the receipt to the
+/// file's current bytes, not merely to the path that names it.
+///
+/// A path can be reused, moved, or replaced between the edit and the owner's
+/// keep decision. The existing media owner already checks that the result is a
+/// file; this stronger variant records the streamed SHA-256 of those bytes so
+/// later artifact/evidence consumers can distinguish local custody from a
+/// filename or path claim.
+pub(crate) fn media_file_outcome(
+    job_id: &str,
+    result: &str,
+    kept: bool,
+    observed_at: u64,
+) -> Result<Bundle, String> {
+    let mut bundle = media_outcome(job_id, result, kept, observed_at)?;
+    if kept {
+        let output_hash = crate::digest::sha256_file_hex(std::path::Path::new(result))
+            .map_err(|error| format!("hash kept media output: {error}"))?;
+        bundle.output_hash = output_hash;
+        bundle
+            .limitations
+            .push("kept output bytes were SHA-256 bound at evidence capture".into());
+        bundle.bundle_id = hash(&bundle.identity_bytes());
+        bundle.validate()?;
+    }
+    Ok(bundle)
+}
+
 /// Build typed evidence for a system self-audit. An inspection is not an
 /// approval, code change, or proof that a recommendation was applied.
 pub(crate) fn self_audit_outcome(
@@ -382,7 +415,10 @@ pub(crate) fn upsert(store: &crate::store::Store, bundle: Bundle) -> crate::erro
             "evidence journal exceeds the local size bound".into(),
         ));
     }
-    store.save(STORE_NAME, &bundles)
+    // Evidence closes a task's proof boundary. Wait for a competing worker
+    // rather than using the control-loop's brief refusal window, so a short
+    // overlap cannot turn a completed task into an unverified result.
+    store.save_for_completion(STORE_NAME, &bundles)
 }
 
 /// Find the newest valid observation that can answer the same local question.
@@ -392,6 +428,7 @@ pub(crate) fn reusable(
     store: &crate::store::Store,
     subject: &str,
     source_revision: &str,
+    provider: &str,
     input_hash: &str,
 ) -> Option<Bundle> {
     let mut bundles = load_checked(store).ok()?;
@@ -399,6 +436,7 @@ pub(crate) fn reusable(
     bundles.into_iter().find(|bundle| {
         bundle.subject == subject
             && bundle.source_revision == source_revision
+            && bundle.provider == provider
             && bundle.input_hash == input_hash
             && bundle.validate().is_ok()
     })
@@ -413,8 +451,8 @@ fn load_checked(store: &crate::store::Store) -> crate::error::Result<Vec<Bundle>
 #[cfg(test)]
 mod tests {
     use super::{
-        build_outcome, media_outcome, research_outcome, self_audit_outcome, task_outcome, Bundle,
-        ObservationKind, MAX_BUNDLE_BYTES,
+        build_outcome, hash, media_file_outcome, media_outcome, research_outcome,
+        self_audit_outcome, task_outcome, Bundle, ObservationKind, MAX_BUNDLE_BYTES,
     };
 
     fn sample() -> Bundle {
@@ -438,13 +476,23 @@ mod tests {
     fn task_outcome_writer_keeps_runtime_provenance_and_job_link() {
         let outcome = crate::taskloop::Outcome::Done("saved locally".into());
         let bundle = task_outcome("task-1", &outcome, 42).unwrap();
-        assert_eq!(bundle.subject, "atlas-task-loop");
+        assert_eq!(bundle.subject, "atlas-task-loop:task-1");
         assert_eq!(bundle.provider, "local-daemon");
         assert_eq!(bundle.kind, ObservationKind::Runtime);
         assert_eq!(bundle.confidence, 70);
         assert_eq!(bundle.receipt_job_id.as_deref(), Some("task-1"));
         assert_eq!(bundle.claims, vec!["saved locally"]);
         assert!(bundle.validate().is_ok());
+    }
+
+    #[test]
+    fn task_outcomes_with_identical_text_have_distinct_receipt_subjects() {
+        let outcome = crate::taskloop::Outcome::Done("saved locally".into());
+        let first = task_outcome("task-1", &outcome, 42).unwrap();
+        let second = task_outcome("task-2", &outcome, 43).unwrap();
+        assert_ne!(first.subject, second.subject);
+        assert_ne!(first.bundle_id, second.bundle_id);
+        assert_eq!(first.input_hash, second.input_hash);
     }
 
     #[test]
@@ -537,6 +585,32 @@ mod tests {
     }
 
     #[test]
+    fn kept_media_evidence_binds_file_bytes_not_just_the_result_path() {
+        let path = std::env::temp_dir().join(format!(
+            "atlas-media-evidence-{}-{}.bin",
+            std::process::id(),
+            crate::store::now()
+        ));
+        std::fs::write(&path, b"media bytes").unwrap();
+        let bundle = media_file_outcome("task-file", path.to_str().unwrap(), true, 42).unwrap();
+        assert_eq!(
+            bundle.output_hash,
+            crate::digest::sha256_file_hex(&path).unwrap()
+        );
+        assert_ne!(bundle.output_hash, hash(path.to_string_lossy().as_bytes()));
+        assert!(bundle
+            .limitations
+            .iter()
+            .any(|item| item.contains("SHA-256 bound")));
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn kept_media_evidence_refuses_a_missing_result_file() {
+        assert!(media_file_outcome("task-missing", "missing-media-output.bin", true, 42).is_err());
+    }
+
+    #[test]
     fn self_audit_outcome_does_not_claim_recommendations_were_applied() {
         let bundle = self_audit_outcome("self-audit-1", 3, 2, 42).unwrap();
         assert_eq!(bundle.subject, "atlas-self-audit");
@@ -617,13 +691,23 @@ mod tests {
         let store = crate::store::Store::new(&root);
         let bundle = sample();
         super::upsert(&store, bundle.clone()).unwrap();
-        assert!(
-            super::reusable(&store, "atlas-self-audit", "abc123", &bundle.input_hash).is_some()
-        );
-        assert!(
-            super::reusable(&store, "atlas-self-audit", "changed", &bundle.input_hash).is_none()
-        );
-        assert!(super::reusable(&store, "other", "abc123", &bundle.input_hash).is_none());
+        assert!(super::reusable(
+            &store,
+            "atlas-self-audit",
+            "abc123",
+            "local",
+            &bundle.input_hash,
+        )
+        .is_some());
+        assert!(super::reusable(
+            &store,
+            "atlas-self-audit",
+            "changed",
+            "local",
+            &bundle.input_hash,
+        )
+        .is_none());
+        assert!(super::reusable(&store, "other", "abc123", "local", &bundle.input_hash,).is_none());
         let _ = std::fs::remove_dir_all(root);
     }
 
@@ -636,12 +720,42 @@ mod tests {
         let store = crate::store::Store::new(&root);
         std::fs::write(root.join("evidence.json"), b"{not-json").unwrap();
 
-        assert!(super::reusable(&store, "atlas-self-audit", "abc123", "nope").is_none());
+        assert!(super::reusable(&store, "atlas-self-audit", "abc123", "local", "nope",).is_none());
         assert!(super::upsert(&store, sample()).is_err());
         assert_eq!(
             std::fs::read(root.join("evidence.json")).unwrap(),
             b"{not-json"
         );
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn reusable_refuses_provider_drift_even_when_source_and_input_match() {
+        let root = std::env::temp_dir().join(format!(
+            "atlas-evidence-provider-drift-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        let store = crate::store::Store::new(&root);
+        let bundle = sample();
+        super::upsert(&store, bundle.clone()).unwrap();
+        assert!(super::reusable(
+            &store,
+            &bundle.subject,
+            &bundle.source_revision,
+            "local",
+            &bundle.input_hash,
+        )
+        .is_some());
+        assert!(super::reusable(
+            &store,
+            &bundle.subject,
+            &bundle.source_revision,
+            "different-provider",
+            &bundle.input_hash,
+        )
+        .is_none());
         let _ = std::fs::remove_dir_all(root);
     }
 

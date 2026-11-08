@@ -74,7 +74,11 @@ fn settle(d: &mut atlas::daemon::Daemon, from: u64) -> Vec<String> {
     let mut out = Vec::new();
     for k in 0..300u64 {
         out.extend(d.tick(from + k));
-        if k > 0
+        // Under the full aggregate the worker thread may not receive a
+        // timeslice before the first tick. Requiring a small grace window
+        // prevents a transient "not started yet" snapshot from being
+        // mistaken for a settled job while keeping the bounded wait.
+        if k > 20
             && d.working_for_you
                 .iter()
                 .all(|w| w.composing.is_none() && w.ready.is_none())
@@ -358,7 +362,11 @@ fn two_windows_are_worked_side_by_side() {
         store("two"),
         Proactive::new(ProactiveConfig::default()),
     );
-    d.crew = atlas::crew::Crew::new(3).with_room(Box::new(|| atlas::crew::Room {
+    // The scenario keeps two window jobs and two independent maintenance jobs
+    // alive at the same time. Three workers lets serial timing hide this
+    // under-allocation; under suite concurrency the fourth job correctly
+    // remains queued and the test times out waiting for its start signal.
+    d.crew = atlas::crew::Crew::new(4).with_room(Box::new(|| atlas::crew::Room {
         free_mb: Some(8192),
         on_battery: false,
         battery_percent: Some(100),
@@ -393,8 +401,8 @@ fn two_windows_are_worked_side_by_side() {
     let owned = release.clone();
     let owned_backup = d
         .crew
-        .hand(
-            "backup",
+        .hand_job(
+            atlas::crew::Job::new("backup").needs(atlas::crew::Needs::MostlyWaiting),
             t,
             Box::new(move |control| {
                 while !owned.load(std::sync::atomic::Ordering::SeqCst) && !control.stopping() {
@@ -404,13 +412,14 @@ fn two_windows_are_worked_side_by_side() {
                 Ok("Disposable maintenance ended".into())
             }),
         )
-        .expect("owned maintenance worker must start");
+        .expect("owned maintenance worker must start")
+        .id();
     let (control_sender, control_receiver) = std::sync::mpsc::sync_channel(1);
     let other_release = release.clone();
     let unrelated_backup = d
         .crew
-        .hand(
-            "backup",
+        .hand_job(
+            atlas::crew::Job::new("backup").needs(atlas::crew::Needs::MostlyWaiting),
             t + 1,
             Box::new(move |control| {
                 control_sender
@@ -424,7 +433,8 @@ fn two_windows_are_worked_side_by_side() {
                 Ok("Unselected disposable maintenance ended".into())
             }),
         )
-        .expect("unrelated owned maintenance must start");
+        .expect("unrelated owned maintenance must start")
+        .id();
     let unrelated_control = control_receiver
         .recv_timeout(std::time::Duration::from_secs(2))
         .expect("unrelated maintenance must actually start");

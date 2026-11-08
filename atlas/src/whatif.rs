@@ -68,8 +68,8 @@ pub fn replay(view: &AsOf, s: &Scenario) -> Result<Odds, String> {
         from_ms: view.time().first().copied(),
         to_ms: view.time().last().copied(),
     };
-    for start in 0..windows {
-        let k = s.entry / close[start];
+    for (start, &closing) in close.iter().take(windows).enumerate() {
+        let k = s.entry / closing;
         let mut outcome = None;
         for j in start + 1..=start + s.horizon {
             let (hi, lo) = (high[j] * k, low[j] * k);

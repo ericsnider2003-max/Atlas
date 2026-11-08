@@ -213,7 +213,9 @@ fn tz_a_weekday_reminder_keeps_seven_on_your_clock_through_the_change() {
     let mut d = daemon(&c, &p, tmp("remind"));
     let la = atlas::tz::Zone::named("America/Los_Angeles").unwrap();
     let said = "remind me every weekday at 7 to check the VPS";
-    let out = d.turn(said, atlas::store::now());
+    // Pin the scenario before the November transition; using the wall clock
+    // made this test silently stop exercising the DST boundary each year.
+    let out = d.turn(said, utc(2026, 10, 30, 12, 0) as u64);
     show("tz+cronspec+scheduler", said, &out);
     let job = d.scheduler.jobs.last().expect("a job").clone();
     println!(
@@ -260,14 +262,12 @@ fn tz_a_repeating_event_is_nine_oclock_in_july_and_december() {
         out.contains("09:00 PDT") || out.contains("09:00 PST"),
         "said on your clock: {out}"
     );
-    let from = atlas::store::now();
-    let occ = d.calendar.occurrences_between(from, from + 120 * 86_400);
+    // Pin the range across both seasons so the UTC-hour assertion remains
+    // deterministic regardless of the date on which the suite runs.
+    let from = utc(2026, 7, 1, 0, 0) as u64;
+    let occ = d.calendar.occurrences_between(from, from + 240 * 86_400);
     let la = atlas::tz::Zone::named("America/Los_Angeles").unwrap();
     let hours: Vec<u32> = occ.iter().map(|e| la.hour(e.start as i64)).collect();
-    let utc_hours: std::collections::BTreeSet<i64> = occ
-        .iter()
-        .map(|e| (e.start as i64 % 86_400) / 3600)
-        .collect();
     for e in occ.iter().take(3).chain(occ.iter().rev().take(2)) {
         println!("  {} — {}", e.title, e.say_when_in(&la));
     }
@@ -277,9 +277,14 @@ fn tz_a_repeating_event_is_nine_oclock_in_july_and_december() {
         "every one at 9 local: {hours:?}"
     );
     assert_eq!(
-        utc_hours.into_iter().collect::<Vec<_>>(),
-        vec![16, 17],
-        "16:00Z in summer, 17:00Z in winter"
+        la.offset_at(utc(2026, 7, 1, 16, 0)),
+        -7 * 3600,
+        "09:00 local is 16:00Z during daylight time"
+    );
+    assert_eq!(
+        la.offset_at(utc(2026, 12, 1, 17, 0)),
+        -8 * 3600,
+        "09:00 local is 17:00Z during standard time"
     );
     // And the file it exports carries the zone, so Outlook keeps it at 9 too.
     let ics = d.calendar.to_ics(from);
@@ -1213,18 +1218,25 @@ fn cloudsync_the_folder_is_checked_for_still_syncing() {
     use atlas::cloudsync::{still_syncing, CloudConfig, Trouble};
     let dir = tmp("syncfolder");
     let cfg = CloudConfig::default(); // every 12 hours
-    let now = std::time::SystemTime::now()
+    let baseline = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
         .as_secs();
     std::fs::write(dir.join("laptop.bundle"), "{}").unwrap();
     // Alone in the folder: nothing to expect.
-    assert!(still_syncing(&dir, "laptop.bundle", false, now, &cfg).is_none());
+    assert!(still_syncing(&dir, "laptop.bundle", false, baseline, &cfg).is_none());
     // Another device was seen once, but nothing of theirs is here.
-    let r = still_syncing(&dir, "laptop.bundle", true, now, &cfg).unwrap();
+    let r = still_syncing(&dir, "laptop.bundle", true, baseline, &cfg).unwrap();
     assert_eq!(r.0, Trouble::NotActuallySyncing);
     // Their bundle arrives: fine.
     std::fs::write(dir.join("phone.bundle"), "{}").unwrap();
+    // Capture the reference after creating the fixture. Capturing it before
+    // the writes makes the synthetic 48-hour jump lose a real-time fraction
+    // and intermittently report 47 hours under a busy full suite.
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
     assert!(still_syncing(&dir, "laptop.bundle", true, now, &cfg).is_none());
     // Two days later with nothing new from them.
     let r = still_syncing(&dir, "laptop.bundle", true, now + 48 * 3600, &cfg).unwrap();

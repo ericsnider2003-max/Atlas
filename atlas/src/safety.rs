@@ -2559,7 +2559,8 @@ mod failed_move_tests {
     fn fresh(tag: &str) -> PathBuf {
         let d = std::env::temp_dir().join(format!("atlas-take-{tag}-{}", std::process::id()));
         crate::heard!(std::fs::remove_dir_all(&d));
-        std::fs::create_dir_all(&d).unwrap();
+        std::fs::create_dir_all(&d)
+            .unwrap_or_else(|error| panic!("create trash test directory {}: {error}", d.display()));
         d
     }
 
@@ -2576,7 +2577,7 @@ mod failed_move_tests {
             .read(true)
             .share_mode(0)
             .open(path)
-            .unwrap()
+            .unwrap_or_else(|error| panic!("open locked test fixture {}: {error}", path.display()))
     }
 
     /// 21 Oct 2026: a move that fails leaves no pending entry behind.

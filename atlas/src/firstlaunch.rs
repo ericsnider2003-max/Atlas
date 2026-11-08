@@ -918,23 +918,6 @@ fn read_start_problem(path: &Path) -> String {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn an_oversized_startup_breadcrumb_is_treated_as_unwritten() {
-        let path =
-            std::env::temp_dir().join(format!("atlas-start-problem-{}.txt", std::process::id()));
-        let _ = std::fs::remove_file(&path);
-        std::fs::write(
-            &path,
-            vec![b'x'; (super::MAX_START_PROBLEM_BYTES + 1) as usize],
-        )
-        .unwrap();
-        assert!(super::read_start_problem(&path).is_empty());
-        let _ = std::fs::remove_file(path);
-    }
-}
-
 /// Start the background Atlas and watch it for `watch`: one that ends at
 /// once with a failure is reported rather than left silent. `Ok(())` is
 /// "still running when the watch ended" (or ended cleanly).
@@ -959,4 +942,21 @@ pub fn start_background_watched(
     }
     crate::unwaited::dont_wait(child);
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn an_oversized_startup_breadcrumb_is_treated_as_unwritten() {
+        let path =
+            std::env::temp_dir().join(format!("atlas-start-problem-{}.txt", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        std::fs::write(
+            &path,
+            vec![b'x'; (super::MAX_START_PROBLEM_BYTES + 1) as usize],
+        )
+        .unwrap();
+        assert!(super::read_start_problem(&path).is_empty());
+        let _ = std::fs::remove_file(path);
+    }
 }

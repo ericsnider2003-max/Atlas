@@ -100,27 +100,33 @@ impl<'a> Daemon<'a> {
             false
         ));
         let mut end = RunEnd::Dropped;
-        let reply = self.carry_out_parts(&steps, t, &mut end);
-        let (state, detail) = match end {
-            RunEnd::Done => (Some(crate::job::State::Succeeded), "every part finished"),
-            RunEnd::Failed => (Some(crate::job::State::Failed), "a part did not happen"),
+        let mut reply = self.carry_out_parts(&steps, t, &mut end);
+        let (mut state, mut detail): (Option<crate::job::State>, String) = match end {
+            RunEnd::Done => (Some(crate::job::State::Succeeded), "every part finished".into()),
+            RunEnd::Failed => (Some(crate::job::State::Failed), "a part did not happen".into()),
             // The question is its own record (a saved approval, in the Hub's
             // needs-you lane); this one is closed so it is not left Running,
             // and what was left undone is named in the reply.
             RunEnd::Asked => (
                 Some(crate::job::State::Cancelled),
-                "stopped to ask you; the parts after it are not done until you answer and ask again",
+                "stopped to ask you; the parts after it are not done until you answer and ask again".into(),
             ),
             RunEnd::Dropped => (
                 Some(crate::job::State::Uncertain),
-                "dropped before it ended; check what it finished",
+                "dropped before it ended; check what it finished".into(),
             ),
         };
+        if state == Some(crate::job::State::Succeeded) {
+            if let Err(error) =
+                self.capture_task_evidence(&job_id, &crate::taskloop::Outcome::Done(reply.clone()))
+            {
+                state = Some(crate::job::State::Failed);
+                detail = format!("completion evidence could not be verified: {error}");
+                reply = format!("I couldn't verify completion evidence for this task: {error}");
+            }
+        }
         if let Some(state) = state {
-            let detail = format!(
-                "{detail}: {}",
-                reply.chars().take(240).collect::<String>()
-            );
+            let detail = format!("{detail}: {}", reply.chars().take(240).collect::<String>());
             crate::heard!(crate::job::finish(
                 &self.store,
                 &job_id,

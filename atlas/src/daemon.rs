@@ -53,6 +53,7 @@ use crate::workspace;
 // Each child is `impl<'a> Daemon<'a>` and nothing else; the struct, `new`
 // and the free functions stay here.
 mod camera;
+mod capsule;
 mod conversation;
 mod errands;
 mod floor;
@@ -83,20 +84,20 @@ mod inbox;
 pub use inbox::{one_message_asked, OneMessage};
 mod askthelaptop;
 mod calendar_delivery;
-mod execute;
 mod correction_log;
-mod needs_you;
-mod preflight;
-mod teach_mode;
-mod whatif;
-mod newest_wins;
+mod execute;
 mod learning;
 mod making;
+mod needs_you;
+mod newest_wins;
 mod onethread;
 mod operating;
+mod preflight;
 mod reading;
 mod tasks;
+mod teach_mode;
 mod turn;
+mod whatif;
 
 /// What Atlas is allowed to do on its own.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -289,15 +290,17 @@ fn crew_job(name: &str, topic: Option<&str>, speak: &SpeakPolicy) -> crew::Job {
         // A picture being made keeps the graphics and every core busy.
         "make-picture" => TheWholeMachine,
         // Disk and network: copying files, talking to a mail server.
-        "backup" | "mail" | "unsubscribe" | "outlook-connect" | "outreach" | "reclaim" | "mcp"
-        | "draft-model" => MostlyWaiting,
+        "backup" | "folder-backup" | "mail" | "unsubscribe" | "outlook-connect" | "outreach"
+        | "reclaim" | "mcp" | "draft-model" => MostlyWaiting,
         // Hub buttons that wait on the network (`hubjobs`), and the knock on
         // a friend's Atlas that `friend_upkeep` used to make inside the tick.
         "hub-send" | "addon-share" | "friend-knock" | "phone-code" => MostlyWaiting,
         // "reclaim" is the Status page's disk survey: a walk of the disk.
         _ => OneCore,
     };
-    let urgency = if *speak == SpeakPolicy::Always {
+    let urgency = if *speak == SpeakPolicy::Always
+        || matches!(name, "research-library" | "research-memory" | "proof-check")
+    {
         crew::Urgency::Now
     } else {
         crew::Urgency::Later
@@ -467,6 +470,11 @@ pub(crate) fn addon_share_said(
 /// `every_seat_is_one_recorded_model_call` holds that count.
 #[derive(serde::Serialize, serde::Deserialize)]
 struct SeatCall {
+    /// The council seat that produced this call. `None` is used by the
+    /// generic counted wrapper, which can observe a call without knowing its
+    /// seat; council calls always populate it.
+    #[serde(default)]
+    seat: Option<String>,
     took_ms: u64,
     prompt_chars: usize,
     reply_chars: usize,
@@ -794,6 +802,10 @@ pub struct Daemon<'a> {
     /// Everything Atlas can search: research notes, and anything else on the
     /// shelf. Rebuilt from disk at start and after anything writes a note.
     pub library: crate::recall::Library,
+    /// A library built by the crew and waiting for the bounded ownership
+    /// swap on the next tick.
+    pub pending_library: std::sync::Arc<std::sync::Mutex<Option<(u64, crate::recall::Library)>>>,
+    pub library_generation: std::sync::Arc<std::sync::atomic::AtomicU64>,
     /// Meaning vectors already made, keyed by note content.
     ///
     /// The library above is derived — rebuilt from the notes folder with
@@ -814,7 +826,7 @@ pub struct Daemon<'a> {
     self_fix_done: std::sync::Arc<std::sync::Mutex<Option<on_itself::SelfFixDone>>>,
     /// The proving test's run, from the crew (`finish_proof_check`).
     proof_check_done:
-        std::sync::Arc<std::sync::Mutex<Option<(String, crate::selfwork::ProofToday)>>>,
+        std::sync::Arc<std::sync::Mutex<Option<(String, String, crate::selfwork::ProofToday)>>>,
     /// The piece of work Atlas is doing on itself, if any.
     ///
     /// Held rather than rebuilt: `Session::new` on every turn meant the five
@@ -1059,6 +1071,11 @@ pub struct Daemon<'a> {
     pub(crate) reminders_cancelled_elsewhere: Vec<String>,
     /// Everything Atlas knows, merged rather than accumulated.
     pub known: Vec<crate::consolidate::Claim>,
+    /// Monotonic identity for research-memory snapshots handed to workers.
+    /// A unique job key prevents Crew from joining a newer snapshot to an
+    /// older persistence worker.
+    research_memory_generation: std::sync::Arc<std::sync::atomic::AtomicU64>,
+    research_memory_persistence: std::sync::Arc<std::sync::Mutex<()>>,
     /// A line for each thing let go to make room, so "I knew something
     /// about that" can be said instead of nothing (H10).
     pub stones: Vec<crate::consolidate::Tombstone>,
@@ -1203,6 +1220,8 @@ pub struct Daemon<'a> {
     /// Whether what a restart cut off (`LEFT_WAITING`) has been read back
     /// yet; until then it isn't written over.
     left_waiting_read: bool,
+    left_waiting_recovery_required: Option<String>,
+    workflow_recovery_required: Option<String>,
     /// What the previous run left (`LEFT_WAITING`), read before this run writes
     /// its own checkpoints there, so a checkpoint is never taken for a restart.
     last_run_left: Vec<running::LeftWaiting>,
@@ -1235,8 +1254,9 @@ pub struct Daemon<'a> {
     acting_at: Option<u64>,
     /// Whether a model server not started by this Atlas was answering, and
     /// when that was found (`keep_model_server`).
-    model_server_seen: std::sync::Arc<std::sync::Mutex<Option<(std::time::Instant, bool)>>>,
+    model_server_seen: std::sync::Arc<std::sync::Mutex<Option<(std::time::Instant, bool, u64)>>>,
     model_probe_busy: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    model_probe_generation: std::sync::Arc<std::sync::atomic::AtomicU64>,
     /// What warming the model's prompt came to (`warm_the_model`), for the
     /// log: written by that thread, logged by the next tick.
     model_warmed: std::sync::Arc<std::sync::Mutex<Option<String>>>,
@@ -1772,8 +1792,10 @@ impl<'a> Daemon<'a> {
         // through a platform that refuses it while background work runs. The
         // wrapper is a few bytes and lives as long as the program does.
         let hands_guard = crate::backends::HandsGuard::default();
-        let plat: &'a dyn Platform =
-            Box::leak(Box::new(crate::backends::Guarded::new(plat, hands_guard.clone())));
+        let plat: &'a dyn Platform = Box::leak(Box::new(crate::backends::Guarded::new(
+            plat,
+            hands_guard.clone(),
+        )));
         let state_access = crate::store::begin_state_command(store.root(), false)?;
         let notes: std::path::PathBuf = cfg
             .tools
@@ -1983,6 +2005,8 @@ impl<'a> Daemon<'a> {
             hub_server: None,
             announcements: std::sync::OnceLock::new(),
             library: crate::recall::Library::default(),
+            pending_library: std::sync::Arc::new(std::sync::Mutex::new(None)),
+            library_generation: std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0)),
             // Loaded before `reload_library` runs below, so the rebuilt
             // library rehydrates vectors made in an earlier session rather
             // than starting every note over as unembedded.
@@ -2124,6 +2148,8 @@ impl<'a> Daemon<'a> {
             synclog_unsaved: false,
             reminders_cancelled_elsewhere: Vec::new(),
             known,
+            research_memory_generation: std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0)),
+            research_memory_persistence: std::sync::Arc::new(std::sync::Mutex::new(())),
             stones: store_for_load.load("known_stones"),
             vocab: store_for_load.load("vocabulary"),
             folding: false,
@@ -2189,6 +2215,8 @@ impl<'a> Daemon<'a> {
             task_loop: None,
             last_crew_handoff: None,
             left_waiting_read: false,
+            left_waiting_recovery_required: None,
+            workflow_recovery_required: None,
             last_run_left: Vec::new(),
             left_pickup_done: false,
             // Before anything can serve a page: jobs the last run left
@@ -2206,6 +2234,7 @@ impl<'a> Daemon<'a> {
             acting_at: None,
             model_server_seen: Default::default(),
             model_probe_busy: Default::default(),
+            model_probe_generation: Default::default(),
             model_warmed: Default::default(),
             model_start_tried: None,
             model_started: None,

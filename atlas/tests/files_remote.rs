@@ -346,22 +346,39 @@ fn the_outbox_says_queued_until_the_laptop_is_reachable_and_when_it_was_last_see
     let n = q.ask("Render the video", Needs::TheLaptop, How::Quietly, 1_000);
     let r = q.requests.iter().find(|r| r.id == n).unwrap().clone();
     let never = atlas::remote::queue_status(&r, None, 5_000);
-    assert_eq!(never, "Queued until your laptop is reachable (not seen yet).");
+    assert_eq!(
+        never,
+        "Queued until your laptop is reachable (not seen yet)."
+    );
     let stale = atlas::remote::queue_status(&r, Some(1_000), 5_000);
-    assert!(stale.starts_with("Queued until your laptop is reachable (last seen "), "{stale}");
+    assert!(
+        stale.starts_with("Queued until your laptop is reachable (last seen "),
+        "{stale}"
+    );
     let fresh = atlas::remote::queue_status(&r, Some(4_950), 5_000);
     assert_eq!(fresh, "Waiting for your laptop to pick it up.");
     let sent = atlas::remote::sent_to_the_laptop("Render the video");
-    assert!(sent.contains("queued for your laptop") && !sent.starts_with("Sent"), "{sent}");
+    assert!(
+        sent.contains("queued for your laptop") && !sent.starts_with("Sent"),
+        "{sent}"
+    );
 }
 
 #[test]
 fn asking_what_is_waiting_for_the_laptop_is_heard_in_its_everyday_shapes() {
     use atlas::remote::asks_whats_waiting;
-    for said in ["What's waiting for my laptop?", "what is queued for the laptop", "Anything waiting for my computer?"] {
+    for said in [
+        "What's waiting for my laptop?",
+        "what is queued for the laptop",
+        "Anything waiting for my computer?",
+    ] {
         assert!(asks_whats_waiting(said), "{said}");
     }
-    for said in ["what's the weather", "ask the laptop to render", "what's waiting for me"] {
+    for said in [
+        "what's the weather",
+        "ask the laptop to render",
+        "what's waiting for me",
+    ] {
         assert!(!asks_whats_waiting(said), "{said}");
     }
 }

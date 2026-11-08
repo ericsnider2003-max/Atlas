@@ -632,7 +632,7 @@ fn readonly_pages_drawn(daemon: &mut Daemon) -> Vec<(Page, Reply)> {
                 Reply::html(hub::with_appearance(html, &daemon.appearance())),
             )
         })
-    .collect()
+        .collect()
 }
 
 /// What is kept in the settings files, read again only when those files

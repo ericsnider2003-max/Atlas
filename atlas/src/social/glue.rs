@@ -87,7 +87,10 @@ fn path_in(said: &str) -> Option<String> {
         .iter()
         .rposition(|w| exts.iter().any(|e| w.to_lowercase().ends_with(e)))
         .filter(|e| *e >= start)
-        .unwrap_or(start);
+        // Directory imports have no extension to anchor on. The import
+        // command owns the remainder of the utterance, so preserve spaces in
+        // the directory name instead of truncating at its first word.
+        .unwrap_or(words.len().saturating_sub(1));
     Some(
         words[start..=end]
             .join(" ")

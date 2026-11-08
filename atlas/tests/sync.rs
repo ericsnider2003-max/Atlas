@@ -1,6 +1,6 @@
-use atlas::sync::{replaced_by, 
-    can_open, drifting, how_to_carry, make_bundle, merge, spoken, Bundle, Carry, Kind, Log,
-    SyncConfig, What, BUNDLE_VERSION, WHAT_THE_PHONE_MISSES, WHY_THIS_WORKS,
+use atlas::sync::{
+    can_open, drifting, how_to_carry, make_bundle, merge, replaced_by, spoken, Bundle, Carry, Kind,
+    Log, SyncConfig, What, BUNDLE_VERSION, WHAT_THE_PHONE_MISSES, WHY_THIS_WORKS,
 };
 
 const DAY: u64 = 86_400;
@@ -362,9 +362,16 @@ fn a_clash_is_put_to_you_with_both_versions_and_which_is_newer() {
     assert!(!said.contains("Which?"), "{said}");
     assert!(said.contains("I kept the newer one"), "{said}");
     assert!(said.contains("put back what sync replaced"), "{said}");
-    let r = replaced_by(&merge(&laptop.events, &phone.events, 300), "your phone", 300);
+    let r = replaced_by(
+        &merge(&laptop.events, &phone.events, 300),
+        "your phone",
+        300,
+    );
     assert_eq!(r.len(), 1);
-    assert_eq!((r[0].kept.as_str(), r[0].replaced.as_str()), ("parked", "done"));
+    assert_eq!(
+        (r[0].kept.as_str(), r[0].replaced.as_str()),
+        ("parked", "done")
+    );
     assert_eq!(r[0].kept_from, "your phone");
 }
 
@@ -729,8 +736,22 @@ fn an_event_relayed_back_is_not_a_second_change_and_does_not_hide_a_clash() {
     // own; counted twice, the echo hid the real clash.
     let mut laptop = Log::new("laptop");
     let mut phone = Log::new("phone");
-    laptop.append(What::Changed { id: "audit".into(), field: "status".into(), to: "done".into() }, 100);
-    phone.append(What::Changed { id: "audit".into(), field: "status".into(), to: "parked".into() }, 200);
+    laptop.append(
+        What::Changed {
+            id: "audit".into(),
+            field: "status".into(),
+            to: "done".into(),
+        },
+        100,
+    );
+    phone.append(
+        What::Changed {
+            id: "audit".into(),
+            field: "status".into(),
+            to: "parked".into(),
+        },
+        200,
+    );
     let mut relayed = laptop.events.clone();
     relayed.extend(phone.events.clone());
     let m = merge(&laptop.events, &relayed, 300);

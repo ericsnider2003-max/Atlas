@@ -638,6 +638,24 @@ fn threads_for(logical: usize) -> i32 {
 type Loaded = Result<Arc<Mutex<Kokoro>>, String>;
 static ENGINE: Mutex<Option<(PathBuf, Loaded)>> = Mutex::new(None);
 
+/// Do not start a fresh Kokoro allocation while the machine is already below
+/// the measured engine cost plus a small recovery margin. An already-loaded
+/// engine is returned above this check; active speech must be allowed to
+/// finish, while a later sentence can fall back and retry after pressure is
+/// relieved.
+const ADMISSION_HEADROOM_MB: u64 = 256;
+
+fn memory_admission_reason(free_mb: Option<u64>) -> Option<String> {
+    crate::resource_admission::below_threshold(
+        free_mb,
+        crate::lifecycle::typical_mb("kokoro"),
+        ADMISSION_HEADROOM_MB,
+    )
+    .map(|(free, required)| {
+        format!("Kokoro needs about {required}MB free to load safely; only {free}MB is available")
+    })
+}
+
 /// Kokoro for the install at `root`, loaded the first time and kept. A
 /// failure is kept too, so a missing voice is found missing once, not on
 /// every sentence; `forget` clears it.
@@ -651,9 +669,17 @@ pub fn engine(root: &Path) -> Loaded {
             return loaded.clone();
         }
     }
+    // Report missing installation pieces before consulting live memory. A
+    // pressure refusal is useful only when a load could actually be
+    // attempted; otherwise it hides the actionable download/setup message.
     let loaded = match check(root) {
         Err(m) => Err(m.plain()),
         Ok(r) => {
+            if let Some(reason) = memory_admission_reason(crate::relief::available_mb()) {
+                // Do not cache a pressure refusal: memory relief can make the
+                // next sentence eligible without requiring a download/configuration reset.
+                return Err(reason);
+            }
             Kokoro::load(&r.runtime, &r.model, thread_count()).map(|k| Arc::new(Mutex::new(k)))
         }
     };
@@ -1053,5 +1079,118 @@ mod tests {
         assert_eq!(threads_for(6), 3);
         assert_eq!(threads_for(8), 1);
         assert_eq!(threads_for(16), 1);
+    }
+
+    #[test]
+    fn kokoro_admission_uses_measured_cost_and_headroom() {
+        assert!(memory_admission_reason(Some(635)).is_some());
+        assert!(memory_admission_reason(Some(636)).is_none());
+        assert!(memory_admission_reason(None).is_none());
+    }
+
+    #[test]
+    #[ignore = "requires explicit installed Kokoro assets"]
+    fn installed_kokoro_reports_load_synthesis_and_private_bytes() {
+        let root = PathBuf::from(
+            std::env::var("ATLAS_KOKORO_INSTALL").expect("explicit installed Atlas root required"),
+        );
+        let runtime = root.join(RUNTIME_DIR);
+        let model = root.join(MODEL_DIR);
+        let before = crate::relief::private_bytes();
+        let available_before = crate::relief::available_mb();
+        let started = std::time::Instant::now();
+        let engine = Kokoro::load(&runtime, &model, thread_count()).expect("Kokoro should load");
+        let load_ms = started.elapsed().as_millis();
+        let after_load = crate::relief::private_bytes();
+        let available_after_load = crate::relief::available_mb();
+        let started = std::time::Instant::now();
+        let (voice, sid) = voice_or_default(DEFAULT_VOICE);
+        let wav = engine
+            .synth_wav("Atlas local Kokoro measurement.", sid, 1.0)
+            .expect("Kokoro should synthesize");
+        let synth_ms = started.elapsed().as_millis();
+        let after_synth = crate::relief::private_bytes();
+        let available_after_synth = crate::relief::available_mb();
+        let out = std::env::temp_dir().join("atlas-kokoro-measurement.wav");
+        std::fs::write(&out, &wav).expect("measurement preview should be writable");
+        println!(
+            "Kokoro voice={voice} threads={} load_ms={load_ms} synth_ms={synth_ms} wav_bytes={} private_before={before:?} private_after_load={after_load:?} private_after_synth={after_synth:?} available_before={available_before:?} available_after_load={available_after_load:?} available_after_synth={available_after_synth:?} output={}",
+            thread_count(),
+            wav.len(),
+            out.display()
+        );
+        assert!(wav.len() > 44, "Kokoro produced no audio");
+    }
+
+    #[test]
+    #[ignore = "requires explicit installed Kokoro assets and performs a bounded sustained run"]
+    fn installed_kokoro_sustained_synthesis_reports_each_iteration() {
+        let root = PathBuf::from(
+            std::env::var("ATLAS_KOKORO_INSTALL").expect("explicit installed Atlas root required"),
+        );
+        let runtime = root.join(RUNTIME_DIR);
+        let model = root.join(MODEL_DIR);
+        let engine = Kokoro::load(&runtime, &model, thread_count()).expect("Kokoro should load");
+        let (voice, sid) = voice_or_default(DEFAULT_VOICE);
+        let mut rows = Vec::new();
+        let started = std::time::Instant::now();
+        for index in 1..=10 {
+            let turn = std::time::Instant::now();
+            let wav = engine
+                .synth_wav("Atlas sustained local voice measurement.", sid, 1.0)
+                .expect("Kokoro should synthesize every iteration");
+            rows.push((
+                index,
+                turn.elapsed().as_millis(),
+                wav.len(),
+                crate::relief::private_bytes(),
+                crate::relief::available_mb(),
+            ));
+            assert!(wav.len() > 44, "iteration {index} produced no audio");
+        }
+        println!(
+            "Kokoro sustained voice={voice} threads={} total_ms={} rows={rows:?}",
+            thread_count(),
+            started.elapsed().as_millis()
+        );
+    }
+
+    #[test]
+    #[ignore = "requires explicit installed Kokoro assets and performs a bounded reload run"]
+    fn installed_kokoro_reloads_after_pressure_release() {
+        let root = PathBuf::from(
+            std::env::var("ATLAS_KOKORO_INSTALL").expect("explicit installed Atlas root required"),
+        );
+        forget();
+        let first_started = std::time::Instant::now();
+        let first = engine(&root).expect("first Kokoro load should succeed");
+        let first_load_ms = first_started.elapsed().as_millis();
+        let (_, sid) = voice_or_default(DEFAULT_VOICE);
+        let first_wav = first
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .synth_wav("Atlas reload before release.", sid, 1.0)
+            .expect("first synthesis should succeed");
+        drop(first);
+        let released = unload_if_idle(Duration::ZERO, true);
+        assert!(
+            released.is_some(),
+            "pressure release should unload idle Kokoro"
+        );
+        let second_started = std::time::Instant::now();
+        let second = engine(&root).expect("Kokoro should reload after pressure release");
+        let second_load_ms = second_started.elapsed().as_millis();
+        let second_wav = second
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .synth_wav("Atlas reload after release.", sid, 1.0)
+            .expect("reloaded synthesis should succeed");
+        println!(
+            "Kokoro reload first_load_ms={first_load_ms} second_load_ms={second_load_ms} released={released:?} first_wav_bytes={} second_wav_bytes={} available_mb={:?}",
+            first_wav.len(),
+            second_wav.len(),
+            crate::relief::available_mb()
+        );
+        assert!(first_wav.len() > 44 && second_wav.len() > 44);
     }
 }

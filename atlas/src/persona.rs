@@ -371,7 +371,9 @@ impl Persona {
         match self.max_spoken_sentences {
             3 | 8.. => LENGTH_RULE.to_string(),
             0 | 1 => "Answer in one sentence; never pad.".to_string(),
-            n => format!("Use as few sentences as the question needs, at most {n} sentences; never pad."),
+            n => format!(
+                "Use as few sentences as the question needs, at most {n} sentences; never pad."
+            ),
         }
     }
 

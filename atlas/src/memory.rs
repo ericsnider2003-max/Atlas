@@ -5,7 +5,7 @@
 //! approval-history entry makes Atlas act without asking. Keeping them apart
 //! means one can be cleared without touching the others.
 
-use crate::error::Result;
+use crate::error::{AtlasError, Result};
 use crate::store::{now, Store};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -59,6 +59,8 @@ pub struct Memory {
     /// statistics after the individual records are dropped.
     #[serde(default)]
     pub summaries: BTreeMap<String, (u32, u32)>,
+    #[serde(skip)]
+    load_error: Option<String>,
 }
 
 /// Keeps the approval log from growing without bound on a laptop.
@@ -66,13 +68,28 @@ const MAX_APPROVALS: usize = 500;
 
 impl Memory {
     pub fn load(store: &Store) -> Memory {
-        store
-            .load_checked_bounded("memory", 8 * 1_048_576)
-            .ok()
-            .flatten()
-            .unwrap_or_default()
+        match store.load_checked_bounded::<Memory>("memory", 8 * 1_048_576) {
+            Ok(Some(mut memory)) => {
+                memory.load_error = None;
+                memory
+            }
+            Ok(None) => Memory::default(),
+            Err(error) => {
+                let message = format!("memory could not be loaded safely: {error}");
+                crate::heard!(Err::<(), _>(message.clone()));
+                Memory {
+                    load_error: Some(message),
+                    ..Memory::default()
+                }
+            }
+        }
     }
     pub fn save(&self, store: &Store) -> Result<()> {
+        if let Some(error) = &self.load_error {
+            return Err(AtlasError::Config(format!(
+                "memory recovery is required before saving: {error}"
+            )));
+        }
         store.save("memory", self)
     }
 
@@ -192,5 +209,50 @@ impl Memory {
     pub fn times_seen(&self, kind: &str) -> usize {
         let compacted = self.summaries.get(kind).map(|s| s.0 as usize).unwrap_or(0);
         compacted + self.approvals.iter().filter(|a| a.kind == kind).count()
+    }
+}
+
+#[cfg(test)]
+mod compaction_tests {
+    use super::*;
+
+    #[test]
+    fn approval_compaction_preserves_counts_rates_and_recent_detail() {
+        let mut memory = Memory::default();
+        for (approved, correction) in [
+            (true, Some("keep the review gate".to_string())),
+            (false, Some("ask before sending".to_string())),
+            (true, None),
+            (true, None),
+            (false, Some("do not infer approval".to_string())),
+        ] {
+            memory.record_approval("publish", approved, correction);
+        }
+
+        assert_eq!(memory.compact_approvals(2), 3);
+        assert_eq!(memory.approvals.len(), 2);
+        assert_eq!(memory.times_seen("publish"), 5);
+        assert_eq!(memory.approval_rate("publish"), Some(3.0 / 5.0));
+        assert_eq!(memory.summaries.get("publish"), Some(&(3, 2)));
+        assert_eq!(
+            memory.approvals[0].correction.as_deref(),
+            None,
+            "the oldest retained record is still the third original decision"
+        );
+        assert_eq!(
+            memory.approvals[1].correction.as_deref(),
+            Some("do not infer approval")
+        );
+    }
+
+    #[test]
+    fn approval_compaction_does_not_discard_detail_when_already_within_budget() {
+        let mut memory = Memory::default();
+        memory.record_approval("delete", false, Some("always ask first".into()));
+        let before = memory.approvals.clone();
+
+        assert_eq!(memory.compact_approvals(1), 0);
+        assert_eq!(memory.approvals, before);
+        assert!(memory.summaries.is_empty());
     }
 }

@@ -17,7 +17,10 @@ static ONE: Mutex<()> = Mutex::new(());
 struct Counting(&'static str, Mutex<u32>, bool);
 impl Llm for Counting {
     fn complete(&self, _s: &str, _u: &str) -> atlas::error::Result<String> {
-        *self.1.lock().unwrap() += 1;
+        *self
+            .1
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) += 1;
         if self.2 {
             return Err(atlas::error::AtlasError::Platform("down".into()));
         }
@@ -32,7 +35,7 @@ impl Llm for Counting {
 }
 
 fn calls(c: &Arc<Counting>) -> u32 {
-    *c.1.lock().unwrap()
+    *c.1.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
 #[test]
@@ -43,7 +46,7 @@ fn the_free_online_models_are_not_asked_while_google_data_is_held() {
     let free = atlas::freeonline::FreeOnline::with_sender(
         atlas::freeonline::PROVIDERS.to_vec(),
         Box::new(move |_url, _body| {
-            *s2.lock().unwrap() += 1;
+            *s2.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) += 1;
             Ok(r#"{"choices":[{"message":{"content":"hi"}}]}"#.to_string())
         }),
     );
@@ -53,10 +56,17 @@ fn the_free_online_models_are_not_asked_while_google_data_is_held() {
         .unwrap_err()
         .to_string();
     assert!(e.contains("Google"), "{e}");
-    assert_eq!(*sent.lock().unwrap(), 0, "nothing left the machine");
+    assert_eq!(
+        *sent.lock().unwrap_or_else(|poisoned| poisoned.into_inner()),
+        0,
+        "nothing left the machine"
+    );
     atlas::brain::set_google_data_held(false);
     assert_eq!(free.complete("s", "u").unwrap(), "hi");
-    assert_eq!(*sent.lock().unwrap(), 1);
+    assert_eq!(
+        *sent.lock().unwrap_or_else(|poisoned| poisoned.into_inner()),
+        1
+    );
 }
 
 #[test]
@@ -97,7 +107,7 @@ fn muse_takes_no_background_work_while_google_data_is_held_but_answers_you() {
     let muse = Arc::new(atlas::muse::MuseSpark::with_sender(
         atlas::muse::MuseConfig::default(),
         Box::new(move |_k, _b| {
-            *a2.lock().unwrap() += 1;
+            *a2.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) += 1;
             Ok(r#"{"choices":[{"message":{"content":"muse"}}],"usage":{"prompt_tokens":1,"completion_tokens":1}}"#.to_string())
         }),
     ));
@@ -111,7 +121,9 @@ fn muse_takes_no_background_work_while_google_data_is_held_but_answers_you() {
     atlas::brain::set_google_data_held(true);
     assert_eq!(first.complete_hard("s", "the week ahead").unwrap(), "local");
     assert_eq!(
-        *asked.lock().unwrap(),
+        *asked
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()),
         0,
         "the conversation never went to Muse"
     );
@@ -131,9 +143,17 @@ fn muse_takes_no_background_work_while_google_data_is_held_but_answers_you() {
 #[test]
 fn a_google_calendar_or_sign_in_marks_the_data_as_held() {
     let _one = ONE.lock().unwrap_or_else(|e| e.into_inner());
-    let dir = std::env::temp_dir().join(format!("atlas-google-held-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
+    let dir = std::env::temp_dir().join(format!(
+        "atlas-google-held-{}-{}",
+        std::process::id(),
+        atlas::store::now()
+    ));
+    std::fs::create_dir_all(&dir).unwrap_or_else(|error| {
+        panic!(
+            "create Google-held test directory {}: {error}",
+            dir.display()
+        )
+    });
     let store = atlas::store::Store::new(dir.clone());
     let p = atlas::platform::mock::MockPlatform::new(vec![atlas::platform::Monitor {
         id: 1,
@@ -143,7 +163,8 @@ fn a_google_calendar_or_sign_in_marks_the_data_as_held() {
         height: 1040,
         primary: true,
     }]);
-    let c = atlas::config::Config::load(std::path::Path::new("config")).unwrap();
+    let c = atlas::config::Config::load(std::path::Path::new("config"))
+        .unwrap_or_else(|error| panic!("load test config: {error}"));
     let mut d = atlas::daemon::Daemon::new(
         &c,
         &p,

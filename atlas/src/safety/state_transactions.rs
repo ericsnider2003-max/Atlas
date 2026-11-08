@@ -197,7 +197,7 @@ fn a_late_directory_child_retains_all_originals_and_pending_receipt_after_restar
         pending: true,
         returning: false,
     };
-    trash.write_ledger(&[receipt.clone()]).unwrap();
+    trash.write_ledger(std::slice::from_ref(&receipt)).unwrap();
     let verify = |_copy: &Path| -> Result<()> {
         assert!(std::fs::rename(&source, area.0.join("replacement")).is_err());
         assert!(std::fs::write(source.join("old"), b"newbytes").is_err());
@@ -256,7 +256,7 @@ fn partial_directory_cleanup_preserves_both_locations_and_durable_pending_identi
         pending: true,
         returning: false,
     };
-    trash.write_ledger(&[receipt]).unwrap();
+    trash.write_ledger(std::slice::from_ref(&receipt)).unwrap();
     let stopped = || destination.exists() && std::fs::read_dir(&source).unwrap().count() < 2;
     assert!(move_without_overwrite_controlled(&source, &destination, &stopped).is_err());
     assert_eq!(std::fs::read(destination.join("a")).unwrap(), b"first");

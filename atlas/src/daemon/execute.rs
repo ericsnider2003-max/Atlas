@@ -60,6 +60,10 @@ impl<'a> Daemon<'a> {
     }
 
     pub fn execute(&mut self, intent: &Intent) -> String {
+        // This is a per-turn receipt. Leaving the prior intent here makes a
+        // later turn appear to have completed the earlier action when the
+        // current turn is refused or only asks for clarification.
+        self.last_executed = None;
         self.execution_receipt = None;
         // The last line, and the one that catches the callers a gate placed
         // in `turn_from` alone never sees.
@@ -157,6 +161,12 @@ impl<'a> Daemon<'a> {
             || said.starts_with("I can't")
             || said.contains("isn't built")
             || said.contains("switched off");
+        if went_wrong {
+            self.execution_receipt = Some((
+                intent.clone(),
+                crate::taskloop::Outcome::Failed(said.clone()),
+            ));
+        }
         self.earned.note(kind, !went_wrong, &said, clock());
         crate::kept!(self.earned.save(&self.store));
 
@@ -3365,7 +3375,11 @@ mod tests {
                 .iter()
                 .any(|r| r.job_id.starts_with("chat:") && r.state == crate::job::State::Succeeded),
             "{}",
-            records.iter().map(|r| r.job_id.clone()).collect::<Vec<_>>().join(", ")
+            records
+                .iter()
+                .map(|r| r.job_id.clone())
+                .collect::<Vec<_>>()
+                .join(", ")
         );
     }
 

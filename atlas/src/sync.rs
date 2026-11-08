@@ -183,7 +183,9 @@ pub struct Log {
 impl Log {
     /// Whether this log already has that very event (same device, same seq).
     pub fn holds(&self, e: &Event) -> bool {
-        self.events.iter().any(|m| m.device == e.device && m.seq == e.seq)
+        self.events
+            .iter()
+            .any(|m| m.device == e.device && m.seq == e.seq)
     }
 
     pub(crate) fn observe_version(&mut self, version: &Version, now: u64) {
@@ -740,9 +742,21 @@ pub fn replaced_by(m: &Merged, from: &str, now: u64) -> Vec<Replaced> {
             Replaced {
                 subject: c.subject.clone(),
                 field: c.field.clone(),
-                kept: if here_won { c.here.clone() } else { c.there.clone() },
-                replaced: if here_won { c.there.clone() } else { c.here.clone() },
-                kept_from: if here_won { "here".into() } else { from.to_string() },
+                kept: if here_won {
+                    c.here.clone()
+                } else {
+                    c.there.clone()
+                },
+                replaced: if here_won {
+                    c.there.clone()
+                } else {
+                    c.here.clone()
+                },
+                kept_from: if here_won {
+                    "here".into()
+                } else {
+                    from.to_string()
+                },
                 at: now,
             }
         })

@@ -22,7 +22,8 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 fn cfg() -> atlas::config::Config {
-    let mut c = atlas::config::Config::load(Path::new("config")).unwrap();
+    let mut c = atlas::config::Config::load(Path::new("config"))
+        .unwrap_or_else(|error| panic!("finishing test config: {error}"));
     // These tests time the loop; walking the person's real Desktop, Documents
     // and Downloads on every tick is the machine's work, not Atlas's.
     c.indexing = None;
@@ -51,7 +52,7 @@ fn tmp(tag: &str) -> PathBuf {
         NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
     ));
     let _ = std::fs::remove_dir_all(&p);
-    std::fs::create_dir_all(&p).unwrap();
+    std::fs::create_dir_all(&p).unwrap_or_else(|error| panic!("finishing test directory: {error}"));
     p
 }
 
@@ -88,7 +89,7 @@ impl Scripted {
     fn requests(&self) -> Vec<ChatRequest> {
         self.asked
             .lock()
-            .unwrap()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
             .iter()
             .map(|(r, _, _)| r.clone())
             .collect()
@@ -99,6 +100,7 @@ fn says(text: &str) -> ChatReply {
     ChatReply {
         text: text.into(),
         tool_calls: vec![],
+        execution: Default::default(),
     }
 }
 
@@ -106,6 +108,7 @@ fn calls(name: &str, arg: &str) -> ChatReply {
     ChatReply {
         text: String::new(),
         tool_calls: vec![call(name, arg)],
+        execution: Default::default(),
     }
 }
 
@@ -131,7 +134,10 @@ impl Llm for Scripted {
         let reply = match self.rules.iter().find(|(w, _)| last.contains(w)) {
             Some((_, r)) => r.clone(),
             None => {
-                let mut then = self.then.lock().unwrap();
+                let mut then = self
+                    .then
+                    .lock()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner());
                 if then.is_empty() {
                     says("Sure.")
                 } else {
@@ -146,7 +152,7 @@ impl Llm for Scripted {
         }
         self.asked
             .lock()
-            .unwrap()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
             .push((req.clone(), start, Instant::now()));
         Ok(reply)
     }
@@ -507,6 +513,186 @@ fn loop_turn(said: &str) -> Turn {
     }
 }
 
+struct FailingChat;
+
+impl Llm for FailingChat {
+    fn complete(&self, _: &str, _: &str) -> atlas::error::Result<String> {
+        Err(atlas::error::AtlasError::Platform(
+            "model unavailable".into(),
+        ))
+    }
+
+    fn native_chat(&self) -> bool {
+        true
+    }
+
+    fn chat(
+        &self,
+        _: &ChatRequest,
+        _: &mut dyn FnMut(&str) -> bool,
+    ) -> atlas::error::Result<ChatReply> {
+        Err(atlas::error::AtlasError::Platform(
+            "model unavailable".into(),
+        ))
+    }
+}
+
+#[test]
+fn a_model_failure_is_not_a_finished_task() {
+    let said = "research the Atlas completion contract";
+    let plan = atlas::taskloop::parts(said);
+    let mut hands = ScriptedHands {
+        outcomes: vec![],
+        called: vec![],
+    };
+    let run = atlas::taskloop::run_watched(
+        &FailingChat,
+        &loop_turn(said),
+        &plan,
+        &mut hands,
+        atlas::taskloop::MAX_STEPS,
+        &mut atlas::taskloop::Unwatched,
+    );
+    assert_eq!(run.verdict, Verdict::Failed);
+    assert!(run.reply.contains("model stopped"), "{}", run.reply);
+    assert!(hands.called.is_empty());
+}
+
+#[test]
+fn a_successful_task_cannot_close_without_verified_evidence() {
+    let (c, p) = (cfg(), plat());
+    let root = tmp("task-evidence-verification");
+    // Make the existing evidence journal persistently unusable while leaving
+    // the ordinary job journal writable. A successful task must not become a
+    // successful durable receipt when its proof bundle cannot be saved.
+    std::fs::create_dir(root.join("evidence.json"))
+        .unwrap_or_else(|error| panic!("evidence failure fixture: {error}"));
+    let llm = Scripted::new(
+        vec![(
+            "Tool capabilities result",
+            says("The capability list is ready."),
+        )],
+        vec![calls("capabilities", "show")],
+        0,
+    );
+    let mut d = Daemon::new(
+        &c,
+        &p,
+        Some(llm as Arc<dyn Llm>),
+        Store::new(&root),
+        Proactive::new(ProactiveConfig::default()),
+    );
+
+    let started = d.turn("show my capabilities and summarize them", 1_790_740_000);
+    assert!(started.starts_with("Working through that"), "{started}");
+    let said = tick_until_done(&mut d, 1_790_740_000, 20);
+    let reply = said.last().map(|(line, _)| line.as_str()).unwrap_or("");
+    assert!(
+        reply.contains("evidence") || reply.contains("verification"),
+        "the owner must be told that completion proof failed: {said:?}"
+    );
+
+    let records = atlas::job::load_checked(&Store::new(&root))
+        .unwrap_or_else(|error| panic!("task journal should remain readable: {error}"));
+    let task = records
+        .iter()
+        .find(|record| record.stage.starts_with("task loop"))
+        .unwrap_or_else(|| panic!("task-loop record missing: {records:?}"));
+    assert_ne!(
+        task.state,
+        atlas::job::State::Succeeded,
+        "a task without a verified evidence bundle cannot be successful: {task:?}"
+    );
+}
+
+#[test]
+fn parallel_task_completion_cannot_close_without_verified_evidence() {
+    let (c, p) = (cfg(), plat());
+    let root = tmp("parallel-task-evidence-verification");
+    std::fs::create_dir(root.join("evidence.json"))
+        .unwrap_or_else(|error| panic!("parallel evidence failure fixture: {error}"));
+    let llm = Scripted::new(
+        vec![
+            (
+                "haiku",
+                says("Rain taps on the glass, the gutter hums its one note, the street shines like fish."),
+            ),
+            ("boat", says("Call her Second Wind.")),
+        ],
+        vec![],
+        0,
+    );
+    let mut d = Daemon::new(
+        &c,
+        &p,
+        Some(llm as Arc<dyn Llm>),
+        Store::new(&root),
+        Proactive::new(ProactiveConfig::default()),
+    );
+
+    let started = d.turn(
+        "write a haiku about rain and make up a name for my boat",
+        1_790_740_000,
+    );
+    assert!(started.starts_with("Doing both at once"), "{started}");
+    let said = tick_until_done(&mut d, 1_790_740_000, 20);
+    let reply = said.last().map(|(line, _)| line.as_str()).unwrap_or("");
+    assert!(
+        reply.contains("evidence") || reply.contains("verification"),
+        "the owner must be told that parallel completion proof failed: {said:?}"
+    );
+
+    let records = atlas::job::load_checked(&Store::new(&root))
+        .unwrap_or_else(|error| panic!("task journal should remain readable: {error}"));
+    let task = records
+        .iter()
+        .find(|record| record.stage.starts_with("task loop"))
+        .unwrap_or_else(|| panic!("parallel task-loop record missing: {records:?}"));
+    assert_ne!(
+        task.state,
+        atlas::job::State::Succeeded,
+        "parallel work without a verified evidence bundle cannot be successful: {task:?}"
+    );
+}
+
+#[test]
+fn a_task_loop_receipt_failure_is_not_reported_as_clean() {
+    let (c, p) = (cfg(), plat());
+    let root = tmp("task-loop-receipt-save-failure");
+    let llm = Scripted::new(
+        vec![(
+            "Tool capabilities result",
+            says("The capability list is ready."),
+        )],
+        vec![calls("capabilities", "show")],
+        0,
+    );
+    let mut d = Daemon::new(
+        &c,
+        &p,
+        Some(llm as Arc<dyn Llm>),
+        Store::new(&root),
+        Proactive::new(ProactiveConfig::default()),
+    );
+
+    let started = d.turn("show my capabilities and summarize them", 1_790_740_000);
+    assert!(started.starts_with("Working through that"), "{started}");
+    // Let the task start against a valid record, then make the terminal
+    // receipt unreadable. The spoken result must carry the same warning as
+    // the direct-action path instead of claiming a clean completion.
+    std::fs::write(root.join("jobs.json"), "not valid job state").unwrap();
+    let said = tick_until_done(&mut d, 1_790_740_000, 20);
+    let reply = said
+        .iter()
+        .map(|(line, _)| line.as_str())
+        .find(|line| line.contains("completion receipt"))
+        .unwrap_or("");
+    assert!(
+        reply.contains("completion receipt") && reply.contains("check before repeating"),
+        "the task-loop reply must disclose an unconfirmed terminal receipt: {said:?}"
+    );
+}
+
 #[test]
 fn the_loop_feeds_each_result_back_and_finishes() {
     let llm = Scripted::new(
@@ -683,7 +869,12 @@ fn the_loop_is_bounded_and_notices_going_round_in_a_circle() {
 /// every line the ticks said, in order, with when.
 fn tick_until_done(d: &mut Daemon, t: u64, secs: u64) -> Vec<(String, Instant)> {
     let mut said = Vec::new();
-    let until = Instant::now() + Duration::from_secs(secs);
+    // The daemon worker must receive the failure sent by an expired approval
+    // and publish its terminal Run. Under the full integration binary, a
+    // fixed wall-clock cap can expire while the state is already safely
+    // cleared. Keep the caller's bound, but widen it only by the measured
+    // harness load and keep it finite.
+    let until = Instant::now() + crate::common::allowed(Duration::from_secs(secs));
     let mut t = t;
     loop {
         t += 1;
@@ -761,6 +952,234 @@ fn a_request_of_dependent_steps_is_worked_through_by_the_daemon() {
         "{names:?}"
     );
     assert_eq!(reply, "I looked for the tax PDF; here's what came back.");
+}
+
+#[test]
+fn a_task_loop_does_not_promote_a_failed_file_postcondition_to_done() {
+    let (c, p) = (cfg(), plat());
+    let root = tmp("task-create-red");
+    let missing = root.join("folder-that-was-not-created");
+    let instruction = format!(
+        "create a text file named output.txt in {} containing hello and tell me what you wrote",
+        missing.display()
+    );
+    let raw = format!("Tell me what you wrote, and {instruction}");
+    let llm = Scripted::new(vec![], vec![calls("create_file", &instruction)], 0);
+    let mut d = Daemon::new(
+        &c,
+        &p,
+        Some(llm as Arc<dyn Llm>),
+        Store::new(&root),
+        Proactive::new(ProactiveConfig::default()),
+    );
+
+    let started = d.turn(&raw, 1_790_740_000);
+    let said = tick_until_done(&mut d, 1_790_740_000, 20);
+    let reply = said
+        .last()
+        .map(|(line, _)| line.as_str())
+        .unwrap_or(started.as_str());
+    assert!(
+        reply.contains("didn't work") || reply.contains("didn't make"),
+        "{said:?}"
+    );
+
+    let task = atlas::job::load_checked(&Store::new(&root))
+        .unwrap()
+        .into_iter()
+        .find(|record| record.stage.starts_with("task loop"))
+        .expect("task-loop record");
+    assert_ne!(task.state, atlas::job::State::Succeeded, "{task:?}");
+    assert!(!missing.join("output.txt").exists());
+}
+
+#[test]
+fn a_task_loop_promotes_a_file_only_after_the_floor_readback_passes() {
+    let (c, p) = (cfg(), plat());
+    let root = tmp("task-create-green");
+    let folder = root.join("output");
+    std::fs::create_dir_all(&folder).unwrap();
+    let instruction = format!(
+        "create a text file named output.txt in {} containing hello and tell me what you wrote",
+        folder.display()
+    );
+    let raw = format!("Tell me what you wrote, and {instruction}");
+    let llm = Scripted::new(
+        vec![],
+        vec![
+            calls("create_file", &instruction),
+            says("The file was created and checked."),
+        ],
+        0,
+    );
+    let mut d = Daemon::new(
+        &c,
+        &p,
+        Some(llm as Arc<dyn Llm>),
+        Store::new(&root),
+        Proactive::new(ProactiveConfig::default()),
+    );
+
+    let started = d.turn(&raw, 1_790_740_000);
+    let said = tick_until_done(&mut d, 1_790_740_000, 20);
+    let reply = said
+        .last()
+        .map(|(line, _)| line.as_str())
+        .unwrap_or(started.as_str());
+    assert!(
+        reply.contains("The file was created and checked.")
+            && reply.contains("I read it back and it says: \"hello\""),
+        "{said:?}"
+    );
+    assert_eq!(
+        std::fs::read_to_string(folder.join("output.txt")).unwrap(),
+        "hello"
+    );
+    let task = atlas::job::load_checked(&Store::new(&root))
+        .unwrap()
+        .into_iter()
+        .find(|record| record.stage.starts_with("task loop"))
+        .expect("task-loop record");
+    assert_eq!(task.state, atlas::job::State::Succeeded, "{task:?}");
+}
+
+fn wait_for_move_approval(d: &mut Daemon, t: u64, instruction: &str) {
+    let expected = atlas::intent::Intent::MoveFile(instruction.to_string());
+    let until = Instant::now() + crate::common::allowed(Duration::from_secs(30));
+    let mut tick = t;
+    while Instant::now() < until {
+        tick += 1;
+        d.tick(tick);
+        if matches!(
+            &d.session.pending,
+            atlas::session::Pending::Approval(intent, _) if *intent == expected
+        ) {
+            return;
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    panic!("move approval was not requested: {:?}", d.session.pending);
+}
+
+#[test]
+fn a_task_loop_does_not_promote_a_failed_move_postcondition_to_done() {
+    let (c, p) = (cfg(), plat());
+    let root = tmp("task-move-red");
+    let source = root.join("source");
+    let destination = root.join("destination");
+    std::fs::create_dir_all(&source).unwrap();
+    std::fs::create_dir_all(&destination).unwrap();
+    std::fs::write(source.join("note.txt"), b"source bytes").unwrap();
+    std::fs::write(destination.join("note.txt"), b"existing bytes").unwrap();
+    let instruction = format!(
+        "move note.txt from {} to {}",
+        source.display(),
+        destination.display()
+    );
+    let raw = format!("find note.txt and {instruction}");
+    let llm = Scripted::new(
+        vec![],
+        vec![
+            calls("move_file", &instruction),
+            says("The dependent step ran."),
+        ],
+        0,
+    );
+    let mut d = Daemon::new(
+        &c,
+        &p,
+        Some(llm.clone() as Arc<dyn Llm>),
+        Store::new(root.clone()),
+        Proactive::new(ProactiveConfig::default()),
+    );
+
+    d.turn(&raw, 1_790_740_000);
+    wait_for_move_approval(&mut d, 1_790_740_000, &instruction);
+    d.turn("yes", 1_790_740_100);
+    let said = tick_until_done(&mut d, 1_790_740_100, 30);
+
+    assert_eq!(
+        std::fs::read(source.join("note.txt")).unwrap(),
+        b"source bytes"
+    );
+    assert_eq!(
+        std::fs::read(destination.join("note.txt")).unwrap(),
+        b"existing bytes"
+    );
+    let task = atlas::job::load_checked(&Store::new(&root))
+        .unwrap()
+        .into_iter()
+        .find(|record| record.stage.starts_with("task loop"))
+        .expect("task-loop record");
+    assert_eq!(
+        task.state,
+        atlas::job::State::Failed,
+        "task={task:?}, requests={}, said={said:?}",
+        llm.requests().len()
+    );
+    assert!(
+        said.iter().any(|(line, _)| line.contains("didn't move")),
+        "{said:?}"
+    );
+}
+
+#[test]
+fn a_task_loop_promotes_a_verified_move_only_after_floor_check() {
+    let (c, p) = (cfg(), plat());
+    let root = tmp("task-move-green");
+    let source = root.join("source");
+    let destination = root.join("destination");
+    std::fs::create_dir_all(&source).unwrap();
+    std::fs::create_dir_all(&destination).unwrap();
+    std::fs::write(source.join("note.txt"), b"source bytes").unwrap();
+    let instruction = format!(
+        "move note.txt from {} to {}",
+        source.display(),
+        destination.display()
+    );
+    let raw = format!("find note.txt and {instruction}");
+    let llm = Scripted::new(
+        vec![],
+        vec![
+            calls("move_file", &instruction),
+            says("The dependent step ran."),
+        ],
+        0,
+    );
+    let mut d = Daemon::new(
+        &c,
+        &p,
+        Some(llm.clone() as Arc<dyn Llm>),
+        Store::new(root.clone()),
+        Proactive::new(ProactiveConfig::default()),
+    );
+
+    d.turn(&raw, 1_790_740_000);
+    wait_for_move_approval(&mut d, 1_790_740_000, &instruction);
+    d.turn("yes", 1_790_740_100);
+    let said = tick_until_done(&mut d, 1_790_740_100, 30);
+
+    assert!(!source.join("note.txt").exists());
+    assert_eq!(
+        std::fs::read(destination.join("note.txt")).unwrap(),
+        b"source bytes"
+    );
+    let task = atlas::job::load_checked(&Store::new(&root))
+        .unwrap()
+        .into_iter()
+        .find(|record| record.stage.starts_with("task loop"))
+        .expect("task-loop record");
+    assert_eq!(
+        task.state,
+        atlas::job::State::Succeeded,
+        "task={task:?}, requests={}, said={said:?}",
+        llm.requests().len()
+    );
+    assert!(
+        said.iter()
+            .any(|(line, _)| line.contains("dependent step ran")),
+        "{said:?}"
+    );
 }
 
 // ================= 3b. off the loop (30 Sep 2026) =================
@@ -1436,6 +1855,7 @@ impl Llm for Streamer {
         Ok(ChatReply {
             text: text.into(),
             tool_calls: vec![],
+            execution: Default::default(),
         })
     }
 }
@@ -1443,7 +1863,10 @@ impl Llm for Streamer {
 struct QuietMouth(Mutex<Vec<String>>);
 impl atlas::daemon::Mouth for QuietMouth {
     fn speak(&self, text: &str) -> atlas::error::Result<()> {
-        self.0.lock().unwrap().push(text.to_string());
+        self.0
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .push(text.to_string());
         Ok(())
     }
 }
@@ -1506,7 +1929,7 @@ fn the_first_words_are_spoken_before_the_reply_is_finished_and_logged() {
 }
 
 #[test]
-fn a_failed_dependent_step_blocks_the_remaining_plan() {
+fn a_failed_dependent_step_fails_and_blocks_the_remaining_plan() {
     let llm = Scripted::new(
         vec![],
         vec![
@@ -1534,8 +1957,8 @@ fn a_failed_dependent_step_blocks_the_remaining_plan() {
     );
     assert_eq!(
         run.verdict,
-        Verdict::Blocked,
-        "a required failure cannot become a finished request"
+        Verdict::Failed,
+        "a required failure cannot become a finished request or an approval wait"
     );
     assert_eq!(
         hands.called.len(),
@@ -1585,7 +2008,7 @@ fn a_failure_after_completed_work_preserves_the_actual_blocker() {
         4,
         &mut atlas::taskloop::Unwatched,
     );
-    assert_eq!(run.verdict, Verdict::Blocked);
+    assert_eq!(run.verdict, Verdict::Failed);
     assert_eq!(run.steps.len(), 2);
     assert!(matches!(run.steps[0].outcome, Outcome::Done(_)));
     assert!(
@@ -1639,6 +2062,34 @@ fn a_failed_tool_in_the_real_daemon_cannot_be_reported_as_finished() {
 }
 
 #[test]
+fn a_successful_action_names_an_unconfirmed_receipt_instead_of_claiming_done() {
+    let (c, p) = (cfg(), plat());
+    let root = tmp("receipt-save-failure");
+    // The action itself can run, but the durable completion journal is
+    // unreadable. A success-looking reply would leave Hub and the owner
+    // without proof of the terminal outcome.
+    std::fs::write(root.join("jobs.json"), "not valid job state").unwrap();
+    let mut d = Daemon::new(
+        &c,
+        &p,
+        None,
+        Store::new(&root),
+        Proactive::new(ProactiveConfig::default()),
+    );
+
+    let reply = d.turn("rebuild the index", 1_790_740_000);
+
+    assert!(
+        reply.contains("completion receipt") && reply.contains("check before repeating"),
+        "the action must not claim durable completion when its receipt could not be read or saved: {reply}"
+    );
+    assert!(
+        atlas::job::load_checked(&Store::new(&root)).is_err(),
+        "the fixture must keep the journal failure observable"
+    );
+}
+
+#[test]
 fn background_read_failure_blocks_the_remaining_request() {
     let (c, p) = (cfg(), plat());
     let missing = tmp("background-missing").join("missing.txt");
@@ -1682,7 +2133,8 @@ fn background_read_returns_its_contents_to_the_next_step() {
     let (mut c, p) = (cfg(), plat());
     let dir = tmp("background-read");
     let doc = dir.join("deadline.txt");
-    std::fs::write(&doc, "The filing deadline is April 15.").unwrap();
+    std::fs::write(&doc, "The filing deadline is April 15.")
+        .unwrap_or_else(|error| panic!("background document fixture: {error}"));
     let mut tools = atlas::voice::ToolsConfig::default();
     tools.files.virus_scan.command = if cfg!(windows) {
         "cmd".into()
@@ -1741,7 +2193,8 @@ fn background_document(tag: &str, slow: bool) -> (atlas::config::Config, PathBuf
     let mut c = cfg();
     let dir = tmp(tag);
     let doc = dir.join("deadline.txt");
-    std::fs::write(&doc, "The filing deadline is April 15.").unwrap();
+    std::fs::write(&doc, "The filing deadline is April 15.")
+        .unwrap_or_else(|error| panic!("write filing deadline fixture {doc:?}: {error}"));
     let mut tools = atlas::voice::ToolsConfig::default();
     tools.files.virus_scan.command = if cfg!(windows) {
         "powershell".into()
@@ -1782,7 +2235,13 @@ fn background_scan_decision(approve: bool) -> usize {
         },
         false,
     );
-    c.tools.as_mut().unwrap().files.virus_scan.command.clear();
+    c.tools
+        .as_mut()
+        .unwrap_or_else(|| panic!("background scan needs tools config"))
+        .files
+        .virus_scan
+        .command
+        .clear();
     let p = plat();
     let llm = Scripted::new(
         vec![],
@@ -2030,7 +2489,7 @@ impl Llm for ResearchScript {
         on_text: &mut dyn FnMut(&str) -> bool,
         keep_going: &dyn Fn() -> bool,
     ) -> atlas::error::Result<ChatReply> {
-        let text = "Ventura high tide is just after noon.";
+        let text = "Ventura high tide is expected just after noon today.";
         if !keep_going() || !on_text(text) || !keep_going() {
             return Err(atlas::error::AtlasError::Platform(
                 "research fixture stopped".into(),
@@ -2042,7 +2501,7 @@ impl Llm for ResearchScript {
         })
     }
     fn complete(&self, _: &str, _: &str) -> atlas::error::Result<String> {
-        Ok("Ventura high tide is just after noon.".into())
+        Ok("Ventura high tide is expected just after noon today.".into())
     }
     fn native_chat(&self) -> bool {
         true
@@ -2058,7 +2517,10 @@ impl Llm for ResearchScript {
 
 fn background_research(fail: bool) -> usize {
     let (mut c, p) = (cfg(), plat());
-    let tools = c.tools.as_mut().unwrap();
+    let tools = c
+        .tools
+        .as_mut()
+        .unwrap_or_else(|| panic!("background research needs tools config"));
     tools.research.enabled = true;
     tools.research.pages_on_this_machine = true;
     tools.research.search = Some(crate::common::printing(if fail {
@@ -2067,7 +2529,7 @@ fn background_research(fail: bool) -> usize {
         "http://example.test/tides"
     }));
     tools.research.fetch = Some(crate::common::printing(
-        &"Ventura high tide is just after noon. ".repeat(20),
+        &"Ventura high tide is expected just after noon today. ".repeat(20),
     ));
     let dir = tmp(if fail {
         "background-research-fail"
@@ -2079,7 +2541,7 @@ fn background_research(fail: bool) -> usize {
         vec![],
         vec![
             calls("research", "Ventura tide times"),
-            says("Ventura high tide is just after noon."),
+            says("Ventura high tide is expected just after noon today."),
         ],
         0,
     );
@@ -2114,10 +2576,9 @@ fn background_research(fail: bool) -> usize {
             "research never resumed the request: {said:?}"
         );
         assert!(
-            scripted.requests()[1]
-                .messages
-                .iter()
-                .any(|m| m.content.contains("high tide is just after noon")),
+            scripted.requests()[1].messages.iter().any(|m| m
+                .content
+                .contains("high tide is expected just after noon today")),
             "the finding was not passed to the next step"
         );
     }
@@ -2238,7 +2699,7 @@ fn queued_research_remains_running_until_the_worker_finishes() {
                 }
                 std::thread::sleep(Duration::from_millis(10));
             }
-            let text = "Ventura high tide is just after noon.";
+            let text = "Ventura high tide is expected just after noon today.";
             if !keep_going() || !on_text(text) || !keep_going() {
                 return Err(atlas::error::AtlasError::Platform(
                     "held research stopped".into(),
@@ -2256,7 +2717,7 @@ fn queued_research_remains_running_until_the_worker_finishes() {
             {
                 std::thread::sleep(Duration::from_millis(10));
             }
-            Ok("Ventura high tide is just after noon.".into())
+            Ok("Ventura high tide is expected just after noon today.".into())
         }
     }
     let (mut c, p) = (cfg(), plat());
@@ -2265,7 +2726,7 @@ fn queued_research_remains_running_until_the_worker_finishes() {
     tools.research.pages_on_this_machine = true;
     tools.research.search = Some(crate::common::printing("http://example.test/tides"));
     tools.research.fetch = Some(crate::common::printing(
-        &"Ventura high tide is just after noon. ".repeat(20),
+        &"Ventura high tide is expected just after noon today. ".repeat(20),
     ));
     let root = tmp("queued-research-owned");
     tools.research.notes_dir = root.join("notes").display().to_string();
@@ -2320,7 +2781,7 @@ fn queued_research_fails_if_the_full_writeup_cannot_be_saved() {
             on_text: &mut dyn FnMut(&str) -> bool,
             keep_going: &dyn Fn() -> bool,
         ) -> atlas::error::Result<ChatReply> {
-            let text = "Ventura high tide is just after noon.";
+            let text = "Ventura high tide is expected just after noon today.";
             if !keep_going() || !on_text(text) || !keep_going() {
                 return Err(atlas::error::AtlasError::Platform(
                     "research fixture stopped".into(),
@@ -2332,7 +2793,7 @@ fn queued_research_fails_if_the_full_writeup_cannot_be_saved() {
             })
         }
         fn complete(&self, _: &str, _: &str) -> atlas::error::Result<String> {
-            Ok("Ventura high tide is just after noon.".into())
+            Ok("Ventura high tide is expected just after noon today.".into())
         }
     }
     let (mut c, p) = (cfg(), plat());
@@ -2343,7 +2804,7 @@ fn queued_research_fails_if_the_full_writeup_cannot_be_saved() {
     tools.research.pages_on_this_machine = true;
     tools.research.search = Some(crate::common::printing("http://example.test/tides"));
     tools.research.fetch = Some(crate::common::printing(
-        &"Ventura high tide is just after noon. ".repeat(20),
+        &"Ventura high tide is expected just after noon today. ".repeat(20),
     ));
     tools.research.notes_dir = blocked.display().to_string();
     let mut d = Daemon::new(
@@ -2437,29 +2898,38 @@ fn background_media(fail: bool, no_output: bool, decision: u8) -> usize {
         "media-approval"
     });
     let clip = dir.join("clip.mp4");
-    std::fs::write(&clip, "original footage fixture").unwrap();
-    let tools = c.tools.as_mut().unwrap();
+    std::fs::write(&clip, "original footage fixture")
+        .unwrap_or_else(|error| panic!("media fixture: {error}"));
+    let tools = c
+        .tools
+        .as_mut()
+        .unwrap_or_else(|| panic!("media fixture needs tools config"));
     tools.video.work_dir = dir.join("edits").display().to_string();
     tools.video.ffprobe.command = "atlas-test-no-probe".into();
     let render = dir.join(if cfg!(windows) {
-        "render.cmd"
+        "render.ps1"
     } else {
         "render.sh"
     });
-    std::fs::write(&render, if no_output { if cfg!(windows) { "@exit /b 0\n" } else { "exit 0\n" } } else if cfg!(windows) {
-        "@echo off\n:atlas_next\nif \"%~1\"==\"\" goto atlas_write\nset \"atlas_result=%~1\"\nshift\ngoto atlas_next\n:atlas_write\n> \"%atlas_result%\" echo render fixture\n"
+    std::fs::write(&render, if no_output { if cfg!(windows) { "exit 0\n" } else { "exit 0\n" } } else if cfg!(windows) {
+        "$result = $args[-1]\nif ($result) { Set-Content -LiteralPath $result -Value 'render fixture' }\n"
     } else {
         "for last; do :; done; printf 'render fixture' > \"$last\"\n"
-    }).unwrap();
+    })
+    .unwrap_or_else(|error| panic!("media renderer fixture: {error}"));
     tools.video.ffmpeg.command = if fail {
         "atlas-test-no-renderer".into()
     } else if cfg!(windows) {
-        "cmd".into()
+        "powershell".into()
     } else {
         "/bin/sh".into()
     };
     tools.video.ffmpeg.args = if cfg!(windows) {
-        vec!["/C".into(), render.display().to_string()]
+        vec![
+            "-NoProfile".into(),
+            "-File".into(),
+            render.display().to_string(),
+        ]
     } else {
         vec![render.display().to_string()]
     };
@@ -2525,7 +2995,8 @@ fn background_media(fail: bool, no_output: bool, decision: u8) -> usize {
         );
     }
     assert_eq!(
-        std::fs::read_to_string(&clip).unwrap(),
+        std::fs::read_to_string(&clip)
+            .unwrap_or_else(|error| panic!("read preserved clip fixture {clip:?}: {error}")),
         "original footage fixture"
     );
     if !fail && !no_output {
@@ -2569,7 +3040,8 @@ fn background_media(fail: bool, no_output: bool, decision: u8) -> usize {
         }
     }
     assert_eq!(
-        std::fs::read_to_string(&clip).unwrap(),
+        std::fs::read_to_string(&clip)
+            .unwrap_or_else(|error| panic!("read preserved clip fixture {clip:?}: {error}")),
         "original footage fixture"
     );
     assert!(
@@ -2675,7 +3147,13 @@ fn dependent_app_job(decision: u8) -> usize {
         1,
         "choosing a next app action must not finish the goal"
     );
-    assert_eq!(d.operating.as_ref().unwrap().goal, "make a heading");
+    assert_eq!(
+        d.operating
+            .as_ref()
+            .unwrap_or_else(|| panic!("app goal should be active"))
+            .goal,
+        "make a heading"
+    );
     if decision == 3 {
         d.turn("stop everything", 1_790_751_000);
         tick_until_done(&mut d, 1_790_751_001, 10);
@@ -2684,7 +3162,10 @@ fn dependent_app_job(decision: u8) -> usize {
         return script.requests().len();
     }
     d.turn("Budget", 1_790_751_000);
-    d.operating.as_mut().unwrap().next = Some((
+    d.operating
+        .as_mut()
+        .unwrap_or_else(|| panic!("app goal should remain active"))
+        .next = Some((
         if succeed { "done" } else { "give_up" }.into(),
         if succeed {
             "The heading is ready."
@@ -2719,7 +3200,13 @@ fn an_app_goal_cancellation_releases_dependent_work() {
 
 fn dependent_policy_approval(approve: bool, expired: bool, queued: bool, replaced: bool) -> usize {
     let (c, p) = (cfg(), plat());
-    let app = c.apps.apps.keys().next().unwrap().clone();
+    let app = c
+        .apps
+        .apps
+        .keys()
+        .next()
+        .unwrap_or_else(|| panic!("test config must contain an app"))
+        .clone();
     let script = Scripted::new(vec![], vec![calls("close_app", &app), says("All done.")], 0);
     let mut d = Daemon::new(
         &c,
@@ -2738,7 +3225,9 @@ fn dependent_policy_approval(approve: bool, expired: bool, queued: bool, replace
         d.session
             .await_approval(Intent::Undo, "Undo the unrelated change?");
     }
-    for n in 1..500 {
+    let approval_deadline = Instant::now() + crate::common::allowed(Duration::from_secs(30));
+    let mut n = 1;
+    while Instant::now() < approval_deadline {
         d.tick(1_790_760_000 + n);
         if matches!(d.session.pending, atlas::session::Pending::Approval(..))
             && (!queued || d.session.approvals_waiting() == 2)
@@ -2746,6 +3235,7 @@ fn dependent_policy_approval(approve: bool, expired: bool, queued: bool, replace
             break;
         }
         std::thread::sleep(Duration::from_millis(20));
+        n += 1;
     }
     assert!(matches!(
         d.session.pending,
@@ -2783,7 +3273,10 @@ fn dependent_policy_approval(approve: bool, expired: bool, queued: bool, replace
             1_790_760_520
         },
     );
-    tick_until_done(&mut d, 1_790_761_001, 10);
+    // Expiration sends the dependent failure through the worker; under the
+    // full integration binary, allow the bounded worker handoff more room
+    // without changing the production approval lifetime.
+    tick_until_done(&mut d, 1_790_761_001, 30);
     assert!(
         !d.working_through_steps(),
         "answer={answer}, pending={:?}",

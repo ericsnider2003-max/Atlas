@@ -65,7 +65,12 @@ pub struct Awareness {
     /// as the disk took.
     pub scan_in_background: bool,
     /// The walk in progress, when one is.
-    walking: Option<std::sync::mpsc::Receiver<crate::index::Index>>,
+    walking: Option<BackgroundScan>,
+}
+
+struct BackgroundScan {
+    receiver: std::sync::mpsc::Receiver<crate::index::Index>,
+    config: IndexConfig,
 }
 
 /// The longest the folder scan backs off to while nobody is at the machine.
@@ -139,10 +144,26 @@ impl Awareness {
 
         // A walk finished on its own thread: its changes are this
         // observation's, exactly as if it had been walked here.
-        if let Some(rx) = &self.walking {
-            match rx.try_recv() {
+        if let Some(scan) = &self.walking {
+            match scan.receiver.try_recv() {
                 Ok(fresh) => {
+                    let config_is_current = idx_cfg == Some(&scan.config);
                     self.walking = None;
+                    if !config_is_current {
+                        crate::heard!(Err::<(), _>(
+                            "discarded a background file scan started for an older configuration"
+                        ));
+                        return self.signals(
+                            plat,
+                            active,
+                            input_idle_secs,
+                            os_quiet,
+                            at_breakpoint,
+                            in_conversation,
+                            Changes::default(),
+                            t,
+                        );
+                    }
                     self.scans += 1;
                     let found = index.apply(fresh);
                     self.quiet_scans = if found.is_empty() {
@@ -184,13 +205,17 @@ impl Awareness {
                 self.last_index_scan = t;
                 let (tx, rx) = std::sync::mpsc::channel();
                 let cfg = cfg.clone();
+                let scan_cfg = cfg.clone();
                 let started = std::thread::Builder::new()
                     .name("atlas-index-walk".into())
                     .spawn(move || {
                         let _ = tx.send(crate::index::Index::scan(&cfg));
                     });
                 if started.is_ok() {
-                    self.walking = Some(rx);
+                    self.walking = Some(BackgroundScan {
+                        receiver: rx,
+                        config: scan_cfg,
+                    });
                 }
                 Changes::default()
             }

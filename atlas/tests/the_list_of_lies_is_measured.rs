@@ -27,12 +27,15 @@ mod common;
 
 /// `ToolsConfig`'s fields and the config type each one holds.
 fn tools_fields() -> Vec<String> {
-    let voice = fs::read_to_string("src/voice.rs").expect("src/voice.rs");
+    let voice = fs::read_to_string("src/voice.rs")
+        .unwrap_or_else(|error| panic!("read src/voice.rs for ToolsConfig scan: {error}"));
     let body = voice
         .split("pub struct ToolsConfig")
         .nth(1)
-        .expect("ToolsConfig is gone");
-    let body = &body[..body.find("\n}").expect("unterminated ToolsConfig")];
+        .unwrap_or_else(|| panic!("ToolsConfig is gone from src/voice.rs"));
+    let body = &body[..body
+        .find("\n}")
+        .unwrap_or_else(|| panic!("ToolsConfig in src/voice.rs is unterminated"))];
     body.lines()
         .filter_map(|l| {
             let l = l.trim();

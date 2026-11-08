@@ -366,7 +366,7 @@ fn xdg_folder(text: &str, var: &str, home: &Path) -> Option<PathBuf> {
 
 /// A path written out in full: "/home/x/Stuff", "D:\Photos". "D:\..." is
 /// read as a path on every system, so a test reads it the same anywhere.
-fn full_path(raw: &str) -> Option<PathBuf> {
+pub(crate) fn full_path(raw: &str) -> Option<PathBuf> {
     let raw = raw
         .trim()
         .trim_end_matches(['.', '?', '!', ','])

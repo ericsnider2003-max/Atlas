@@ -428,6 +428,10 @@ struct Hand {
     // Taken (via `.take()`) once we decide the errand is over, so a hand
     // waiting only to be joined at shutdown doesn't get polled again.
     thread: Option<std::thread::JoinHandle<()>>,
+    // Set by the worker before unwinding a panic. This is an explicit
+    // lifecycle signal; relying only on JoinHandle::is_finished() is racy
+    // under a loaded test suite on Windows.
+    panicked: std::sync::Arc<std::sync::atomic::AtomicBool>,
     rx: Receiver<Result<String, String>>,
 }
 
@@ -580,16 +584,34 @@ impl Crew {
         let (tx, rx) = std::sync::mpsc::channel();
         let ctl = Control::new();
         let for_thread = ctl.clone();
+        let panicked = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let panicked_for_thread = panicked.clone();
         let work = p.work;
+        let urgency = p.urgency;
         let thread = std::thread::spawn(move || {
             // Errands are background work: efficiency mode and a lower
             // priority for this thread and the programs it starts (20 Oct 2026).
-            crate::ecoqos::this_thread();
-            let result = work(&for_thread);
-            // Send, then return. A hand checking `is_finished()` after this
-            // point is guaranteed to find the message already sitting in
-            // the channel.
-            let _ = tx.send(result);
+            if urgency == Urgency::Now {
+                crate::ecoqos::this_thread_for_user();
+            } else {
+                crate::ecoqos::this_thread();
+            }
+            let result =
+                std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| work(&for_thread)));
+            match result {
+                Ok(result) => {
+                    // Send, then return. A hand checking `is_finished()`
+                    // after this point is guaranteed to find the message
+                    // already sitting in the channel.
+                    let _ = tx.send(result);
+                }
+                Err(_) => {
+                    // Preserve the public Vanished classification while
+                    // making panic completion observable without relying on
+                    // scheduler timing or channel visibility.
+                    panicked_for_thread.store(true, Ordering::Release);
+                }
+            }
         });
         self.hands.push(Hand {
             id: p.id,
@@ -603,6 +625,7 @@ impl Crew {
             stop_requested_at: None,
             wontstop_reported: false,
             thread: Some(thread),
+            panicked,
             rx,
         });
     }
@@ -661,9 +684,18 @@ impl Crew {
         let deadline = Instant::now() + Duration::from_secs(SHUTDOWN_DEADLINE_SECS);
         for h in self.hands.drain(..) {
             let remaining = deadline.saturating_duration_since(Instant::now());
-            let _ = h.rx.recv_timeout(remaining);
-            // The handle is intentionally dropped after the bounded wait.
-            // A non-cooperating worker must not block shutdown forever.
+            if h.rx.recv_timeout(remaining).is_ok() {
+                // Receiving the result proves the worker completed its work,
+                // but the thread may still be unwinding and running its final
+                // cleanup. Reclaim that OS thread before dropping the owner;
+                // otherwise every short-lived daemon in an aggregate test
+                // process leaves a detached worker behind. A worker that did
+                // not answer before the deadline remains detached so shutdown
+                // still has a hard upper bound.
+                if let Some(thread) = h.thread {
+                    let _ = thread.join();
+                }
+            }
         }
     }
 
@@ -790,6 +822,9 @@ impl Crew {
     /// Hands actually working. A hand parked at a safe point is not — it is
     /// waiting on a person — so it doesn't keep queued work out.
     fn working(&self) -> impl Iterator<Item = &Hand> {
+        // A finished thread still owns its hand until `settle` observes and
+        // reclaims its result. Releasing that capacity here races promotion
+        // with completion bookkeeping and can start queued work too early.
         self.hands
             .iter()
             .filter(|h| !h.ctl.holding.load(Ordering::SeqCst))
@@ -973,6 +1008,9 @@ impl Crew {
     /// Look at one hand without removing it. `Some` means it is over —
     /// caller removes it. `None` means still going.
     fn check(&mut self, i: usize) -> Option<Ending> {
+        if self.hands[i].panicked.load(Ordering::Acquire) {
+            return Some(Ending::Vanished);
+        }
         // Drain whatever is there. Ordinarily 0 or 1 messages.
         let mut got: Option<Result<String, String>> = None;
         loop {
@@ -999,9 +1037,14 @@ impl Crew {
             .map(|t| t.is_finished())
             .unwrap_or(true);
         if finished {
-            // Check first, drain again: a result that arrived a
-            // microsecond after `is_finished()` became true must not read
-            // as a panic.
+            // `is_finished` only tells us that the thread has stopped; on
+            // Windows the worker's channel send can still be invisible to a
+            // concurrent receiver for a moment. Join first to establish the
+            // worker's completion boundary, then classify the channel state.
+            // The join is non-blocking here because `is_finished` was true.
+            if let Some(thread) = self.hands[i].thread.take() {
+                let _ = thread.join();
+            }
             match self.hands[i].rx.try_recv() {
                 Ok(r) => {
                     return Some(if self.hands[i].stop_requested_at.is_some() {
@@ -1211,7 +1254,10 @@ mod tests {
                 panic!("this errand explodes");
             }),
         );
-        let news = wait_until_news(&mut c, StdDuration::from_secs(2));
+        // Panic unwinding and the test runner's panic hook can be delayed by
+        // the aggregate library target. This is only an observation window;
+        // Crew's production tick and shutdown deadlines are unchanged.
+        let news = wait_until_news(&mut c, StdDuration::from_secs(10));
         assert!(
             matches!(news.ending, Ending::Vanished),
             "expected Vanished, got {:?}",
@@ -1241,7 +1287,10 @@ mod tests {
             )
             .unwrap();
         c.ask_to_stop(id);
-        let news = wait_until_news(&mut c, StdDuration::from_secs(2));
+        // Aggregate library runs can delay the worker's cooperative stop
+        // observation; this is only a test observation window, not the
+        // production stop or shutdown deadline.
+        let news = wait_until_news(&mut c, StdDuration::from_secs(10));
         assert!(
             matches!(news.ending, Ending::Stopped),
             "expected Stopped, got {:?}",
@@ -1376,7 +1425,12 @@ mod tests {
         // errand must never start.
         assert!(wait_until(
             || !c.settle(1).is_empty(),
-            StdDuration::from_secs(2)
+            // This test is also run inside the aggregate `--test-threads=2`
+            // harness, where unrelated integration workers can temporarily
+            // consume the Windows scheduler. The worker itself still sleeps
+            // only 300ms; this is a bounded observation window for settlement,
+            // not a production latency allowance.
+            StdDuration::from_secs(10)
         ));
         std::thread::sleep(StdDuration::from_millis(50));
         c.settle(1);

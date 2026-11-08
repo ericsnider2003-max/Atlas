@@ -21,6 +21,49 @@ pub const APPROVAL_PREFIX: &str = "approval:";
 /// bounded local journal reaches this limit.
 pub const MAX_RECORDS: usize = 1_024;
 const MAX_JOURNAL_BYTES: usize = 4 * 1024 * 1024;
+static NEXT_JOB_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+
+/// Create a durable job id that remains unique across same-second launches
+/// and process restarts.
+pub fn unique_id(prefix: &str) -> String {
+    let sequence = NEXT_JOB_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    format!(
+        "{prefix}-{}-{}-{sequence}",
+        crate::store::now(),
+        std::process::id()
+    )
+}
+
+/// A side effect may already have happened when its terminal receipt cannot
+/// be saved. Callers use this wording in the reply/Hub projection so the
+/// owner is not told to repeat an action whose outcome is only unconfirmed.
+pub(crate) fn completion_receipt_warning(reply: &str) -> String {
+    format!(
+        "{} I couldn't save the completion receipt, so check before repeating.",
+        reply.trim_end()
+    )
+}
+
+pub(crate) fn completion_receipt_text(reply: String, receipt_saved: bool) -> String {
+    if receipt_saved {
+        reply
+    } else {
+        completion_receipt_warning(&reply)
+    }
+}
+
+pub(crate) fn completion_receipt_result(
+    result: Result<String, String>,
+    receipt_saved: bool,
+) -> Result<String, String> {
+    if receipt_saved {
+        result
+    } else {
+        result
+            .map(|text| completion_receipt_warning(&text))
+            .map_err(|text| completion_receipt_warning(&text))
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -55,6 +98,17 @@ pub struct Receipt {
     pub provenance: String,
     #[serde(default)]
     pub artifacts: Option<crate::artifact::Envelope>,
+    /// Capability-policy revision that authorized the side effect, when the
+    /// work crossed an explicit capability boundary.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub policy_revision: Option<String>,
+    /// Adapter identity preserved with the terminal receipt.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub execution: Option<crate::execution::ExecutionDescriptor>,
+    /// Validated evidence bundle bound to this terminal receipt, when the
+    /// writer had an evidence-producing completion path.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub evidence_bundle_id: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -67,8 +121,21 @@ pub struct Record {
     /// Last durable lifecycle/progress update, used by recovery inspection.
     #[serde(default)]
     pub updated_at: u64,
+    /// Monotonic per-record revision used to reject same-state stale
+    /// snapshots. Older journals deserialize as revision zero.
+    #[serde(default)]
+    pub revision: u64,
     #[serde(default)]
     pub artifacts: Option<crate::artifact::Envelope>,
+    /// Optional admission evidence carried by this same durable record.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub policy_revision: Option<String>,
+    /// Adapter identity bound before execution and retained through recovery.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub execution: Option<crate::execution::ExecutionDescriptor>,
+    /// Evidence bundle bound before a success receipt is made durable.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub evidence_bundle_id: Option<String>,
     /// The owner pressed "Drop it" on this ended job (20 Oct 2026). Only a
     /// finished record can be dismissed, and it is kept rather than deleted:
     /// it just stops being shown as something still to look at.
@@ -82,6 +149,10 @@ pub struct Record {
 }
 
 impl Record {
+    fn bump_revision(&mut self) {
+        self.revision = self.revision.saturating_add(1);
+    }
+
     pub fn planned(job_id: impl Into<String>, stage: impl Into<String>) -> Self {
         Self {
             job_id: job_id.into(),
@@ -90,7 +161,11 @@ impl Record {
             checkpoint: None,
             receipt: None,
             updated_at: crate::store::now(),
+            revision: 0,
             artifacts: None,
+            policy_revision: None,
+            execution: None,
+            evidence_bundle_id: None,
             dismissed: false,
             internal: false,
         }
@@ -105,6 +180,7 @@ impl Record {
             if next == State::Checkpointed {
                 self.checkpoint = Some(detail.into());
             }
+            self.bump_revision();
             return Ok(());
         }
         if !allowed(self.state, next) {
@@ -118,6 +194,7 @@ impl Record {
         if next == State::Checkpointed {
             self.checkpoint = Some(detail.into());
         }
+        self.bump_revision();
         Ok(())
     }
 
@@ -139,11 +216,15 @@ impl Record {
             detail,
             provenance: provenance.into(),
             artifacts: self.artifacts.clone(),
+            policy_revision: self.policy_revision.clone(),
+            execution: self.execution.clone(),
+            evidence_bundle_id: self.evidence_bundle_id.clone(),
         };
         self.receipt = Some(receipt.clone());
         if self.internal {
             self.dismissed = true;
         }
+        self.bump_revision();
         Ok(receipt)
     }
 
@@ -167,6 +248,53 @@ impl Record {
     pub fn heartbeat(&mut self, detail: impl Into<String>) {
         self.updated_at = crate::store::now();
         self.checkpoint = Some(detail.into());
+        self.bump_revision();
+    }
+
+    /// Bind the policy revision before execution. A terminal record cannot be
+    /// retroactively attributed to a different authority boundary.
+    pub fn bind_policy_revision(&mut self, revision: impl Into<String>) -> Result<(), String> {
+        if self.state.terminal() {
+            return Err("cannot bind a capability policy to a terminal job".into());
+        }
+        let revision = revision.into();
+        if revision.trim().is_empty() {
+            return Err("capability policy revision cannot be empty".into());
+        }
+        if self
+            .policy_revision
+            .as_deref()
+            .is_some_and(|existing| existing != revision)
+        {
+            return Err("job already has a different capability policy revision".into());
+        }
+        self.policy_revision = Some(revision);
+        self.updated_at = crate::store::now();
+        self.bump_revision();
+        Ok(())
+    }
+
+    /// Bind the adapter identity before execution. A later adapter cannot
+    /// silently replace the identity on a durable job or its receipt.
+    pub fn bind_execution_descriptor(
+        &mut self,
+        descriptor: crate::execution::ExecutionDescriptor,
+    ) -> Result<(), String> {
+        if self.state.terminal() {
+            return Err("cannot bind an execution descriptor to a terminal job".into());
+        }
+        descriptor.validate()?;
+        if self
+            .execution
+            .as_ref()
+            .is_some_and(|existing| existing != &descriptor)
+        {
+            return Err("job already has a different execution descriptor".into());
+        }
+        self.execution = Some(descriptor);
+        self.updated_at = crate::store::now();
+        self.bump_revision();
+        Ok(())
     }
 
     /// Translate the existing daemon outcome vocabulary into the durable
@@ -192,6 +320,11 @@ impl Record {
             )?)),
             crate::taskloop::Outcome::Failed(detail) => Ok(Some(self.finish(
                 State::Failed,
+                detail.clone(),
+                provenance,
+            )?)),
+            crate::taskloop::Outcome::Unknown(detail) => Ok(Some(self.finish(
+                State::Uncertain,
                 detail.clone(),
                 provenance,
             )?)),
@@ -315,7 +448,17 @@ pub fn finish(
             "a job ending must be a terminal state".into(),
         ));
     }
-    let mut records = load_checked(store)?;
+    // Terminal job receipts are worker-side durability, not a control-loop
+    // observation. Wait for an in-flight state writer so a successful task is
+    // never downgraded to an unconfirmed result merely because another
+    // journal update is finishing.
+    let _guard = store.transaction_waiting()?;
+    let mut records = crate::store::Store::load_checked_bounded_held::<Vec<Record>>(
+        store,
+        STORE_NAME,
+        MAX_JOURNAL_BYTES as u64,
+    )?
+    .unwrap_or_default();
     let at = match records.iter().position(|r| r.job_id == job_id) {
         Some(at) => at,
         None => {
@@ -323,7 +466,7 @@ pub fn finish(
             // A record that was never begun has nothing to be cut off: it is
             // closed at once.
             // unheard-ok: Planned to Running is always allowed, so this cannot fail
-            let _ = fresh.transition(State::Running, "started");
+            crate::heard!(fresh.transition(State::Running, "started"));
             records.push(fresh);
             records.len() - 1
         }
@@ -342,7 +485,73 @@ pub fn finish(
     closed.map_err(|error| {
         crate::error::AtlasError::Io(std::io::Error::new(std::io::ErrorKind::InvalidData, error))
     })?;
-    save(store, &records)
+    save_held(store, &records)
+}
+
+/// Finish a job only after a validated evidence bundle for the same job has
+/// been persisted. The evidence-first order means a crash cannot leave a
+/// successful generic job without its proof reference.
+pub(crate) fn finish_with_evidence(
+    store: &crate::store::Store,
+    job_id: &str,
+    stage: &str,
+    state: State,
+    detail: &str,
+    provenance: &str,
+    evidence: crate::evidence::Bundle,
+) -> crate::error::Result<()> {
+    if !state.terminal() {
+        return Err(crate::error::AtlasError::Config(
+            "a job ending must be a terminal state".into(),
+        ));
+    }
+    if evidence.receipt_job_id.as_deref() != Some(job_id) {
+        return Err(crate::error::AtlasError::Config(
+            "job evidence must reference the same job".into(),
+        ));
+    }
+    if state == State::Succeeded && evidence.state != crate::evidence::EvidenceState::Proven {
+        return Err(crate::error::AtlasError::Config(
+            "a succeeded job requires proven evidence".into(),
+        ));
+    }
+    evidence
+        .validate()
+        .map_err(crate::error::AtlasError::Config)?;
+    // The evidence and terminal job transition form one durable worker
+    // operation; waiting preserves the receipt instead of reporting a false
+    // persistence failure under concurrent state activity.
+    let _guard = store.transaction_waiting()?;
+    let mut records = crate::store::Store::load_checked_bounded_held::<Vec<Record>>(
+        store,
+        STORE_NAME,
+        MAX_JOURNAL_BYTES as u64,
+    )?
+    .unwrap_or_default();
+    let at = match records.iter().position(|r| r.job_id == job_id) {
+        Some(at) => at,
+        None => {
+            let mut fresh = Record::planned(job_id, stage);
+            crate::heard!(fresh.transition(State::Running, "started"));
+            records.push(fresh);
+            records.len() - 1
+        }
+    };
+    if records[at].state.terminal() {
+        return Ok(());
+    }
+
+    crate::evidence::upsert_held(store, evidence.clone())?;
+    records[at].evidence_bundle_id = Some(evidence.bundle_id.clone());
+    let closed = if state == State::Cancelled {
+        records[at].cancel(detail, provenance)
+    } else {
+        records[at].finish(state, detail, provenance)
+    };
+    closed.map_err(|error| {
+        crate::error::AtlasError::Io(std::io::Error::new(std::io::ErrorKind::InvalidData, error))
+    })?;
+    save_held(store, &records)
 }
 
 /// Mark an ended job as reviewed, so it leaves the Failed and Interrupted
@@ -350,9 +559,10 @@ pub fn finish(
 /// still waiting is first closed as cancelled (you dropped the question).
 pub fn dismiss(store: &crate::store::Store, job_id: &str) -> crate::error::Result<bool> {
     let mut records = load_checked(store)?;
-    if let Some(waiting) = records.iter_mut().find(|r| {
-        r.job_id == job_id && r.job_id.starts_with(APPROVAL_PREFIX) && !r.state.terminal()
-    }) {
+    if let Some(waiting) = records
+        .iter_mut()
+        .find(|r| r.job_id == job_id && r.state == State::AwaitingApproval)
+    {
         waiting
             .finish(
                 State::Cancelled,
@@ -387,12 +597,43 @@ fn process_start() -> u64 {
 /// A short stable key for a question, so the same one asked again is the same
 /// waiting approval.
 pub fn approval_key(kind: &str, what: &str) -> String {
+    let kind = kind.trim();
     let mut h: u64 = 0xcbf29ce484222325;
+    // The namespace is part of identity, not presentation. A chat question
+    // and a scheduled-job question can have identical wording but different
+    // owners and lifecycles; collapsing them would let one approval record
+    // stand in for the other after a restart.
+    for b in kind.trim().bytes().chain([0u8]) {
+        h ^= u64::from(b);
+        h = h.wrapping_mul(0x100000001b3);
+    }
     for b in what.trim().bytes() {
         h ^= u64::from(b);
         h = h.wrapping_mul(0x100000001b3);
     }
     format!("{APPROVAL_PREFIX}{kind}-{h:016x}")
+}
+
+/// The pre-namespace form used by approvals saved before the identity
+/// boundary was fixed. It is read only by `sync_approvals` so an upgrade does
+/// not create a second open question for the same pending work.
+fn legacy_approval_key(kind: &str, what: &str) -> String {
+    let mut h: u64 = 0xcbf29ce484222325;
+    for b in what.trim().bytes() {
+        h ^= u64::from(b);
+        h = h.wrapping_mul(0x100000001b3);
+    }
+    format!("{APPROVAL_PREFIX}{}-{h:016x}", kind.trim())
+}
+
+fn approval_kind_from_key(key: &str) -> Option<&str> {
+    let rest = key.strip_prefix(APPROVAL_PREFIX)?;
+    let kind_len = rest.len().checked_sub(17)?; // '-' plus the 16-digit hash
+    let (kind, suffix) = rest.split_at(kind_len);
+    (suffix.starts_with('-')
+        && suffix[1..].len() == 16
+        && suffix[1..].bytes().all(|b| b.is_ascii_hexdigit()))
+    .then_some(kind)
 }
 
 /// Make the saved approvals match what is waiting now (21 Oct 2026). `wanted`
@@ -410,6 +651,7 @@ pub fn sync_approvals(
     let mut records = load_checked(store)?;
     let mut changed = false;
     for (key, question) in wanted {
+        let stage: String = question.chars().take(160).collect();
         let open = records
             .iter_mut()
             .find(|r| r.job_id.starts_with(key.as_str()) && !r.state.terminal());
@@ -421,21 +663,46 @@ pub fn sync_approvals(
             }
             Some(_) => {}
             None => {
-                let stage: String = question.chars().take(160).collect();
-                let mut r = Record::planned(format!("{key}:{now}"), stage);
-                // unheard-ok: Planned to AwaitingApproval is always allowed
-                let _ = r.transition(State::AwaitingApproval, "waiting for your yes or no");
-                r.checkpoint = Some(
-                    "Waiting for your yes or no. If Atlas restarts it asks again; an old yes is never replayed."
-                        .into(),
-                );
-                records.push(r);
-                changed = true;
+                // Upgrade an open record written by the question-only key
+                // scheme. Matching the kind prefix and displayed question
+                // prevents unrelated approvals from being merged.
+                let legacy =
+                    approval_kind_from_key(key).map(|kind| legacy_approval_key(kind, question));
+                let parked_legacy = approval_kind_from_key(key) == Some("parked");
+                let migrated = legacy.and_then(|legacy_key| {
+                    records.iter_mut().find(|r| {
+                        (r.job_id.starts_with(legacy_key.as_str())
+                            || (parked_legacy && r.job_id.starts_with("chat:")))
+                            && r.state == State::AwaitingApproval
+                            && (!parked_legacy
+                                || r.checkpoint.as_deref()
+                                    == Some("parked for your decision; nothing was done"))
+                            && r.stage == stage
+                    })
+                });
+                if let Some(r) = migrated {
+                    r.job_id = format!("{key}:{now}");
+                    r.updated_at = now;
+                    r.bump_revision();
+                    changed = true;
+                } else {
+                    let mut r = Record::planned(format!("{key}:{now}"), stage);
+                    // unheard-ok: Planned to AwaitingApproval is always allowed
+                    let _ = r.transition(State::AwaitingApproval, "waiting for your yes or no");
+                    r.checkpoint = Some(
+                        "Waiting for your yes or no. If Atlas restarts it asks again; an old yes is never replayed."
+                            .into(),
+                    );
+                    records.push(r);
+                    changed = true;
+                }
             }
         }
     }
     for r in records.iter_mut().filter(|r| {
-        r.job_id.starts_with(APPROVAL_PREFIX)
+        (r.job_id.starts_with(APPROVAL_PREFIX)
+            || (r.job_id.starts_with("chat:")
+                && r.checkpoint.as_deref() == Some("parked for your decision; nothing was done")))
             && r.state == State::AwaitingApproval
             && !wanted.iter().any(|(k, _)| r.job_id.starts_with(k.as_str()))
     }) {
@@ -457,7 +724,7 @@ pub fn sync_approvals(
     Ok(changed)
 }
 
-pub fn save(store: &crate::store::Store, records: &[Record]) -> crate::error::Result<()> {
+fn prepared(records: &[Record]) -> crate::error::Result<Vec<Record>> {
     // Job receipts are written by both the control loop and background
     // workers. A worker must wait briefly for the daemon's grouped state
     // transaction instead of turning a successful action into a false
@@ -485,6 +752,11 @@ pub fn save(store: &crate::store::Store, records: &[Record]) -> crate::error::Re
             "durable job journal exceeds the local size bound".into(),
         ));
     }
+    Ok(value)
+}
+
+pub fn save(store: &crate::store::Store, records: &[Record]) -> crate::error::Result<()> {
+    let value = prepared(records)?;
     let mut last = None;
     // A research worker can be handing a terminal receipt back at the same
     // moment the next foreground request starts. Keep this bounded and local
@@ -506,14 +778,87 @@ pub fn save(store: &crate::store::Store, records: &[Record]) -> crate::error::Re
     }
 }
 
+fn save_held(store: &crate::store::Store, records: &[Record]) -> crate::error::Result<()> {
+    let value = prepared(records)?;
+    store.save_held(STORE_NAME, &value)
+}
+
 pub fn upsert(store: &crate::store::Store, record: Record) -> crate::error::Result<()> {
-    let mut records = load_checked(store)?;
+    upsert_inner(store, record, None)
+}
+
+/// Persist a job only if the caller's snapshot was based on `expected_revision`.
+/// Workers that mutate a copied record must use this boundary; the ordinary
+/// revision number alone is not a compare-and-swap token.
+pub fn upsert_cas(
+    store: &crate::store::Store,
+    record: Record,
+    expected_revision: u64,
+) -> crate::error::Result<()> {
+    upsert_inner(store, record, Some(expected_revision))
+}
+
+fn upsert_inner(
+    store: &crate::store::Store,
+    record: Record,
+    expected_revision: Option<u64>,
+) -> crate::error::Result<()> {
+    // Hold the state lock across the read, lifecycle decision, and write. A
+    // load followed by an unlocked save is still a stale-snapshot race even
+    // when the replacement itself has a timestamp guard.
+    let _guard = store.transaction_briefly()?;
+    let mut records = crate::store::Store::load_checked_bounded_held::<Vec<Record>>(
+        store,
+        STORE_NAME,
+        4 * 1024 * 1024,
+    )?
+    .unwrap_or_default();
     if let Some(existing) = records.iter_mut().find(|old| old.job_id == record.job_id) {
+        if let Some(expected) = expected_revision {
+            if expected != existing.revision {
+                return Err(crate::error::AtlasError::Config(format!(
+                    "stale job compare-and-swap for {}: expected revision {}, stored {}",
+                    record.job_id, expected, existing.revision
+                )));
+            }
+        }
+        // A delayed worker must not replace a newer lifecycle record. In
+        // particular, accepting an old non-terminal snapshot after a terminal
+        // receipt would erase the evidence that the work ended. Keep this
+        // guard at the shared job boundary so every caller gets the same
+        // conflict behavior. The revision guard below also covers two workers
+        // that update the same lifecycle state within one clock second.
+        if record.revision < existing.revision {
+            return Err(crate::error::AtlasError::Config(format!(
+                "stale job upsert for {}: incoming revision {} is older than stored revision {}",
+                record.job_id, record.revision, existing.revision
+            )));
+        }
+        if record.revision == existing.revision && &record != existing {
+            return Err(crate::error::AtlasError::Config(format!(
+                "job revision conflict for {} at revision {}",
+                record.job_id, record.revision
+            )));
+        }
+        if record.updated_at < existing.updated_at {
+            return Err(crate::error::AtlasError::Config(format!(
+                "stale job upsert for {}: incoming update {} is older than stored update {}",
+                record.job_id, record.updated_at, existing.updated_at
+            )));
+        }
+        if existing.state != record.state
+            && (existing.state.terminal() || !allowed(existing.state, record.state))
+        {
+            return Err(crate::error::AtlasError::Config(format!(
+                "stale job upsert for {}: cannot replace {:?} with {:?}",
+                record.job_id, existing.state, record.state
+            )));
+        }
         *existing = record;
     } else {
         records.push(record);
     }
-    save(store, &records)
+    save_held(store, &records)
 }
 
 fn bound(records: &mut Vec<Record>) -> crate::error::Result<()> {
@@ -582,7 +927,7 @@ fn reconcile_after_restart_except(
         }
         // A question waiting on you is not work that was cut off: it stays
         // for you to see and is asked again, never answered for you.
-        if record.job_id.starts_with(APPROVAL_PREFIX) && record.state == State::AwaitingApproval {
+        if record.state == State::AwaitingApproval {
             continue;
         }
         record
@@ -640,9 +985,10 @@ fn allowed(from: State, to: State) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{load_checked, upsert, Record, State, MAX_RECORDS};
+    use super::{load_checked, unique_id, upsert, upsert_cas, Record, State, MAX_RECORDS};
     use crate::brain::Llm;
     use crate::error::Result as AtlasResult;
+    use crate::execution::ExecutionDescriptor;
     use std::collections::VecDeque;
     use std::sync::{Arc, Mutex};
 
@@ -685,6 +1031,16 @@ mod tests {
         let mut job = Record::planned("one", "write");
         job.transition(State::Cancelled, "owner stopped").unwrap();
         assert!(job.finish(State::Succeeded, "done", "local").is_err());
+    }
+
+    #[test]
+    fn an_unconfirmed_completion_cannot_sound_clean() {
+        let ok = super::completion_receipt_result(Ok("sent".into()), false).unwrap();
+        let err = super::completion_receipt_result(Err("failed".into()), false).unwrap_err();
+        assert!(ok.contains("completion receipt"), "{ok}");
+        assert!(err.contains("completion receipt"), "{err}");
+        assert!(ok.contains("check before repeating"), "{ok}");
+        assert!(err.contains("check before repeating"), "{err}");
     }
 
     #[test]
@@ -764,6 +1120,58 @@ mod tests {
     }
 
     #[test]
+    fn execution_identity_survives_receipt_and_restart_reconciliation() {
+        let descriptor = ExecutionDescriptor::new(
+            "fixture-provider",
+            "fixture-model",
+            "fixture-runtime",
+            "fixture-device",
+            "fixture-network",
+            "fixture-cache",
+        )
+        .unwrap();
+        let root = std::env::temp_dir().join(format!(
+            "atlas-job-execution-descriptor-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        let store = crate::store::Store::new(&root);
+
+        let mut running = Record::planned("descriptor-restart", "local inference");
+        running
+            .bind_execution_descriptor(descriptor.clone())
+            .unwrap();
+        running
+            .transition(State::Running, "fixture started")
+            .unwrap();
+        upsert(&store, running).unwrap();
+
+        let reconciled = super::reconcile_after_restart(&store).unwrap();
+        assert_eq!(reconciled[0].execution, Some(descriptor.clone()));
+        assert_eq!(
+            reconciled[0].receipt.as_ref().unwrap().execution,
+            Some(descriptor.clone())
+        );
+
+        let mut finished = Record::planned("descriptor-finished", "local inference");
+        finished
+            .bind_execution_descriptor(descriptor.clone())
+            .unwrap();
+        finished
+            .transition(State::Running, "fixture started")
+            .unwrap();
+        let receipt = finished
+            .finish(State::Succeeded, "fixture complete", "fixture")
+            .unwrap();
+        assert_eq!(receipt.execution, Some(descriptor));
+        let bytes = serde_json::to_vec(&finished).unwrap();
+        let restored: Record = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(restored.receipt, finished.receipt);
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
     fn scripted_local_provider_multistage_work_reloads_with_checkpoint_and_artifacts() {
         let root =
             std::env::temp_dir().join(format!("atlas-job-provider-stages-{}", std::process::id()));
@@ -803,6 +1211,15 @@ mod tests {
         assert_eq!(restored[0].artifacts.as_ref().unwrap().output.len(), 1);
         assert_eq!(*calls.lock().unwrap(), 2);
         let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn unique_job_ids_do_not_collide_within_a_second() {
+        let first = unique_id("research");
+        let second = unique_id("research");
+        assert_ne!(first, second);
+        assert!(first.starts_with("research-"));
+        assert!(second.starts_with("research-"));
     }
 
     #[test]
@@ -897,6 +1314,94 @@ mod tests {
     }
 
     #[test]
+    fn stale_worker_cannot_replace_a_terminal_job_record() {
+        let root =
+            std::env::temp_dir().join(format!("atlas-job-stale-upsert-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        let store = crate::store::Store::new(&root);
+
+        let mut running = Record::planned("one", "research");
+        running.transition(State::Running, "started").unwrap();
+        upsert(&store, running.clone()).unwrap();
+        let stale_worker_snapshot = running;
+
+        let mut completed = stale_worker_snapshot.clone();
+        completed
+            .finish(State::Succeeded, "saved", "worker-a")
+            .unwrap();
+        upsert(&store, completed).unwrap();
+
+        let error = upsert(&store, stale_worker_snapshot).unwrap_err();
+        assert!(error.to_string().contains("stale job upsert"));
+        assert_eq!(load_checked(&store).unwrap()[0].state, State::Succeeded);
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn same_state_stale_worker_cannot_replace_a_newer_checkpoint_revision() {
+        let root = std::env::temp_dir().join(format!(
+            "atlas-job-same-state-revision-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        let store = crate::store::Store::new(&root);
+
+        let mut running = Record::planned("same-state", "research");
+        running.transition(State::Running, "started").unwrap();
+        // Simulate two workers completing within one wall-clock second. The
+        // timestamp alone must not decide which same-state snapshot wins.
+        running.updated_at = 100;
+        upsert(&store, running.clone()).unwrap();
+
+        let stale_worker = running.clone();
+        let mut fresh_worker = running.clone();
+        fresh_worker.heartbeat("source 1 complete");
+        fresh_worker.updated_at = 100;
+        upsert(&store, fresh_worker).unwrap();
+
+        let mut late = stale_worker;
+        late.checkpoint = Some("late stale checkpoint".into());
+        late.updated_at = 100;
+        let error = upsert(&store, late).unwrap_err();
+        assert!(error.to_string().contains("revision"));
+        assert_eq!(
+            load_checked(&store).unwrap()[0].checkpoint.as_deref(),
+            Some("source 1 complete")
+        );
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn compare_and_swap_rejects_a_stale_snapshot_even_with_a_higher_revision() {
+        let root = std::env::temp_dir().join(format!("atlas-job-cas-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        let store = crate::store::Store::new(&root);
+
+        let mut running = Record::planned("cas", "research");
+        running.transition(State::Running, "started").unwrap();
+        upsert(&store, running.clone()).unwrap();
+        let expected = running.revision;
+
+        let mut newer = running.clone();
+        newer.heartbeat("fresh checkpoint");
+        upsert_cas(&store, newer, expected).unwrap();
+
+        let mut stale = running;
+        stale.heartbeat("stale checkpoint one");
+        stale.heartbeat("stale checkpoint two");
+        let error = upsert_cas(&store, stale, expected).unwrap_err();
+        assert!(error.to_string().contains("compare-and-swap"));
+        assert_eq!(
+            load_checked(&store).unwrap()[0].checkpoint.as_deref(),
+            Some("fresh checkpoint")
+        );
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
     fn checked_job_reads_refuse_corrupt_state_without_replacing_it() {
         let root = std::env::temp_dir().join(format!("atlas-job-corrupt-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
@@ -931,6 +1436,36 @@ mod tests {
             .contains("restart"));
         assert!(super::reconcile_after_restart(&store).unwrap().is_empty());
         let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn restart_reconciliation_keeps_any_waiting_approval_without_replaying_it() {
+        let root = std::env::temp_dir().join(format!(
+            "atlas-job-parked-approval-restart-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&root); // unheard-ok: scratch test directory
+        std::fs::create_dir_all(&root).unwrap();
+        let store = crate::store::Store::new(&root);
+        let mut parked = Record::planned("chat:parked:1", "Shutdown workspace");
+        parked
+            .transition(
+                State::AwaitingApproval,
+                "parked for your decision; nothing was done",
+            )
+            .unwrap();
+        super::upsert(&store, parked).unwrap();
+
+        let changed = super::reconcile_after_restart(&store).unwrap();
+        assert!(
+            changed.is_empty(),
+            "a parked approval must be re-asked, not interrupted"
+        );
+        assert_eq!(
+            load_checked(&store).unwrap()[0].state,
+            State::AwaitingApproval
+        );
+        let _ = std::fs::remove_dir_all(root); // unheard-ok: scratch test directory
     }
 
     #[test]
@@ -971,6 +1506,30 @@ mod tests {
     }
 
     #[test]
+    fn a_legacy_job_record_without_revision_defaults_safely() {
+        let mut value = serde_json::to_value(Record::planned("legacy", "research")).unwrap();
+        value.as_object_mut().unwrap().remove("revision");
+        let restored: Record = serde_json::from_value(value).unwrap();
+        assert_eq!(restored.revision, 0);
+    }
+
+    #[test]
+    fn an_admitted_policy_revision_is_carried_into_the_durable_receipt() {
+        let mut record = Record::planned("one", "write");
+        record.bind_policy_revision("policy-rev-3").unwrap();
+        record.transition(State::Running, "started").unwrap();
+        let receipt = record.finish(State::Succeeded, "saved", "local").unwrap();
+        assert_eq!(receipt.policy_revision.as_deref(), Some("policy-rev-3"));
+        let encoded = serde_json::to_vec(&record).unwrap();
+        let restored: Record = serde_json::from_slice(&encoded).unwrap();
+        assert_eq!(restored.policy_revision.as_deref(), Some("policy-rev-3"));
+        assert_eq!(
+            restored.receipt.unwrap().policy_revision.as_deref(),
+            Some("policy-rev-3")
+        );
+    }
+
+    #[test]
     fn taskloop_outcomes_follow_the_durable_approval_and_receipt_path() {
         let mut record = Record::planned("one", "write");
         assert!(record
@@ -998,6 +1557,20 @@ mod tests {
                 "local"
             )
             .is_err());
+    }
+
+    #[test]
+    fn unknown_taskloop_outcome_closes_as_uncertain() {
+        let mut record = Record::planned("uncertain-task", "read");
+        let receipt = record
+            .apply_outcome(
+                &crate::taskloop::Outcome::Unknown("worker disappeared".into()),
+                "local",
+            )
+            .unwrap()
+            .unwrap();
+        assert_eq!(receipt.state, State::Uncertain);
+        assert_eq!(record.state, State::Uncertain);
     }
 
     #[test]
@@ -1246,5 +1819,117 @@ mod tests {
             .unwrap();
         assert!(closed.state == State::Cancelled && closed.dismissed);
         let _ = std::fs::remove_dir_all(&root); // unheard-ok: scratch test directory
+    }
+
+    #[test]
+    fn approval_namespaces_do_not_share_identity_when_the_question_matches() {
+        let question = "Close Chrome? Go ahead?";
+        assert_ne!(
+            super::approval_key("chat", question),
+            super::approval_key("sched", question),
+            "approval identity must include its owner namespace"
+        );
+    }
+
+    #[test]
+    fn approval_sync_migrates_an_open_legacy_record_without_duplication() {
+        let root = std::env::temp_dir().join(format!(
+            "atlas-job-approval-migration-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&root); // unheard-ok: scratch test directory
+        std::fs::create_dir_all(&root).unwrap();
+        let store = crate::store::Store::new(&root);
+        let question = "Close Chrome? Go ahead?";
+        let legacy = super::legacy_approval_key("chat", question);
+        let mut old = Record::planned(format!("{legacy}:123"), question);
+        old.transition(State::AwaitingApproval, "waiting for your yes or no")
+            .unwrap();
+        super::upsert(&store, old).unwrap();
+
+        let key = super::approval_key("chat", question);
+        assert!(super::sync_approvals(&store, &[(key.clone(), question.to_string())]).unwrap());
+        let records = load_checked(&store).unwrap();
+        assert_eq!(records.len(), 1, "upgrade must not create a duplicate");
+        assert!(records[0].job_id.starts_with(&key));
+        assert_eq!(records[0].state, State::AwaitingApproval);
+        let _ = std::fs::remove_dir_all(root); // unheard-ok: scratch test directory
+    }
+
+    #[test]
+    fn approval_sync_migrates_an_old_parked_chat_projection() {
+        let root =
+            std::env::temp_dir().join(format!("atlas-job-parked-migration-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root); // unheard-ok: scratch test directory
+        std::fs::create_dir_all(&root).unwrap();
+        let store = crate::store::Store::new(&root);
+        let request = "delete the old backups";
+        let mut old = Record::planned("chat:1790000000:p1", request);
+        old.transition(
+            State::AwaitingApproval,
+            "parked for your decision; nothing was done",
+        )
+        .unwrap();
+        super::upsert(&store, old).unwrap();
+
+        let key = super::approval_key("parked", request);
+        assert!(super::sync_approvals(&store, &[(key.clone(), request.to_string())]).unwrap());
+        let records = load_checked(&store).unwrap();
+        assert_eq!(records.len(), 1);
+        assert!(records[0].job_id.starts_with(&key));
+        assert_eq!(records[0].state, State::AwaitingApproval);
+        let _ = std::fs::remove_dir_all(root); // unheard-ok: scratch test directory
+    }
+
+    #[test]
+    fn parked_migration_does_not_capture_a_running_chat_job() {
+        let root = std::env::temp_dir().join(format!(
+            "atlas-job-parked-migration-running-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&root); // unheard-ok: scratch test directory
+        std::fs::create_dir_all(&root).unwrap();
+        let store = crate::store::Store::new(&root);
+        let request = "delete the old backups";
+        let mut running = Record::planned("chat:1790000000:running", request);
+        running
+            .transition(State::Running, "worker started")
+            .unwrap();
+        running.checkpoint = Some("parked for your decision; nothing was done".into());
+        super::upsert(&store, running).unwrap();
+
+        let key = super::approval_key("parked", request);
+        super::sync_approvals(&store, &[(key.clone(), request.to_string())]).unwrap();
+        let records = load_checked(&store).unwrap();
+        assert!(records
+            .iter()
+            .any(|r| { r.job_id == "chat:1790000000:running" && r.state == State::Running }));
+        assert!(records
+            .iter()
+            .any(|r| { r.job_id.starts_with(&key) && r.state == State::AwaitingApproval }));
+        let _ = std::fs::remove_dir_all(root); // unheard-ok: scratch test directory
+    }
+
+    #[test]
+    fn parked_cleanup_does_not_cancel_an_unrelated_chat_waiting_job() {
+        let root = std::env::temp_dir().join(format!(
+            "atlas-job-parked-cleanup-boundary-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&root); // unheard-ok: scratch test directory
+        std::fs::create_dir_all(&root).unwrap();
+        let store = crate::store::Store::new(&root);
+        let mut waiting = Record::planned("chat:unrelated", "a different question");
+        waiting
+            .transition(State::AwaitingApproval, "waiting for a different owner")
+            .unwrap();
+        super::upsert(&store, waiting).unwrap();
+
+        super::sync_approvals(&store, &[]).unwrap();
+        assert_eq!(
+            load_checked(&store).unwrap()[0].state,
+            State::AwaitingApproval
+        );
+        let _ = std::fs::remove_dir_all(root); // unheard-ok: scratch test directory
     }
 }

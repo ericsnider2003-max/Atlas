@@ -72,6 +72,15 @@ fn it_introduces_itself_and_lists_three_tools_none_of_which_approve() {
     assert!(!names
         .iter()
         .any(|n| n.contains("approve") || n.contains("deny")));
+    let ask = list["result"]["tools"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|tool| tool["name"] == "atlas_ask")
+        .unwrap();
+    assert_eq!(ask["annotations"]["readOnlyHint"], false);
+    assert_eq!(ask["annotations"]["destructiveHint"], true);
+    assert_eq!(ask["annotations"]["openWorldHint"], true);
 }
 
 #[test]

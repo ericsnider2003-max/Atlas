@@ -98,6 +98,9 @@ pub const NO_MODEL_YET: &str = "This phone has no language model of its own yet,
 pub fn as_a_phone(t: &mut crate::voice::ToolsConfig) {
     t.workday.trade_day.enabled = false;
     t.workday.trade_day.prompt = false;
+    // The phone may offer the free online fallback, but `online_ok` remains
+    // a separate runtime consent gate and still starts false.
+    t.models.online_second = true;
 }
 
 /// Which models this phone answers with, in a sentence, for the self-check.

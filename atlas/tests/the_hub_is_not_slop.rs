@@ -202,7 +202,13 @@ fn the_contrast_check_reads_the_hubs_own_colour_tokens() {
         .filter(|f| f.rule == "contrast" && f.detail.contains(".probe"))
         .collect();
     // The finding names the colourway it failed in.
-    let in_colourway = |way: &str| probe.iter().any(|f| f.detail.split_whitespace().any(|w| w.trim_matches(|c: char| !c.is_alphabetic()) == way));
+    let in_colourway = |way: &str| {
+        probe.iter().any(|f| {
+            f.detail
+                .split_whitespace()
+                .any(|w| w.trim_matches(|c: char| !c.is_alphabetic()) == way)
+        })
+    };
     assert!(in_colourway("light"), "{f:?}");
     assert!(in_colourway("dark"), "{f:?}");
 }

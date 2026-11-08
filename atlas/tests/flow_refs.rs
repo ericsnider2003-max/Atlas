@@ -296,6 +296,37 @@ fn unknown_placeholders_are_left_visible_rather_than_blanked() {
 }
 
 #[test]
+fn unresolved_placeholders_stop_a_workflow_before_command_execution() {
+    let run = Run::start(&Workflow {
+        name: "strict expansion".into(),
+        triggers: vec![],
+        steps: vec![Step::new("open {missing}")],
+    });
+    assert_eq!(
+        run.next(),
+        Next::Stopped("workflow command has unresolved placeholder(s): {missing}".into())
+    );
+}
+
+#[test]
+fn checked_expansion_rejects_malformed_placeholders_and_deduplicates_names() {
+    let mut out = BTreeMap::new();
+    out.insert("known".to_string(), "value".to_string());
+    assert_eq!(
+        atlas::flow::expand_checked("{known} {missing} {missing}", &out),
+        Err("workflow command has unresolved placeholder(s): {missing}".into())
+    );
+    assert_eq!(
+        atlas::flow::expand_checked("open {missing", &out),
+        Err("workflow command has an unclosed placeholder at character 5".into())
+    );
+    assert_eq!(
+        atlas::flow::expand_checked("open {}", &out),
+        Err("workflow command has an empty placeholder at character 5".into())
+    );
+}
+
+#[test]
 fn a_sequence_you_performed_becomes_a_named_chain() {
     let mut lib = Library::default();
     let w = lib.record(

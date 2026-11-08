@@ -82,7 +82,8 @@ impl Decision {
 /// rather than a drawing. One place, so the rule and the handler agree.
 pub fn fetches_the_picture_maker(said: &str) -> bool {
     let l = said.to_lowercase();
-    l.contains("picture maker") && (l.contains("get") || l.contains("download") || l.contains("fetch"))
+    l.contains("picture maker")
+        && (l.contains("get") || l.contains("download") || l.contains("fetch"))
 }
 
 /// The acts that can't be taken back and so are always asked about first,

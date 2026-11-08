@@ -49,6 +49,24 @@ fn the_two_levels_are_distinguishable_in_the_file() {
 }
 
 #[test]
+fn durable_logs_scrub_secrets_before_writing_them() {
+    let dir = tmp("redaction");
+    let log = Log::new(&dir, 1024 * 1024);
+    let secret = "AKIAIOSFODNN7EXAMPLE";
+    log.warn(&format!("provider rejected {secret}"));
+    let text = std::fs::read_to_string(dir.join("atlas.log")).expect("the log file");
+
+    assert!(
+        !text.contains(secret),
+        "raw secret reached durable log: {text}"
+    );
+    assert!(
+        text.contains("⟦AWS_KEY_1⟧"),
+        "redaction placeholder missing from durable log: {text}"
+    );
+}
+
+#[test]
 fn failures_are_warnings_and_refusals_are_not() {
     // Read out of `daemon.rs` itself, because the rule is only worth having
     // if it holds at the call sites. This is the same shape as the other

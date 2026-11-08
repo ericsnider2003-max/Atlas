@@ -353,6 +353,23 @@ fn asking_for_a_model_by_name_gets_that_one() {
 }
 
 #[test]
+fn an_explicit_model_that_does_not_fit_is_not_started() {
+    let dir = a_folder("prefer-over-budget");
+    let mut cfg = cfg_at(&dir);
+    cfg.prefer = "large-7b".into();
+    let (registry, _) = Registry::scan_reporting(&dir);
+    let large = registry.get("large-7b").unwrap();
+    let budget = estimate_memory(large, cfg.context).saturating_sub(1);
+    assert!(
+        registry.choose_for(&cfg, budget).is_none(),
+        "an explicit preference bypassed runtime admission"
+    );
+    assert!(registry
+        .explain_for(&cfg, &machine(64_000, 0), budget)
+        .contains("Nothing fits"));
+}
+
+#[test]
 fn the_explanation_names_the_number_it_was_deciding_against() {
     // "It used the small one" is only not a mystery if you can see the budget.
     let dir = a_folder("why");
@@ -720,14 +737,16 @@ fn a_hand_written_connection_is_never_silently_overridden() {
         .find("fn model_connection")
         .expect("the derived connection is gone");
     assert!(
-        src[at..at + 400].contains("atlas::models::connection(tc)"),
+        src[at..at + 500].contains("atlas::models::connection_checked(tc)"),
         "main's doors no longer use the library's connection"
     );
     let lib = std::fs::read_to_string("src/models.rs").expect("models.rs");
     let at = lib
         .find("pub fn connection(")
         .expect("models::connection is gone");
-    let body = &lib[at..at + 1600];
+    // The private-provider boundary is part of this function now; keep the
+    // inspected window large enough to cover the explicit-vs-derived branch.
+    let body = &lib[at..at + 3200];
     let mobile = std::fs::read_to_string("src/mobile.rs").expect("mobile.rs");
     assert!(
         mobile.contains("crate::models::connection(tools)"),

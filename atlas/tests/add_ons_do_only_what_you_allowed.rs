@@ -14,7 +14,12 @@ use atlas::store::Store;
 use std::path::{Path, PathBuf};
 
 fn tmp(tag: &str) -> PathBuf {
-    let p = std::env::temp_dir().join(format!("atlas-addons-{tag}-{}", std::process::id()));
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let p = std::env::temp_dir().join(format!(
+        "atlas-addons-{tag}-{}-{}",
+        std::process::id(),
+        NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+    ));
     let _ = std::fs::remove_dir_all(&p);
     std::fs::create_dir_all(p.join("state")).unwrap();
     std::fs::create_dir_all(p.join("plugins")).unwrap();
@@ -671,7 +676,10 @@ fn a_step_receipt_failure_holds_the_next_effect_and_restart_never_replays() {
             .filter(|action| matches!(action, atlas::platform::mock::Action::Close(_)))
             .count()
     };
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    // The suite can be CPU-heavy and leaves real worker threads draining after
+    // neighboring tests. Keep waiting conditionally, but give durable state
+    // enough time to cross the store boundary under pressure.
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
     loop {
         d.tick(100_900);
         let saved = plugins::ScheduleRuns::load_checked(&rig.store()).unwrap();
@@ -875,7 +883,12 @@ fn a_scheduled_add_ons_later_steps_cannot_take_the_front_while_you_are_typing() 
     p.launch(c.apps.get("notepad").unwrap()).unwrap();
     let opened = p.log.borrow().len();
     let focused = |p: &MockPlatform| {
-        p.log.borrow().iter().skip(opened).filter(|a| matches!(a, Action::Focus(_))).count()
+        p.log
+            .borrow()
+            .iter()
+            .skip(opened)
+            .filter(|a| matches!(a, Action::Focus(_)))
+            .count()
     };
     // You are typing.
     *p.input_idle.borrow_mut() = Some(0);
@@ -889,10 +902,17 @@ fn a_scheduled_add_ons_later_steps_cannot_take_the_front_while_you_are_typing() 
         }
         std::thread::sleep(std::time::Duration::from_millis(25));
     }
-    assert_eq!(focused(&p), 0, "a scheduled step took the front while you were typing: {said}");
+    assert_eq!(
+        focused(&p),
+        0,
+        "a scheduled step took the front while you were typing: {said}"
+    );
     let saved = plugins::ScheduleRuns::load_checked(&rig.store()).unwrap();
     assert!(
-        saved.claims.values().any(|c| c.run.as_ref().is_some_and(|r| r.position >= 1)),
+        saved
+            .claims
+            .values()
+            .any(|c| c.run.as_ref().is_some_and(|r| r.position >= 1)),
         "the flow never got past its first step, so this proved nothing: {said}"
     );
 

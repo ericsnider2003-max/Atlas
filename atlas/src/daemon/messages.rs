@@ -1289,9 +1289,7 @@ impl<'a> Daemon<'a> {
                 );
             }
             Intent::TypeCode(_) if self.code_target().is_none() => {
-                return Some(
-                    "There's nothing in front of you for me to type a code into.".into(),
-                );
+                return Some("There's nothing in front of you for me to type a code into.".into());
             }
             _ => {}
         }

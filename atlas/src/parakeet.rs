@@ -52,6 +52,23 @@ pub fn text_from(answer: &str) -> Option<String> {
 
 static GENERATION: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 
+/// Do not start the roughly 700MB recogniser with the last few megabytes of
+/// the machine already spoken for. The existing caller treats a provider
+/// error as a reason to use Whisper, so this preserves hearing instead of
+/// gambling on Windows paging the model in under pressure.
+const ADMISSION_HEADROOM_MB: u64 = 256;
+
+fn memory_admission_reason(free_mb: Option<u64>) -> Option<String> {
+    crate::resource_admission::below_threshold(
+        free_mb,
+        crate::lifecycle::typical_mb("parakeet"),
+        ADMISSION_HEADROOM_MB,
+    )
+    .map(|(free, required)| {
+        format!("Parakeet needs about {required}MB free; only {free}MB is available")
+    })
+}
+
 pub(crate) fn cancellation_epoch() -> usize {
     GENERATION.load(std::sync::atomic::Ordering::SeqCst)
 }
@@ -75,6 +92,9 @@ pub fn transcribe_file_until(
         program: cli,
         model,
     } = installed(root)?;
+    if let Some(why) = memory_admission_reason(crate::relief::available_mb()) {
+        return Some(Err(AtlasError::Platform(why)));
+    }
     let generation = GENERATION.load(std::sync::atomic::Ordering::SeqCst);
     let stopped = || stop() || GENERATION.load(std::sync::atomic::Ordering::SeqCst) != generation;
     Some((|| {
@@ -224,5 +244,22 @@ mod native_roundtrip_proof {
         );
         assert!(cancel_started.elapsed() < Duration::from_secs(2));
         eprintln!("socket-free native ASR cold={cold:?} repeat={repeat:?} command={command_time:?}; narration={heard}; command={command}; cancel={:?}", cancel_started.elapsed());
+    }
+}
+
+#[cfg(test)]
+mod admission_tests {
+    use super::memory_admission_reason;
+
+    #[test]
+    fn low_memory_refuses_parakeet_before_process_start() {
+        let why = memory_admission_reason(Some(800)).expect("low memory must be refused");
+        assert!(why.contains("only 800MB is available"), "{why}");
+    }
+
+    #[test]
+    fn enough_or_unknown_memory_keeps_the_provider_available() {
+        assert!(memory_admission_reason(Some(1_000)).is_none());
+        assert!(memory_admission_reason(None).is_none());
     }
 }

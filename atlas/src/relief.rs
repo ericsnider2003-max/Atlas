@@ -112,7 +112,10 @@ impl Report {
 
     /// Megabytes of system memory that came back, when both readings exist.
     pub fn available_gain_mb(&self) -> Option<u64> {
-        Some(self.available_after_mb?.saturating_sub(self.available_before_mb?))
+        Some(
+            self.available_after_mb?
+                .saturating_sub(self.available_before_mb?),
+        )
     }
 
     /// Bytes given back, when both readings exist.

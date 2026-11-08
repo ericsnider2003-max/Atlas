@@ -30,6 +30,22 @@ struct Real {
             Option<atlas::models::ServerTimings>,
         )>,
     >,
+    prompts: Mutex<Vec<String>>,
+}
+
+impl Real {
+    fn remember_prompt(&self, req: &ChatRequest) {
+        self.prompts
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .push(
+                req.messages
+                    .iter()
+                    .map(|message| message.content.as_str())
+                    .collect::<Vec<_>>()
+                    .join("\n"),
+            );
+    }
 }
 
 impl Llm for Real {
@@ -42,6 +58,7 @@ impl Llm for Real {
             max_tokens: 300,
             ..Default::default()
         };
+        self.remember_prompt(&req);
         atlas::models::chat_call(&self.url, &req, &mut |_| true).map(|r| r.text)
     }
     fn native_chat(&self) -> bool {
@@ -56,6 +73,7 @@ impl Llm for Real {
         on_text: &mut dyn FnMut(&str) -> bool,
         keep_going: &dyn Fn() -> bool,
     ) -> atlas::error::Result<ChatReply> {
+        self.remember_prompt(req);
         let started = Instant::now();
         let reply = atlas::models::chat_call_until(&self.url, req, on_text, keep_going);
         let tools = reply
@@ -73,12 +91,15 @@ impl Llm for Real {
             .map(|m| m.content.chars().count())
             .sum::<usize>()
             + req.tools.iter().map(|t| t.to_string().len()).sum::<usize>();
-        self.seen.lock().unwrap().push((
-            chars,
-            started.elapsed().as_millis() as u64,
-            tools,
-            atlas::models::take_last_timings(),
-        ));
+        self.seen
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .push((
+                chars,
+                started.elapsed().as_millis() as u64,
+                tools,
+                atlas::models::take_last_timings(),
+            ));
         reply
     }
     fn chat(
@@ -86,6 +107,7 @@ impl Llm for Real {
         req: &ChatRequest,
         on_text: &mut dyn FnMut(&str) -> bool,
     ) -> atlas::error::Result<ChatReply> {
+        self.remember_prompt(req);
         let started = Instant::now();
         let r = atlas::models::chat_call(&self.url, req, on_text);
         let took = started.elapsed().as_millis() as u64;
@@ -106,7 +128,7 @@ impl Llm for Real {
             + req.tools.iter().map(|t| t.to_string().len()).sum::<usize>();
         self.seen
             .lock()
-            .unwrap()
+            .unwrap_or_else(|error| error.into_inner())
             .push((chars, took, tools, atlas::models::take_last_timings()));
         r
     }
@@ -194,6 +216,7 @@ fn his_sentences_against_a_real_model() {
     let llm = Arc::new(Real {
         url,
         seen: Mutex::new(Vec::new()),
+        prompts: Mutex::new(Vec::new()),
     });
     let mut d = Daemon::new(
         &c,
@@ -265,6 +288,94 @@ fn his_sentences_against_a_real_model() {
         "REAL {right} of {} requests reached the right tool ({routed} went to the model)",
         REQUESTS.len()
     );
+    if std::env::var_os("ATLAS_LIVE_RESEARCH").is_some() {
+        let ack = d.turn(
+            "research the current Rust programming language release schedule and write me a report",
+            t + 60,
+        );
+        println!("LIVE research ack: {ack}");
+        assert!(
+            ack.to_lowercase().contains("looking into") || ack.to_lowercase().contains("research"),
+            "live research did not acknowledge the request: {ack}"
+        );
+        // Research is a background job with a configurable production budget.
+        // Derive the live acceptance window from the same loaded configuration
+        // rather than rejecting a valid worker before Atlas's contract allows
+        // it to finish. The grace period covers the final daemon tick and
+        // report-file observation without changing the production deadline.
+        let research_budget = c
+            .tools
+            .as_ref()
+            .map(|tools| tools.research.deadline_secs)
+            .unwrap_or(600);
+        let deadline =
+            Instant::now() + std::time::Duration::from_secs(research_budget.saturating_add(30));
+        let mut report = String::new();
+        let mut tick_t = t + 61;
+        while Instant::now() < deadline {
+            for line in d.tick(tick_t) {
+                let lower = line.to_lowercase();
+                if !lower.contains("no connection")
+                    && lower.contains("rust")
+                    && (lower.contains("release") || lower.contains("schedule"))
+                {
+                    report.push_str(&line);
+                    report.push('\n');
+                }
+            }
+            if report.to_lowercase().contains("rust")
+                && (report.to_lowercase().contains("release")
+                    || report.to_lowercase().contains("schedule"))
+            {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(250));
+            tick_t += 1;
+        }
+        println!("LIVE research report: {report}");
+        let report_body = report
+            .split_once(':')
+            .map(|(_, body)| body)
+            .unwrap_or(report.as_str());
+        let report_lower = report_body.to_lowercase();
+        let language_release = report_lower.contains("rust programming language")
+            || report_lower.contains("rust 1.")
+            || report_lower.contains("rust release train");
+        assert!(
+            language_release
+                && (report_lower.contains("release") || report_lower.contains("schedule"))
+                && !report_lower.contains("no connection")
+                && !report_lower.contains("couldn't finish")
+                && !report_lower.contains("every source")
+                && !report_lower.contains("no relevant sources")
+                && !report_lower.contains("outstanding list")
+                && !report_lower.contains("not provided in the sources"),
+            "live research did not produce a fresh, topic-matching report: {report}"
+        );
+        let notes = dir.join("data/notes");
+        let filed = notes
+            .exists()
+            .then(|| {
+                std::fs::read_dir(&notes)
+                    .ok()?
+                    .flatten()
+                    .filter_map(|entry| std::fs::read_to_string(entry.path()).ok())
+                    .find(|text| {
+                        let lower = text.to_lowercase();
+                        (lower.contains("rust programming language")
+                            || lower.contains("rust 1.")
+                            || lower.contains("rust release train"))
+                            && (lower.contains("release") || lower.contains("schedule"))
+                            && !lower.contains("no connection")
+                    })
+            })
+            .flatten();
+        assert!(
+            filed.is_some(),
+            "live research produced no fresh topic-matching filed note in {}",
+            notes.display()
+        );
+    }
     let _ = std::fs::remove_dir_all(&dir);
 }
 
@@ -281,4 +392,245 @@ fn write_the_late_template_when_asked() {
     ))
     .unwrap();
     std::fs::write(out, t).unwrap();
+}
+
+/// Live council acceptance test.  This is intentionally opt-in: unlike the
+/// repository council tests above, it starts no model and makes no claim when
+/// the local endpoint is absent.  When enabled it proves that Atlas's actual
+/// background council path called the configured model seats and produced a
+/// non-technical outcome.
+#[test]
+fn live_local_model_can_run_atlas_council() {
+    let Ok(url) = std::env::var("ATLAS_REAL_MODEL_URL") else {
+        return;
+    };
+    if std::env::var_os("ATLAS_LIVE_COUNCIL").is_none() {
+        return;
+    }
+    let c = atlas::config::Config::load(Path::new("config")).unwrap();
+    let p = MockPlatform::new(vec![Monitor {
+        id: 1,
+        x: 0,
+        y: 0,
+        width: 1920,
+        height: 1040,
+        primary: true,
+    }]);
+    let dir = std::env::temp_dir().join(format!("atlas-live-council-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let llm = Arc::new(Real {
+        url,
+        seen: Mutex::new(Vec::new()),
+        prompts: Mutex::new(Vec::new()),
+    });
+    let mut d = Daemon::new(
+        &c,
+        &p,
+        Some(llm.clone() as Arc<dyn Llm>),
+        Store::new(dir.clone()),
+        Proactive::new(ProactiveConfig::default()),
+    );
+    d.tick(1_790_760_000);
+    let ack = d.ask_the_room("should I upgrade the RAM");
+    assert!(
+        ack.contains("Asking the room"),
+        "live council was not queued: {ack}"
+    );
+
+    let deadline = Instant::now() + std::time::Duration::from_secs(180);
+    let mut said = Vec::new();
+    let mut t = 1_790_760_001;
+    while Instant::now() < deadline {
+        said.extend(d.tick(t));
+        if d.crew.active() == 0 && !said.is_empty() {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(250));
+        t += 1;
+    }
+    let joined = said.join(" ");
+    let calls = d
+        .trace
+        .calls
+        .iter()
+        .filter(|call| call.asked_by == "council")
+        .count();
+    let seats: std::collections::BTreeSet<String> = d
+        .trace
+        .calls
+        .iter()
+        .filter(|call| call.asked_by == "council")
+        .filter_map(|call| call.seat.clone())
+        .collect();
+    println!("LIVE council calls={calls}: {joined}");
+    assert_eq!(calls, 5, "live council did not call five independent seats");
+    assert_eq!(
+        seats.len(),
+        5,
+        "live council lost per-seat provenance: {seats:?}"
+    );
+    assert!(
+        !joined.contains("seats answered")
+            && (joined.contains("for") || joined.contains("against") || joined.contains("depends")),
+        "live council produced no usable verdict: {joined}"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn live_local_model_researches_and_files_a_report() {
+    let Ok(url) = std::env::var("ATLAS_REAL_MODEL_URL") else {
+        return;
+    };
+    if std::env::var_os("ATLAS_LIVE_RESEARCH").is_none() {
+        return;
+    }
+    let c = atlas::config::Config::load(Path::new("config")).unwrap();
+    let tools = c.tools.unwrap();
+    let dir = std::env::temp_dir().join(format!("atlas-live-research-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let notes = dir.join("notes");
+    let mut research = tools.research.resolved(&dir);
+    research.notes_dir = notes.to_string_lossy().into_owned();
+    let engine = atlas::research::Research {
+        cfg: research,
+        vars: atlas::tools::Vars::from(tools.vars),
+        browser: None,
+    };
+    let llm = Real {
+        url,
+        seen: Mutex::new(Vec::new()),
+        prompts: Mutex::new(Vec::new()),
+    };
+    let note = engine.run("Rust programming language", &llm).unwrap();
+    assert!(!note.sources.is_empty(), "live research found no sources");
+    let path = engine.save(&note).unwrap();
+    let saved = std::fs::read_to_string(&path).unwrap();
+    assert!(
+        saved.contains("## Sources"),
+        "saved report omitted its sources"
+    );
+    assert!(saved.contains("Rust programming language"));
+    println!(
+        "LIVE research sources={} report={}",
+        note.sources.len(),
+        path
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// Proves that a real-model conversation survives daemon reconstruction. This
+/// is opt-in because it requires a running private model and is intentionally
+/// not satisfied by the scripted restart tests.
+#[test]
+fn live_local_model_memory_survives_restart() {
+    let Ok(url) = std::env::var("ATLAS_REAL_MODEL_URL") else {
+        return;
+    };
+    if std::env::var_os("ATLAS_LIVE_MEMORY").is_none() {
+        return;
+    }
+
+    let c = atlas::config::Config::load(Path::new("config")).unwrap();
+    let p = MockPlatform::new(vec![Monitor {
+        id: 1,
+        x: 0,
+        y: 0,
+        width: 1920,
+        height: 1040,
+        primary: true,
+    }]);
+    let nonce = format!(
+        "atlas-memory-nonce-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    );
+    let dir = std::env::temp_dir().join(format!("atlas-live-memory-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let llm = Arc::new(Real {
+        url: url.clone(),
+        seen: Mutex::new(Vec::new()),
+        prompts: Mutex::new(Vec::new()),
+    });
+    let store = Store::new(dir.clone());
+    let mut first = Daemon::new(
+        &c,
+        &p,
+        Some(llm.clone() as Arc<dyn Llm>),
+        store,
+        Proactive::new(ProactiveConfig::default()),
+    );
+    first.tick(1_790_760_000);
+
+    let first_reply = first.turn(
+        &format!("Remember this private fact for later: the exact code is {nonce}."),
+        1_790_760_001,
+    );
+    assert!(!first_reply.trim().is_empty(), "first turn had no reply");
+    let unrelated = first.turn("What is two plus two? Answer briefly.", 1_790_760_002);
+    assert!(
+        !unrelated.trim().is_empty(),
+        "unrelated turn did not complete"
+    );
+    first.persist();
+
+    let saved = Store::new(dir.clone())
+        .load_checked::<atlas::thread::Thread>("thread")
+        .unwrap()
+        .expect("thread record was not persisted before restart");
+    assert!(
+        saved
+            .recent
+            .iter()
+            .any(|exchange| exchange.said.contains(&nonce)),
+        "persisted thread omitted the nonce: {saved:?}"
+    );
+    drop(first);
+
+    let restarted_store = Store::new(dir.clone());
+    let before_restart = restarted_store
+        .load_checked::<atlas::thread::Thread>("thread")
+        .unwrap();
+    assert!(
+        before_restart.is_some(),
+        "thread record vanished before reconstruction"
+    );
+    let mut second = Daemon::new(
+        &c,
+        &p,
+        Some(llm.clone() as Arc<dyn Llm>),
+        restarted_store,
+        Proactive::new(ProactiveConfig::default()),
+    );
+    let follow_up = second.turn(
+        "What exact private code did I ask you to remember earlier?",
+        1_790_760_003,
+    );
+    let response_has_nonce = follow_up.contains(&nonce);
+    let prompt_has_nonce = llm
+        .prompts
+        .lock()
+        .unwrap()
+        .iter()
+        .any(|prompt| prompt.contains(&nonce));
+    assert!(
+        response_has_nonce || prompt_has_nonce,
+        "restart lost the nonce in both response and model prompt: {follow_up}"
+    );
+
+    second.persist();
+    let after_restart = Store::new(dir.clone())
+        .load_checked::<atlas::thread::Thread>("thread")
+        .unwrap();
+    assert!(
+        after_restart.is_some(),
+        "thread record missing after reconstruction"
+    );
+    println!(
+        "LIVE memory restart response_has_nonce={response_has_nonce} prompt_has_nonce={prompt_has_nonce}"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
 }

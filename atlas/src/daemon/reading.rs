@@ -460,6 +460,8 @@ impl<'a> Daemon<'a> {
             let cut = [
                 " and write it up",
                 " and write up",
+                " and write me a report",
+                " and write a report",
                 " and give me a write up",
                 " and report back",
             ]
@@ -532,27 +534,33 @@ impl<'a> Daemon<'a> {
         // place that answers "the network was needed and isn't here" -- rather
         // than a second copy hand-written at the point of use. Research is the
         // only `Need::Internet` intent, so this is that function's real home.
-        if self.connectivity.cached() == Reach::Offline {
+        // `status_now` is intentionally asynchronous for the regular tick,
+        // so the first tick may leave the cache at `Unknown` while its probe
+        // is still running. A user-requested research job cannot interpret
+        // that transient state as confirmed offline: perform the bounded
+        // synchronous probe here and defer only on a real Offline result.
+        // A user-requested research job is itself a fresh connectivity use.
+        // Refresh even a cached Offline result: the regular tick may have
+        // probed at an old synthetic/test time or while the machine was
+        // temporarily disconnected, and reusing that result would turn a
+        // recovered network into a false permanent deferral.
+        self.connectivity.invalidate();
+        let reach = self.connectivity.status(crate::store::now());
+        if reach == crate::connectivity::Reach::Offline {
             return Outcome::Failed(crate::connectivity::deferral_message(&Intent::Research(
                 topic.to_string(),
             )));
         }
-        // Reading the sources and writing them up is background work: the
-        // deep model's, when there is one (`deepbrain`).
-        let Some(llm) = self.background_llm() else {
-            return Outcome::Failed(format!(
-                "I can search for {topic}, but I need a model to read the sources and write it up, and I haven't got one configured."
-            ));
-        };
-        // When online and Cloudflare is set up, the heavy read-and-write-up
-        // step is delegated to a worker instead of grinding on the local 3B,
-        // and the local model becomes the *checker* — it reads the delegated
-        // write-up back and says whether it holds. Offline, or with no
-        // provider, `worker` is None and the local model does the work as
-        // before. This is the whole "delegate out, pull back, verify in the
-        // background" flow, on the existing research errand.
-        let cf_fetch = self.tools_cfg().cloudflare.fetch.clone();
-        let worker = self.cloudflare_worker();
+        // Keep the local model optional until after worker admission. A
+        // configured FreeLLMAPI gateway can be the research writer by itself;
+        // requiring `background_llm()` first made that route impossible on a
+        // machine that had a gateway but no local background model. The local
+        // model remains the verifier and one-shot fallback when available.
+        let local_llm = self.background_llm();
+        let cloudflare_cfg = self.tools_cfg().cloudflare.clone();
+        let freellmapi_cfg = self.tools_cfg().freellmapi.clone();
+        let (worker, delegated_with_cloudflare) =
+            super::prefer_free_gateway(self.freellmapi_worker(), || self.cloudflare_worker());
         // The vars the errand runs its tools with. When delegating, they
         // carry the Cloudflare account id and token so a Browser Rendering
         // fetch can authenticate; otherwise they are just the shared vars.
@@ -561,9 +569,10 @@ impl<'a> Daemon<'a> {
             None => self.tools_ref().map(|t| t.vars.clone()).unwrap_or_default(),
         };
         // Delegated page fetch (Browser Rendering) on Cloudflare's side, when
-        // it is offered and we are delegating — lighter on this machine.
-        if worker.is_some() {
-            if let Some(browser_fetch) = cf_fetch {
+        // it is offered and Cloudflare is the selected worker — lighter on
+        // this machine. FreeLLMAPI is a model gateway and does not own fetch.
+        if delegated_with_cloudflare {
+            if let Some(browser_fetch) = cloudflare_cfg.fetch.clone() {
                 cfg.fetch = Some(browser_fetch);
             }
         }
@@ -573,20 +582,61 @@ impl<'a> Daemon<'a> {
         // Cloned out here for the same reason `certainty` is: the errand runs
         // on another thread and cannot reach back into the daemon.
         let judging = self.tools_cfg().judgment.clone();
-        let cf_verify = self.tools_cfg().cloudflare.verify;
-        let verifier = worker.as_ref().map(|_| llm.clone());
-        let summariser: std::sync::Arc<dyn crate::brain::Llm> = worker
-            .as_ref()
-            .map(|(w, _)| w.clone())
-            .unwrap_or_else(|| llm.clone());
-        let delegated = worker.is_some();
+        let remote_verify = if delegated_with_cloudflare {
+            cloudflare_cfg.verify
+        } else {
+            freellmapi_cfg.verify
+        };
+        let route = match crate::research_route::plan(
+            worker.is_some(),
+            local_llm.is_some(),
+            remote_verify,
+        ) {
+            Ok(route) => route,
+            Err(crate::research_route::Error::NoWriter) => {
+                return Outcome::Failed(format!(
+                    "I can search for {topic}, but I need a model to read the sources and write it up, and I haven't got one configured."
+                ));
+            }
+            Err(crate::research_route::Error::MissingLocalVerifier) => {
+                return Outcome::Failed(format!(
+                    "I can delegate research for {topic}, but local verification is enabled and no local verifier is configured. Set the delegated worker's verify option to false explicitly if an unverified delegated result is acceptable."
+                ));
+            }
+        };
+        let verifier = route.verify_locally.then(|| local_llm.clone()).flatten();
+        let summariser: std::sync::Arc<dyn crate::brain::Llm> = match route.writer {
+            crate::research_route::Writer::Delegated => match worker.as_ref().map(|(w, _)| w.clone()) {
+                Some(worker) => worker,
+                None => {
+                    return Outcome::Failed(
+                        "I can search the sources, but the delegated research worker disappeared before writing the result.".into(),
+                    )
+                }
+            },
+            crate::research_route::Writer::Local => match local_llm.clone() {
+                Some(local) => local,
+                None => {
+                    return Outcome::Failed(
+                        "I can search the sources, but the local model disappeared before writing the result.".into(),
+                    )
+                }
+            },
+        };
+        let delegated = matches!(route.writer, crate::research_route::Writer::Delegated);
+        // A free gateway can be rate-limited or temporarily unavailable. Keep
+        // the delegation benefit when it works, but never let that optional
+        // path turn a research errand into a hard failure: retry the same
+        // bounded research request with Atlas's local model instead of retrying
+        // the remote provider and creating a storm.
+        let local_fallback = route.fallback_locally.then(|| local_llm.clone()).flatten();
         // The headless browser the search step falls back on when curl's
         // copy of the results page had no links in it. Only when a tools
         // section exists -- no config, no browser to start.
         let browser = self.tools_ref().map(|t| t.browser.clone());
         let topic_owned = topic.to_string();
         let topic_for_errand = topic_owned.clone();
-        let job_id = format!("research-{}", crate::store::now());
+        let job_id = crate::job::unique_id("research");
         let mut job_record = crate::job::Record::planned(&job_id, "research");
         let topic_artifact = match crate::artifact::ArtifactRef::new(
             format!("research-topic:{topic_owned}"),
@@ -611,9 +661,56 @@ impl<'a> Daemon<'a> {
         let job_store = self.store.clone();
         let work: crew::Work = Box::new(move |ctl| {
             let r = crate::research::Research { cfg, vars, browser };
-            let ran = r.run_checked(&topic_for_errand, summariser.as_ref(), &|| ctl.checkpoint());
+            let ran = match r.run_checked(
+                &topic_for_errand,
+                summariser.as_ref(),
+                &|| ctl.checkpoint(),
+            ) {
+                Ok(note) => Ok((
+                    note,
+                    summariser.execution_descriptor(),
+                    summariser.execution_metadata(),
+                )),
+                Err(remote_error) if delegated => match local_fallback.as_ref() {
+                    Some(local) => r
+                        .run_checked(&topic_for_errand, local.as_ref(), &|| ctl.checkpoint())
+                        .map(|note| {
+                            (
+                                note,
+                                local.execution_descriptor(),
+                                local.execution_metadata(),
+                            )
+                        })
+                        .map_err(|local_error| {
+                            crate::error::AtlasError::Platform(format!(
+                                "delegated worker failed ({remote_error}); local fallback failed ({local_error})"
+                            ))
+                        }),
+                    None => Err(crate::error::AtlasError::Platform(format!(
+                        "delegated worker failed ({remote_error}); no local fallback model is configured"
+                    ))),
+                },
+                Err(error) => Err(error),
+            };
             match ran {
-                Ok(note) => {
+                Ok((note, execution, execution_metadata)) => {
+                    let expected_revision = job_record.revision;
+                    if let Err(error) =
+                        job_record
+                            .bind_execution_descriptor(execution)
+                            .and_then(|_| {
+                                crate::job::upsert_cas(
+                                    &job_store,
+                                    job_record.clone(),
+                                    expected_revision,
+                                )
+                                .map_err(|e| e.to_string())
+                            })
+                    {
+                        return Err(format!(
+                            "the research completed, but its execution identity could not be recorded ({error}); it remains uncertain and will be reconciled after restart."
+                        ));
+                    }
                     // Saved automatically, same as before — just never
                     // narrated. Where it landed, or whether it landed, is
                     // mechanics you didn't ask about; if it matters later
@@ -662,7 +759,7 @@ impl<'a> Daemon<'a> {
                     // analysed in the background, exactly as asked. The check
                     // can only hold or lower the confidence, never raise it.
                     let mut why = why;
-                    if delegated && cf_verify {
+                    if delegated && remote_verify {
                         if let Some(v) = &verifier {
                             let (l2, why2, _ok) = crate::online::verify_result(
                                 &topic_for_errand,
@@ -692,19 +789,22 @@ impl<'a> Daemon<'a> {
                         Ok(_) => " The full write-up is in your notes -- say \"read me the full brief\" or \"open the report\".".to_string(),
                         Err(e) => {
                             let detail = format!("write-up save failed: {e}");
+                            let expected_revision = job_record.revision;
                             crate::kept!(job_record
                                 .finish(crate::job::State::Failed, detail.clone(), "local research")
                                 .and_then(|_| {
-                                    crate::job::upsert(&job_store, job_record.clone())
+                                    crate::job::upsert_cas(&job_store, job_record.clone(), expected_revision)
                                         .map_err(|e| e.to_string())
                                 }));
-                            match crate::evidence::research_outcome(
+                            match crate::evidence::research_outcome_with_execution_metadata(
                                 &job_id,
                                 &topic_for_errand,
                                 note.sources.len(),
                                 false,
                                 &detail,
                                 crate::store::now(),
+                                job_record.execution.clone(),
+                                execution_metadata.clone(),
                             )
                             .map_err(crate::error::AtlasError::Config)
                             .and_then(|bundle| crate::evidence::upsert(&job_store, bundle))
@@ -726,47 +826,86 @@ impl<'a> Daemon<'a> {
                         .map_err(|error| error.to_string())?];
                     }
                     let result = format!(
-                        "{} Read {} source{}.{}{kept}",
+                        "Research for {topic_for_errand}: {} Read {} source{}.{}{kept}",
                         spoken,
                         note.sources.len(),
                         if note.sources.len() == 1 { "" } else { "s" },
                         rests.map(|r| format!(" {r}")).unwrap_or_default()
                     );
-                    crate::kept!(job_record
-                        .finish(
-                            crate::job::State::Succeeded,
-                            "research saved",
-                            "local research",
-                        )
-                        .and_then(|_| {
-                            crate::job::upsert(&job_store, job_record.clone())
-                                .map_err(|e| e.to_string())
-                        }));
-                    match crate::evidence::research_outcome(
+                    match crate::evidence::research_outcome_with_execution_metadata(
                         &job_id,
                         &topic_for_errand,
                         note.sources.len(),
                         true,
                         "research saved",
                         crate::store::now(),
+                        job_record.execution.clone(),
+                        execution_metadata,
                     )
                     .map_err(crate::error::AtlasError::Config)
                     .and_then(|bundle| crate::evidence::upsert(&job_store, bundle))
                     {
                         Ok(()) => {}
                         Err(error) => {
-                            crate::kept!(Err::<(), _>(error));
+                            let detail = format!(
+                                "research completion evidence could not be recorded: {error}"
+                            );
+                            let expected_revision = job_record.revision;
+                            crate::kept!(
+                                job_record
+                                    .finish(
+                                        crate::job::State::Failed,
+                                        detail.clone(),
+                                        "local research",
+                                    )
+                                    .and_then(|_| {
+                                        crate::job::upsert_cas(
+                                            &job_store,
+                                            job_record.clone(),
+                                            expected_revision,
+                                        )
+                                        .map_err(|e| e.to_string())
+                                    })
+                            );
+                            return Err(format!(
+                                "{result} The report was saved, but its completion evidence could not be recorded ({error}); it is marked failed rather than complete."
+                            ));
                         }
+                    }
+                    let expected_revision = job_record.revision;
+                    if let Err(error) = job_record
+                        .finish(
+                            crate::job::State::Succeeded,
+                            "research saved",
+                            "local research",
+                        )
+                        .and_then(|_| {
+                            crate::job::upsert_cas(
+                                &job_store,
+                                job_record.clone(),
+                                expected_revision,
+                            )
+                            .map_err(|e| e.to_string())
+                        })
+                    {
+                        return Err(format!(
+                            "{result} The report was saved, but its completion state could not be recorded ({error}); it remains uncertain and will be reconciled after restart."
+                        ));
                     }
                     Ok(result)
                 }
                 Err(e) => {
                     let detail = e.to_string();
+                    let expected_revision = job_record.revision;
                     crate::kept!(job_record
                         .finish(crate::job::State::Failed, detail.clone(), "local research")
                         .and_then(|_| {
-                            crate::job::upsert(&job_store, job_record.clone())
-                                .map_err(|e| e.to_string())
+                            crate::job::upsert_cas(
+                                &job_store,
+                                job_record.clone(),
+                                expected_revision,
+                            )
+                            .map_err(|e| e.to_string())
                         }));
                     match crate::evidence::research_outcome(
                         &job_id,
@@ -1363,7 +1502,7 @@ impl<'a> Daemon<'a> {
         }
         claim.run = Some(run.clone());
         claim.phase = phase;
-        runs.save(&self.store)
+        runs.save_held(&self.store)
     }
 
     /// Did you say this add-on step needn't ask? (`plugins::may_skip_question`)
@@ -1445,7 +1584,7 @@ impl<'a> Daemon<'a> {
                 return;
             }
             let result = self.execute(&intent);
-            let ok = !result.starts_with("error");
+            let ok = crate::scheduler::result_is_success(&result);
             self.journal.record_at(Act::Scheduled, &cmd, ok, t);
             if let Some(w) = self.mind.get_mut(self.flow_mind) {
                 w.report_step(step_i, &result, ok);
@@ -1554,7 +1693,7 @@ impl<'a> Daemon<'a> {
                         break;
                     }
                     let result = self.execute(&intent);
-                    let ok = !result.starts_with("error");
+                    let ok = crate::scheduler::result_is_success(&result);
                     self.journal.record_at(Act::Scheduled, &cmd, ok, t);
                     if let Some(w) = self.mind.get_mut(self.flow_mind) {
                         w.report_step(step_i, &result, ok);
@@ -1858,4 +1997,35 @@ fn review_once(
         return (text.to_string(), false);
     }
     (better, true)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::prefer_free_gateway;
+
+    #[test]
+    fn free_gateway_wins_without_constructing_cloudflare() {
+        let mut fallback_called = false;
+        let (worker, used_cloudflare) = prefer_free_gateway(Some("free"), || {
+            fallback_called = true;
+            Some("cloudflare")
+        });
+
+        assert_eq!(worker, Some("free"));
+        assert!(!used_cloudflare);
+        assert!(!fallback_called);
+    }
+
+    #[test]
+    fn cloudflare_is_lazy_fallback_when_free_gateway_is_unavailable() {
+        let mut fallback_called = false;
+        let (worker, used_cloudflare) = prefer_free_gateway(None::<&str>, || {
+            fallback_called = true;
+            Some("cloudflare")
+        });
+
+        assert_eq!(worker, Some("cloudflare"));
+        assert!(used_cloudflare);
+        assert!(fallback_called);
+    }
 }

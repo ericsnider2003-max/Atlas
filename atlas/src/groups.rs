@@ -776,7 +776,10 @@ pub fn read_spoken(said: &str) -> Option<(&'static str, String, String, String)>
         // words that name something else are refused here; `act` still
         // checks the group exists.
         let not_a_place = !matches!(
-            g.split_whitespace().last().map(str::to_ascii_lowercase).as_deref(),
+            g.split_whitespace()
+                .last()
+                .map(str::to_ascii_lowercase)
+                .as_deref(),
             Some("folder" | "directory" | "drive" | "desktop" | "downloads" | "bin" | "trash")
         );
         let a_name = g.split_whitespace().count() <= 4

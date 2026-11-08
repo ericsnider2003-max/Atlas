@@ -193,6 +193,13 @@ pub(super) fn acquire(explicit_root: &Path) -> io::Result<StateGuard> {
     acquire_with_wait(explicit_root, std::time::Duration::from_secs(10))
 }
 
+pub(super) fn acquire_for_completion(explicit_root: &Path) -> io::Result<StateGuard> {
+    // Completion evidence is the durable proof boundary. It may wait through
+    // a slow snapshot or worker persistence operation; dropping proof after a
+    // generic ten-second worker timeout makes a finished task unverifiable.
+    acquire_with_wait(explicit_root, std::time::Duration::from_secs(60))
+}
+
 pub(super) fn try_acquire(explicit_root: &Path) -> io::Result<StateGuard> {
     acquire_with_wait(explicit_root, std::time::Duration::ZERO)
 }

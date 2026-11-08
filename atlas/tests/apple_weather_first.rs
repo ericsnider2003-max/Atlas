@@ -135,8 +135,14 @@ fn a_tampered_rest_token_fails_to_verify() {
         .to_pkcs8_pem(p256::pkcs8::LineEnding::LF)
         .unwrap()
         .to_string();
-    let jwt = applewx::signed_token(&pem, "G3D89YSJD4", "Z6NSM9AXB7", "com.ericsnider.atlas", 1_000)
-        .unwrap();
+    let jwt = applewx::signed_token(
+        &pem,
+        "G3D89YSJD4",
+        "Z6NSM9AXB7",
+        "com.ericsnider.atlas",
+        1_000,
+    )
+    .unwrap();
     let p: Vec<&str> = jwt.split('.').collect();
     assert_eq!(p.len(), 3);
     assert!(!jwt.contains('=') && !jwt.contains('+') && !jwt.contains('/'));
@@ -154,7 +160,13 @@ fn a_tampered_rest_token_fails_to_verify() {
     // Deterministic (RFC 6979): signing again gives the same token.
     assert_eq!(
         jwt,
-        applewx::signed_token(&pem, "G3D89YSJD4", "Z6NSM9AXB7", "com.ericsnider.atlas", 1_000)
-            .unwrap()
+        applewx::signed_token(
+            &pem,
+            "G3D89YSJD4",
+            "Z6NSM9AXB7",
+            "com.ericsnider.atlas",
+            1_000
+        )
+        .unwrap()
     );
 }

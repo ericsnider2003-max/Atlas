@@ -104,6 +104,24 @@ fn work_you_asked_for_is_written_down_until_it_ends() {
 }
 
 #[test]
+fn corrupt_restart_handoff_is_reported_and_not_cleared() {
+    let root = scratch("corrupt-left-waiting");
+    let marker = root.join("left_waiting.json");
+    std::fs::write(&marker, b"not valid restart state").unwrap();
+    let platform = plat();
+    let mut d = Daemon::new(
+        cfg(),
+        &platform,
+        Some(Arc::new(Slow(Mutex::new(0)))),
+        Store::new(root.clone()),
+        Proactive::new(ProactiveConfig::default()),
+    );
+    let said = d.tick(100).join(" ");
+    assert!(said.contains("could not be read safely"), "{said}");
+    assert_eq!(std::fs::read(&marker).unwrap(), b"not valid restart state");
+}
+
+#[test]
 fn what_a_restart_cut_off_is_redone_once_or_named() {
     let root = scratch("cut-off");
     let store = Store::new(root.clone());
@@ -505,6 +523,58 @@ fn a_workflow_waiting_on_your_yes_is_asked_again_after_a_restart() {
     assert!(
         !reply.to_lowercase().contains("nothing to") && !reply.is_empty(),
         "the yes didn't reach the workflow: {reply}"
+    );
+}
+
+#[test]
+fn an_unreadable_workflow_marker_is_left_for_recovery() {
+    let root = scratch("flow-corrupt");
+    std::fs::write(root.join("current_flow.json"), b"{not valid json").unwrap();
+    let p = plat();
+    let mut d = Daemon::new(
+        cfg(),
+        &p,
+        None,
+        Store::new(root.clone()),
+        Proactive::new(ProactiveConfig::default()),
+    );
+
+    let said = d.tick(1_790_000_060).join(" ");
+    assert!(said.contains("could not read it safely"), "{said}");
+    assert_eq!(
+        std::fs::read_to_string(root.join("current_flow.json")).unwrap(),
+        "{not valid json",
+        "an unreadable workflow marker must not be replaced by an empty/default run"
+    );
+}
+
+#[test]
+fn a_valid_stale_workflow_marker_is_discarded_after_checked_read() {
+    let root = scratch("flow-stale");
+    let workflow = atlas::flow::Workflow {
+        name: "old work".into(),
+        triggers: Vec::new(),
+        steps: vec![atlas::flow::Step::new("old step")],
+    };
+    let mut run = atlas::flow::Run::start(&workflow);
+    run.started = 0;
+    Store::new(root.clone())
+        .save("current_flow", &Some(run))
+        .unwrap();
+    let p = plat();
+    let mut d = Daemon::new(
+        cfg(),
+        &p,
+        None,
+        Store::new(root.clone()),
+        Proactive::new(ProactiveConfig::default()),
+    );
+
+    let _ = d.tick(1_790_000_060);
+    let saved: Option<atlas::flow::Run> = Store::new(root).load("current_flow");
+    assert!(
+        saved.is_none(),
+        "a valid stale marker must be acknowledged and cleared"
     );
 }
 

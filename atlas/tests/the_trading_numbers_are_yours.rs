@@ -100,18 +100,22 @@ fn it_is_no_longer_listed_as_a_setting_that_does_nothing() {
 
 fn shipped() -> atlas::voice::ToolsConfig {
     atlas::config::Config::load(Path::new("config"))
-        .expect("config/ loads")
+        .unwrap_or_else(|error| panic!("config/ loads: {error}"))
         .tools
-        .expect("tools.yaml loads")
+        .unwrap_or_else(|| panic!("tools.yaml loads"))
 }
 
 fn number_in_file(key: &str) -> f64 {
-    let raw = std::fs::read_to_string("config/tools.yaml").expect("tools.yaml");
-    let trading = raw.split("\ntrading:").nth(1).expect("no trading: section");
+    let raw = std::fs::read_to_string("config/tools.yaml")
+        .unwrap_or_else(|error| panic!("tools.yaml: {error}"));
+    let trading = raw
+        .split("\ntrading:")
+        .nth(1)
+        .unwrap_or_else(|| panic!("no trading: section"));
     trading
         .lines()
         .find_map(|l| l.trim().strip_prefix(&format!("{key}:")))
-        .and_then(|v| v.trim().split_whitespace().next())
+        .and_then(|v| v.split_whitespace().next())
         .and_then(|v| v.parse().ok())
         .unwrap_or_else(|| panic!("{key} is not in the shipped trading: section"))
 }
@@ -120,8 +124,12 @@ fn number_in_file(key: &str) -> f64 {
 fn the_shipped_file_still_carries_the_numbers() {
     // Wiring a setting is half of it. A section that quietly left the shipped
     // file would leave nobody knowing the behaviour was theirs to change.
-    let raw = std::fs::read_to_string("config/tools.yaml").expect("tools.yaml");
-    let trading = raw.split("\ntrading:").nth(1).expect("no trading: section");
+    let raw = std::fs::read_to_string("config/tools.yaml")
+        .unwrap_or_else(|error| panic!("tools.yaml: {error}"));
+    let trading = raw
+        .split("\ntrading:")
+        .nth(1)
+        .unwrap_or_else(|| panic!("no trading: section"));
     for key in [
         "risk_fraction",
         "buffer_ranges",
@@ -187,7 +195,7 @@ fn bars_file(dir: &Path) -> PathBuf {
         price = c;
     }
     let p = dir.join("bars.csv");
-    std::fs::write(&p, s).expect("bars file");
+    std::fs::write(&p, s).unwrap_or_else(|error| panic!("bars file: {error}"));
     p
 }
 
@@ -200,13 +208,17 @@ fn bars_file(dir: &Path) -> PathBuf {
 /// Eric actually ships, not by a file written to make a point.
 fn config_with_span(dir: &Path, span_pips: f64) -> PathBuf {
     fn copy_into(from: &Path, to: &Path) {
-        std::fs::create_dir_all(to).expect("config dir");
-        for e in std::fs::read_dir(from).expect("shipped config/").flatten() {
+        std::fs::create_dir_all(to).unwrap_or_else(|error| panic!("config dir: {error}"));
+        for e in std::fs::read_dir(from)
+            .unwrap_or_else(|error| panic!("shipped config/: {error}"))
+            .flatten()
+        {
             let (src, dst) = (e.path(), to.join(e.file_name()));
             if src.is_dir() {
                 copy_into(&src, &dst);
             } else {
-                std::fs::copy(&src, &dst).expect("copy config file");
+                std::fs::copy(&src, &dst)
+                    .unwrap_or_else(|error| panic!("copy config file: {error}"));
             }
         }
     }
@@ -214,7 +226,7 @@ fn config_with_span(dir: &Path, span_pips: f64) -> PathBuf {
     copy_into(Path::new("config"), &cfg);
 
     let tools = cfg.join("tools.yaml");
-    let raw = std::fs::read_to_string(&tools).expect("tools.yaml");
+    let raw = std::fs::read_to_string(&tools).unwrap_or_else(|error| panic!("tools.yaml: {error}"));
     let mut edited = String::with_capacity(raw.len());
     let mut done = false;
     for line in raw.lines() {
@@ -230,7 +242,7 @@ fn config_with_span(dir: &Path, span_pips: f64) -> PathBuf {
         done,
         "no level_span_pips: line in the shipped tools.yaml to change"
     );
-    std::fs::write(&tools, edited).expect("write tools.yaml");
+    std::fs::write(&tools, edited).unwrap_or_else(|error| panic!("write tools.yaml: {error}"));
     cfg
 }
 
@@ -240,14 +252,14 @@ fn run_market(home: &Path, cfg: &Path, bars: &Path) -> String {
         .env("ATLAS_HOME", home)
         .env("ATLAS_CONFIG", cfg)
         .output()
-        .expect("atlas market runs");
+        .unwrap_or_else(|error| panic!("atlas market runs: {error}"));
     String::from_utf8_lossy(&out.stdout).into_owned()
 }
 
 fn scratch(tag: &str) -> PathBuf {
     let p = std::env::temp_dir().join(format!("atlas-trading-{tag}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&p);
-    std::fs::create_dir_all(&p).expect("scratch dir");
+    std::fs::create_dir_all(&p).unwrap_or_else(|error| panic!("scratch dir: {error}"));
     p
 }
 

@@ -135,9 +135,9 @@ pub fn review(html: &str, rules: &Rules) -> Vec<Finding> {
                     continue;
                 }
                 let before = &lower[..at];
-                let in_label = before.rfind("<label").is_some_and(|open| {
-                    before.rfind("</label").map_or(true, |close| close < open)
-                });
+                let in_label = before
+                    .rfind("<label")
+                    .is_some_and(|open| before.rfind("</label").is_none_or(|close| close < open));
                 let named = in_label
                     || has_attr(&tag, "aria-label")
                     || has_attr(&tag, "aria-labelledby")
@@ -547,7 +547,9 @@ fn tags_at(lower_html: &str, name: &str) -> Vec<(usize, String)> {
     while let Some(off) = lower_html[from..].find(&open) {
         let at = from + off;
         let after = lower_html[at + open.len()..].chars().next();
-        let end = lower_html[at..].find('>').map_or(lower_html.len(), |e| at + e);
+        let end = lower_html[at..]
+            .find('>')
+            .map_or(lower_html.len(), |e| at + e);
         if matches!(after, Some(c) if c.is_whitespace() || c == '>' || c == '/') {
             out.push((at, lower_html[at..end].to_string()));
         }
@@ -707,7 +709,8 @@ fn first_heading_skip(lower_html: &str) -> Option<(u8, u8)> {
 /// WCAG AA for body text.
 pub const MIN_CONTRAST: f64 = 4.5;
 /// Typefaces that, as the first choice, mark a page as a template.
-pub const STOCK_TYPEFACES: &[&str] = &["inter", "poppins", "montserrat", "space grotesk", "manrope"];
+pub const STOCK_TYPEFACES: &[&str] =
+    &["inter", "poppins", "montserrat", "space grotesk", "manrope"];
 
 /// Every slop tell in a page and the CSS it carries (`<style>` blocks
 /// included), lower-cased.
@@ -779,7 +782,10 @@ fn purple_blue_gradient(lower: &str) -> Option<String> {
             e
         });
         let args = &body[..end.unwrap_or(body.len())];
-        let hues: Vec<f64> = colours_in(args).into_iter().filter_map(|c| hue(c)).collect();
+        let hues: Vec<f64> = colours_in(args)
+            .into_iter()
+            .filter_map(|c| hue(c))
+            .collect();
         let purple = hues.iter().any(|h| (260.0..=320.0).contains(h));
         let blue = hues.iter().any(|h| (190.0..260.0).contains(h));
         let named = (args.contains("purple") || args.contains("violet") || args.contains("indigo"))
@@ -872,8 +878,16 @@ fn cards_in_cards(lower: &str) -> Option<usize> {
             }
             continue;
         }
-        let name: String = tag.chars().take_while(|c| c.is_ascii_alphanumeric()).collect();
-        if name.is_empty() || matches!(name.as_str(), "br" | "img" | "input" | "meta" | "link" | "hr" | "path" | "circle" | "rect") {
+        let name: String = tag
+            .chars()
+            .take_while(|c| c.is_ascii_alphanumeric())
+            .collect();
+        if name.is_empty()
+            || matches!(
+                name.as_str(),
+                "br" | "img" | "input" | "meta" | "link" | "hr" | "path" | "circle" | "rect"
+            )
+        {
             continue;
         }
         if name == "style" || name == "script" {
@@ -906,7 +920,10 @@ fn class_tokens(tag: &str) -> Vec<String> {
     };
     let value = match q {
         Some(q) => v.split(q).next().unwrap_or(""),
-        None => v.split(|c: char| c.is_whitespace() || c == '>').next().unwrap_or(""),
+        None => v
+            .split(|c: char| c.is_whitespace() || c == '>')
+            .next()
+            .unwrap_or(""),
     };
     value.split_whitespace().map(str::to_string).collect()
 }
@@ -1040,7 +1057,11 @@ fn contrast(a: (u8, u8, u8), b: (u8, u8, u8)) -> f64 {
     let lum = |(r, g, b): (u8, u8, u8)| {
         let c = |v: u8| {
             let s = v as f64 / 255.0;
-            if s <= 0.03928 { s / 12.92 } else { ((s + 0.055) / 1.055).powf(2.4) }
+            if s <= 0.03928 {
+                s / 12.92
+            } else {
+                ((s + 0.055) / 1.055).powf(2.4)
+            }
         };
         0.2126 * c(r) + 0.7152 * c(g) + 0.0722 * c(b)
     };

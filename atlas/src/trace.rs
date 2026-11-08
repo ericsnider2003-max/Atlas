@@ -30,6 +30,10 @@ pub struct Call {
     /// Which module asked. The most useful field, and the one a proxy cannot
     /// know: a proxy sees traffic, this sees *who wanted it*.
     pub asked_by: String,
+    /// Optional finer-grained owner inside a subsystem, such as a council
+    /// seat. Kept optional so older and non-council records remain valid.
+    #[serde(default)]
+    pub seat: Option<String>,
     pub model: String,
     /// How long it took, wall clock.
     pub took_ms: u64,
@@ -58,6 +62,7 @@ impl Call {
         Call {
             at,
             asked_by: asked_by.into(),
+            seat: None,
             model: model.into(),
             took_ms: 0,
             prompt_chars: 0,

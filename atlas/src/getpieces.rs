@@ -1491,7 +1491,6 @@ impl Approved {
 
     /// Say yes to these pieces (and keep any yes already given). A yes
     /// replaces an earlier no.
-
     pub fn grant(&mut self, pieces: &[Piece], t: u64) {
         for p in pieces {
             self.declined.retain(|k| k != p.key_path());

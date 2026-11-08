@@ -40,14 +40,17 @@ impl Default for LifecycleConfig {
 }
 
 /// How long the model server stays when the machine can hold it loaded
-/// (`fit::Plan::keep_model_warm`): a week, which in practice is "until
-/// Atlas stops". Phase 0.2 (1 Oct 2026): the half-hour idle stop on a
-/// machine with room for the model only threw away the warm prompt.
-pub const MODEL_RESIDENT_SECS: u64 = 7 * 24 * 60 * 60;
+/// (`fit::Plan::keep_model_warm`): the bounded default idle window. Keeping a
+/// multi-gigabyte model resident for days made the laptop look like it had
+/// less memory even when Atlas was not being used, and competed with voice,
+/// coding, and other helpers. A longer value remains an explicit opt-in in
+/// `keep_warm_secs`; the fit decision only prevents the normal window from
+/// being shortened on machines that can afford residency.
+pub const MODEL_RESIDENT_SECS: u64 = 30 * 60;
 
 /// The lifecycle settings with the model server kept loaded when the
 /// measured plan says this machine has room for it. A setting already
-/// longer than that is left alone; where there isn't room, the half-hour
+/// longer than that is left alone; where there isn't room, the configured
 /// idle time stands and memory comes back.
 pub fn model_stays_when_it_fits(mut cfg: LifecycleConfig, fits: bool) -> LifecycleConfig {
     if fits {
@@ -231,8 +234,18 @@ pub fn typical_mb(name: &str) -> u64 {
         "model-server" => 4400,
         "camera" => 60,
         "hidden_desktop" => 120,
-        "whisper" => 200,
-        "tts" => 80,
+        // Calibrated against the installed Windows binaries on 6 Nov 2026:
+        // Whisper peaked at 211MB, Piper at 167MB, and in-process Kokoro
+        // reached 376MB during synthesis. Round up so a helper request does
+        // not spend the last few megabytes of the floor.
+        "whisper" => 220,
+        "piper" => 170,
+        "kokoro" => 380,
+        "tts" => 380,
+        // Parakeet's int8 encoder is large even for a one-clip process. The
+        // measured peak was 698.6MB, so do not let a future resident or
+        // supervised invocation fall through to the generic 100MB estimate.
+        "parakeet" => 700,
         _ => 100,
     }
 }
@@ -473,6 +486,12 @@ mod heavy_tests {
     use super::*;
 
     #[test]
+    fn a_fitting_model_keeps_the_bounded_default_residency_window() {
+        let cfg = model_stays_when_it_fits(LifecycleConfig::default(), true);
+        assert_eq!(cfg.keep_warm_secs.get("model-server"), Some(&1800));
+    }
+
+    #[test]
     fn a_picture_reader_is_judged_by_free_memory_not_the_helper_budget() {
         let mut h = Helpers::new(LifecycleConfig::default());
         assert!(h
@@ -480,6 +499,17 @@ mod heavy_tests {
             .is_ok());
         // On the books at nothing: a camera still fits the small budget.
         assert!(h.want("camera", 60, 2, || Ok(None)).is_ok());
+    }
+
+    #[test]
+    fn measured_voice_costs_are_not_generic_fallbacks() {
+        assert_eq!(typical_mb("whisper"), 220);
+        assert_eq!(typical_mb("piper"), 170);
+        assert_eq!(typical_mb("kokoro"), 380);
+        assert_eq!(typical_mb("tts"), 380);
+        assert_eq!(typical_mb("parakeet"), 700);
+        assert!(typical_mb("parakeet") > typical_mb("whisper"));
+        assert!(typical_mb("kokoro") > typical_mb("piper"));
     }
 
     #[test]

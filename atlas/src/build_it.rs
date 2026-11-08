@@ -1925,6 +1925,24 @@ pub fn build_folder(base: &std::path::Path, description: &str) -> std::path::Pat
 /// copies files to D:\backup" keeps its backup folder as part of what to
 /// build (2 Oct 2026).
 pub fn folder_named(text: &str) -> Option<(std::path::PathBuf, String)> {
+    // A Windows path with spaces is commonly written unquoted before a comma:
+    // `in C:\\work\my project, add a feature`. Recover that complete path
+    // before the word-based fallback gets a chance to split it into nonsense.
+    for lead in ["in ", "into ", "inside "] {
+        if let Some(start) = text.to_ascii_lowercase().find(lead) {
+            let after = &text[start + lead.len()..];
+            if let Some(comma) = after.find(',') {
+                let candidate = after[..comma].trim();
+                let expanded = expand_home(candidate);
+                if looks_like_a_folder(candidate) && std::path::Path::new(&expanded).is_dir() {
+                    let rest = after[comma + 1..].trim();
+                    if !rest.is_empty() {
+                        return Some((expanded, rest.to_string()));
+                    }
+                }
+            }
+        }
+    }
     let words: Vec<&str> = text.split_whitespace().collect();
     // A quoted path may hold spaces: joined back into one word first.
     let mut toks: Vec<String> = Vec::new();
@@ -1972,8 +1990,14 @@ pub fn folder_named(text: &str) -> Option<(std::path::PathBuf, String)> {
             && before[before.len() - 2] == "it";
         let ends = n + 1 == toks.len() || trailing_comma;
         let lead_word = matches!(lead, "in" | "into" | "inside" | "to" | "under" | "at");
+        // A named project may appear before the requested change ("in
+        // C:\\project, add a feature"), not only at the end of the sentence.
+        // The old `ends` requirement made those requests fall through to the
+        // capability-growth detector, which treated the project change as a
+        // request to modify Atlas itself.
         let lead_ok = (said_it && lead_word)
-            || (matches!(lead, "in" | "into" | "inside" | "folder" | "directory") && ends);
+            || (matches!(lead, "in" | "into" | "inside") && (ends || looks_like_a_folder(bare)))
+            || (matches!(lead, "folder" | "directory") && ends);
         if !lead_ok {
             continue;
         }

@@ -17,7 +17,8 @@ use std::path::{Path, PathBuf};
 fn tmp(tag: &str) -> PathBuf {
     let p = std::env::temp_dir().join(format!("atlas-upgrade-{tag}"));
     let _ = std::fs::remove_dir_all(&p);
-    std::fs::create_dir_all(&p).unwrap();
+    std::fs::create_dir_all(&p)
+        .unwrap_or_else(|error| panic!("create update test directory {}: {error}", p.display()));
     p
 }
 
@@ -45,8 +46,14 @@ fn lived_in(root: &Path) -> BTreeMap<String, Vec<u8>> {
     ];
     for (rel, body) in files {
         let p = root.join(rel);
-        std::fs::create_dir_all(p.parent().unwrap()).unwrap();
-        std::fs::write(&p, body).unwrap();
+        let parent = p
+            .parent()
+            .unwrap_or_else(|| panic!("fixture path has no parent: {}", p.display()));
+        std::fs::create_dir_all(parent).unwrap_or_else(|error| {
+            panic!("create fixture directory {}: {error}", parent.display())
+        });
+        std::fs::write(&p, body)
+            .unwrap_or_else(|error| panic!("write fixture {}: {error}", p.display()));
         written.insert(rel.to_string(), body.as_bytes().to_vec());
     }
     written
@@ -58,10 +65,18 @@ fn lived_in(root: &Path) -> BTreeMap<String, Vec<u8>> {
 fn apply_an_update(root: &Path) {
     for (rel, _) in SHIPPED {
         let p = root.join(rel);
-        std::fs::create_dir_all(p.parent().unwrap()).unwrap();
-        std::fs::write(&p, "# a newer shipped config\n").unwrap();
+        let parent = p
+            .parent()
+            .unwrap_or_else(|| panic!("shipped path has no parent: {}", p.display()));
+        std::fs::create_dir_all(parent).unwrap_or_else(|error| {
+            panic!("create shipped directory {}: {error}", parent.display())
+        });
+        std::fs::write(&p, "# a newer shipped config\n")
+            .unwrap_or_else(|error| panic!("write shipped file {}: {error}", p.display()));
     }
-    std::fs::write(root.join("atlas"), b"a newer binary").unwrap();
+    let binary = root.join("atlas");
+    std::fs::write(&binary, b"a newer binary")
+        .unwrap_or_else(|error| panic!("write replacement binary {}: {error}", binary.display()));
 }
 
 #[test]

@@ -28,8 +28,14 @@ fn plat() -> MockPlatform {
 }
 
 fn tmp(tag: &str) -> PathBuf {
-    let p = std::env::temp_dir().join(format!("atlas-selfwork-{tag}-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&p);
+    let nonce = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("system clock is before the Unix epoch")
+        .as_nanos();
+    let p = std::env::temp_dir().join(format!(
+        "atlas-selfwork-{tag}-{}-{nonce}",
+        std::process::id()
+    ));
     std::fs::create_dir_all(&p).unwrap();
     p
 }

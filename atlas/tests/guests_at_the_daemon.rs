@@ -28,19 +28,21 @@ fn alone() -> MutexGuard<'static, ()> {
     ONCE.call_once(|| {
         let p = std::env::temp_dir().join(format!("atlas-guests-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&p);
-        std::fs::create_dir_all(p.join("data").join("state")).unwrap();
+        std::fs::create_dir_all(p.join("data").join("state"))
+            .unwrap_or_else(|error| panic!("guest state directory: {error}"));
         std::env::set_var("ATLAS_HOME", &p);
     });
     atlas::handover::Handover::default()
         .save(&atlas::roots::install_state())
-        .unwrap();
+        .unwrap_or_else(|error| panic!("guest handover state: {error}"));
     g
 }
 
 fn tmp(tag: &str) -> PathBuf {
     let d = std::env::temp_dir().join(format!("atlas-guests-{tag}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&d);
-    std::fs::create_dir_all(&d).unwrap();
+    std::fs::create_dir_all(&d)
+        .unwrap_or_else(|error| panic!("guest temporary directory: {error}"));
     d
 }
 
@@ -56,7 +58,7 @@ fn plat() -> MockPlatform {
 }
 
 fn cfg() -> Config {
-    Config::load(Path::new("config")).unwrap()
+    Config::load(Path::new("config")).unwrap_or_else(|error| panic!("guest test config: {error}"))
 }
 
 fn daemon<'a>(c: &'a Config, p: &'a MockPlatform, tag: &str) -> Daemon<'a> {
@@ -71,7 +73,10 @@ fn daemon<'a>(c: &'a Config, p: &'a MockPlatform, tag: &str) -> Daemon<'a> {
 
 fn knows_homelab() -> Config {
     let mut c = cfg();
-    c.tools.as_mut().unwrap().elsewhere = ElsewhereConfig {
+    c.tools
+        .as_mut()
+        .unwrap_or_else(|| panic!("guest test config must include tools"))
+        .elsewhere = ElsewhereConfig {
         enabled: true,
         timeout_secs: 1,
         known: vec![Elsewhere {

@@ -179,8 +179,10 @@ fn on() -> ConsentConfig {
 fn the_steps_follow_the_rulings() {
     let dir = std::env::temp_dir().join(format!("atlas-calls-{}", std::process::id()));
     let mut n = Notes::new(on(), dir.clone());
+    n.starter = atlas::callrec::silent;
     // Off: nothing starts.
     let mut off = Notes::new(ConsentConfig::default(), dir.clone());
+    off.starter = atlas::callrec::silent;
     assert!(off.begin("Zoom", 100).lines.is_empty() && off.call.is_none());
 
     let said = n.begin("Zoom", 100);
@@ -234,9 +236,9 @@ fn a_finished_call_is_written_up_from_both_transcripts() {
     )
     .unwrap();
     // Stands in for whisper: writes the timed transcript it was asked for.
-    // `sh` and `cp` aren't on Windows; `cmd /c copy` is.
+    // Use PowerShell on Windows so spaced fixture paths are preserved.
     let stand_in = if cfg!(windows) {
-        "command: cmd\nargs: [\"/c\", \"copy /y {stem}.fixture {srt} >nul\"]\nresult_file: \"{srt}\"\n"
+        "command: powershell\nargs: [\"-NoProfile\", \"-Command\", \"Copy-Item -LiteralPath '{stem}.fixture' -Destination '{srt}' -Force\"]\nresult_file: \"{srt}\"\n"
     } else {
         "command: sh\nargs: [\"-c\", \"cp {stem}.fixture {srt}\"]\nresult_file: \"{srt}\"\n"
     };
@@ -309,6 +311,7 @@ fn every_answer_to_the_question_but_yes_means_your_side_only() {
         ("they said no", Notes::they_declined),
     ] {
         let mut n = Notes::new(on(), dir.clone());
+        n.starter = atlas::callrec::silent;
         n.begin("Zoom", 100);
         n.everyone();
         let said = run(&mut n);
@@ -339,6 +342,9 @@ fn every_answer_to_the_question_but_yes_means_your_side_only() {
 fn asked_whether_its_recording_it_says_what_and_who_knows() {
     let dir = std::env::temp_dir().join(format!("atlas-calls3-{}", std::process::id()));
     let mut n = Notes::new(on(), dir.clone());
+    // This is a state/wording test, not a hardware test. Keep the unit test
+    // deterministic and avoid opening a real CPAL/WASAPI stream here.
+    n.starter = atlas::callrec::silent;
     let idle = n.status();
     assert!(
         idle.starts_with("I'm not recording anything.") && idle.contains("wait for a yes"),

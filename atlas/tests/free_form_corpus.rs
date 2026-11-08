@@ -882,7 +882,10 @@ fn free_form_a_step_after_outside_text_is_asked_about() {
         "the message was not held: {:?}\n{reply}",
         d.session.pending
     );
-    assert!(reply.contains("You asked for this right after I read") && !reply.contains("not from you"), "{reply}");
+    assert!(
+        reply.contains("You asked for this right after I read") && !reply.contains("not from you"),
+        "{reply}"
+    );
 }
 
 #[test]
@@ -1038,7 +1041,10 @@ fn free_form_after_outside_text_a_delete_is_held() {
         "the delete was not held: {:?}\n{reply}",
         d.session.pending
     );
-    assert!(reply.contains("You asked for this right after I read") && !reply.contains("not from you"), "{reply}");
+    assert!(
+        reply.contains("You asked for this right after I read") && !reply.contains("not from you"),
+        "{reply}"
+    );
     // With mail as the outside text: whatever happens, nothing is deleted
     // without a yes -- held, or stopped because the mail step didn't happen.
     let p2 = two_screens();
@@ -1059,7 +1065,8 @@ fn free_form_after_outside_text_a_delete_is_held() {
         d2.session.pending
     );
     assert!(
-        reply.contains("delete the noise") || reply.contains("You asked for this right after I read"),
+        reply.contains("delete the noise")
+            || reply.contains("You asked for this right after I read"),
         "the delete is not named as not done: {reply}"
     );
 }
@@ -1237,7 +1244,10 @@ fn free_form_a_compound_ages_the_taint_as_one_turn() {
     );
     assert_eq!(d.session.owner_turns(), before + 1, "{reply}");
     assert!(d.session.tainted_by_outside);
-    assert!(reply.contains("You asked for this right after I read"), "{reply}");
+    assert!(
+        reply.contains("You asked for this right after I read"),
+        "{reply}"
+    );
 }
 
 /// Phrase-table misfires found on real messages (22 Oct 2026). A phrase at
@@ -1288,12 +1298,18 @@ fn free_form_the_guards_leave_real_commands_alone() {
     assert_eq!(p.parse("are you working"), Intent::SelfCheck);
     assert_eq!(p.parse("are you working right"), Intent::SelfCheck);
     assert_eq!(p.parse("test everything"), Intent::SelfTest);
-    assert_eq!(p.parse("fix yourself"), Intent::WorkOnYourself(String::new()));
+    assert_eq!(
+        p.parse("fix yourself"),
+        Intent::WorkOnYourself(String::new())
+    );
     assert!(matches!(
         p.parse("fix the issues found in the self test"),
         Intent::WorkOnYourself(_)
     ));
-    assert!(matches!(p.parse("add Sam to family"), Intent::ChangeGroup(_)));
+    assert!(matches!(
+        p.parse("add Sam to family"),
+        Intent::ChangeGroup(_)
+    ));
     assert!(matches!(
         p.parse("remove Sam from the family group"),
         Intent::ChangeGroup(_)
@@ -1323,7 +1339,10 @@ fn free_form_removing_files_from_a_folder_is_not_a_group_change() {
 fn free_form_a_reading_list_can_be_a_group_and_a_downloads_folder_cannot() {
     use atlas::intent::Intent;
     let p = parser();
-    assert!(matches!(p.parse("add Sam to Reading List"), Intent::ChangeGroup(_)));
+    assert!(matches!(
+        p.parse("add Sam to Reading List"),
+        Intent::ChangeGroup(_)
+    ));
     assert!(!matches!(
         p.parse("remove the old files from the downloads folder"),
         Intent::ChangeGroup(_)

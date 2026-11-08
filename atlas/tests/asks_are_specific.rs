@@ -153,7 +153,7 @@ fn context_question_offers_the_window_you_have_open() {
     let c = Config::load(Path::new("config")).unwrap();
     let p = MockPlatform::new(vec![]);
     p.focus_on("notepad.exe", "Draft - Notepad");
-    let root = std::env::temp_dir().join("atlas-asks-specific");
+    let root = crate::common::unique_temp("asks-specific");
     let _ = std::fs::remove_dir_all(&root);
     std::fs::create_dir_all(&root).unwrap();
     let mut d = Daemon::new(
@@ -172,7 +172,7 @@ fn context_question_offers_the_window_you_have_open() {
         &c,
         &p,
         None,
-        Store::new(std::env::temp_dir().join("atlas-asks-specific-2")),
+        Store::new(crate::common::unique_temp("asks-specific-2")),
         Proactive::new(ProactiveConfig::default()),
     );
     assert_eq!(d2.turn("close it", 2_000), "Which app?");

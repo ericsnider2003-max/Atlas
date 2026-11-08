@@ -9,7 +9,7 @@
 //! off. The only thing that resets is what fits in the model's context, and
 //! that is a compression problem, not a conversation boundary.
 
-use crate::error::Result;
+use crate::error::{AtlasError, Result};
 use crate::store::{now, Store};
 use serde::{Deserialize, Serialize};
 
@@ -60,13 +60,35 @@ pub struct Thread {
     /// What you were last working on, so a return is a continuation.
     #[serde(default)]
     pub current_topic: Option<String>,
+    /// A failed load must not be mistaken for a new empty conversation.
+    /// Keep the error out of persisted state and refuse to overwrite the
+    /// evidence until the caller explicitly recovers it.
+    #[serde(skip)]
+    #[doc(hidden)]
+    pub load_error: Option<String>,
 }
 
 impl Thread {
     pub fn load(store: &Store) -> Thread {
-        store.load("thread")
+        match store.load_checked_bounded::<Thread>("thread", 8 * 1_048_576) {
+            Ok(Some(thread)) => thread,
+            Ok(None) => Thread::default(),
+            Err(error) => {
+                let message = format!("thread could not be loaded safely: {error}");
+                crate::heard!(Err::<(), _>(message.clone()));
+                Thread {
+                    load_error: Some(message),
+                    ..Thread::default()
+                }
+            }
+        }
     }
     pub fn save(&self, store: &Store) -> Result<()> {
+        if let Some(error) = &self.load_error {
+            return Err(AtlasError::Config(format!(
+                "thread recovery is required before saving: {error}"
+            )));
+        }
         store.save("thread", self)
     }
 
@@ -188,10 +210,18 @@ impl Thread {
         parts.reverse();
 
         let mut out = String::new();
-        if !self.summary.is_empty() {
-            out.push_str("Earlier: ");
-            out.push_str(&self.summary);
-            out.push_str("\n\n");
+        if !self.summary.is_empty() && used < cfg.context_chars {
+            let prefix = "Earlier: ";
+            let suffix = "\n\n";
+            let room = cfg
+                .context_chars
+                .saturating_sub(used + prefix.len() + suffix.len());
+            if room > 0 {
+                let end = self.summary.floor_char_boundary(room);
+                out.push_str(prefix);
+                out.push_str(&self.summary[..end]);
+                out.push_str(suffix);
+            }
         }
         out.push_str(&parts.join("\n"));
         out
@@ -289,6 +319,15 @@ impl Thread {
                 told.join(" | ")
             ));
         }
+        // The summary is part of the model context too. Keep the newest
+        // exchange budgeted first, then cap the older narrative to the space
+        // that remains; otherwise repeated folds can create a valid but
+        // unbounded system message that crowds the current turn out.
+        let summary_room = budget.saturating_sub(size_from(from));
+        if earlier.len() > summary_room {
+            earlier.truncate(earlier.floor_char_boundary(summary_room));
+            earlier = earlier.trim_end().to_string();
+        }
         if !earlier.is_empty() {
             out.push(Msg::system(earlier));
         }
@@ -300,8 +339,11 @@ impl Thread {
         // only what the model is shown.
         let mut shown: Vec<String> = Vec::new();
         for (i, e) in self.recent.iter().enumerate() {
-            // An exchange with nothing said on either side is no turn at all.
-            if self.folded + i < from || e.said.trim().is_empty() || e.reply.trim().is_empty() {
+            // An exchange with no user words is not a user turn. Keep a real
+            // user turn even when its reply is empty or repeated: dropping
+            // the whole pair would make the newest request disappear from
+            // the next prompt.
+            if self.folded + i < from || e.said.trim().is_empty() {
                 continue;
             }
             // What whisper writes for a quiet room was never said (29 Sep 2026).
@@ -315,18 +357,24 @@ impl Thread {
             // (`repeating::near_copy`), which also catches a copy with a
             // different first few words, and leaves the start of the prompt
             // as it was, so the model server can reuse what it already read.
-            out.push(Msg::user(e.said.clone()));
             let short = crate::repeating::for_history(&e.reply, HISTORY_SENTENCES);
-            if short.trim().is_empty()
-                || shown.iter().any(|s| {
+            let repeated = !short.trim().is_empty()
+                && shown.iter().any(|s| {
                     crate::repeating::near_copy(&short, s)
                         || crate::repeating::near_copy(&e.reply, s)
-                })
-            {
-                continue;
+                });
+            // Older duplicate pairs are omitted as a unit. The newest user
+            // turn is retained so a repeated answer cannot erase the active
+            // request from the next prompt.
+            let preserve_newest_request =
+                i + 1 == self.recent.len() && e.said.trim_end().ends_with('?');
+            if !repeated || preserve_newest_request {
+                out.push(Msg::user(e.said.clone()));
             }
-            shown.push(short.clone());
-            out.push(Msg::assistant(short));
+            if !e.reply.trim().is_empty() && !short.trim().is_empty() && !repeated {
+                shown.push(short.clone());
+                out.push(Msg::assistant(short));
+            }
         }
         out
     }

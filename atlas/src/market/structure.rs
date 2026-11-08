@@ -623,7 +623,7 @@ mod tests {
     #[test]
     fn a_downtrend_turning_up_is_identified_too() {
         let s = structure_of(&DOWN_THEN_REVERSAL);
-        let t = s.reversal().expect(&s.say());
+        let t = s.reversal().unwrap_or_else(|| panic!("{}", s.say()));
         assert_eq!(t.direction, Trend::Up);
         assert!(t.confirmed);
         assert_eq!(s.trend(), Trend::Up);

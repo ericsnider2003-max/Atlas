@@ -199,6 +199,24 @@ fn a_seat_naming_the_argument_on_the_other_side_still_keeps_its_own() {
 }
 
 #[test]
+fn a_negated_mention_does_not_reverse_the_seats_position() {
+    let o = parse_opinion(
+        "mover",
+        "I am not against the upgrade. I am for it because the extra headroom matters.",
+    );
+    assert_eq!(o.lean, Lean::For);
+}
+
+#[test]
+fn a_negated_for_does_not_create_a_for_vote() {
+    let o = parse_opinion(
+        "sceptic",
+        "I am not for the upgrade, and the thermal margin is too small.",
+    );
+    assert_eq!(o.lean, Lean::Depends);
+}
+
+#[test]
 fn an_explicit_it_depends_outranks_a_stray_for() {
     let o = parse_opinion(
         "operator",

@@ -436,7 +436,9 @@ pub struct Background(HandsGuard);
 
 impl Drop for Background {
     fn drop(&mut self) {
-        self.0.depth.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
+        self.0
+            .depth
+            .fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
     }
 }
 
@@ -525,10 +527,17 @@ impl crate::platform::Platform for Guarded<'_> {
     fn launch(&self, spec: &crate::config::AppSpec) -> crate::error::Result<()> {
         self.inner.launch(spec)
     }
-    fn find_window(&self, spec: &crate::config::AppSpec) -> crate::error::Result<Option<crate::platform::WindowId>> {
+    fn find_window(
+        &self,
+        spec: &crate::config::AppSpec,
+    ) -> crate::error::Result<Option<crate::platform::WindowId>> {
         self.inner.find_window(spec)
     }
-    fn place(&self, win: crate::platform::WindowId, rect: crate::platform::PixelRect) -> crate::error::Result<()> {
+    fn place(
+        &self,
+        win: crate::platform::WindowId,
+        rect: crate::platform::PixelRect,
+    ) -> crate::error::Result<()> {
         self.inner.place(win, rect)
     }
     fn focus(&self, win: crate::platform::WindowId) -> crate::error::Result<()> {
@@ -564,10 +573,17 @@ impl crate::platform::Platform for Guarded<'_> {
     fn pointer_handle(&self) -> Option<Box<dyn crate::handloop::Pointer>> {
         self.inner.pointer_handle()
     }
-    fn read_window(&self, win: crate::platform::WindowId) -> crate::error::Result<Option<crate::uia::Node>> {
+    fn read_window(
+        &self,
+        win: crate::platform::WindowId,
+    ) -> crate::error::Result<Option<crate::uia::Node>> {
         self.inner.read_window(win)
     }
-    fn press_named(&self, win: crate::platform::WindowId, name: &str) -> crate::error::Result<bool> {
+    fn press_named(
+        &self,
+        win: crate::platform::WindowId,
+        name: &str,
+    ) -> crate::error::Result<bool> {
         self.guard.check("press a button")?;
         self.inner.press_named(win, name)
     }
@@ -580,7 +596,10 @@ impl crate::platform::Platform for Guarded<'_> {
         self.guard.check("work a control")?;
         self.inner.act_on(win, path, act)
     }
-    fn recognise_lines(&self, grab: &crate::platform::Grab) -> crate::error::Result<Vec<(String, crate::platform::PixelRect)>> {
+    fn recognise_lines(
+        &self,
+        grab: &crate::platform::Grab,
+    ) -> crate::error::Result<Vec<(String, crate::platform::PixelRect)>> {
         self.inner.recognise_lines(grab)
     }
     fn focused_text(&self) -> crate::error::Result<Option<String>> {
@@ -602,7 +621,10 @@ impl crate::platform::Platform for Guarded<'_> {
     fn window_at(&self, x: i32, y: i32) -> crate::error::Result<Option<crate::platform::WindowId>> {
         self.inner.window_at(x, y)
     }
-    fn rect_of(&self, win: crate::platform::WindowId) -> crate::error::Result<crate::platform::PixelRect> {
+    fn rect_of(
+        &self,
+        win: crate::platform::WindowId,
+    ) -> crate::error::Result<crate::platform::PixelRect> {
         self.inner.rect_of(win)
     }
     fn cursor(&self) -> crate::error::Result<(i32, i32)> {

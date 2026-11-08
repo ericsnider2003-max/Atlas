@@ -542,6 +542,13 @@ impl<'a> Daemon<'a> {
                 .to_string();
         }
         if needs_the_proof {
+            // A proof may have finished between turns. Consume the result
+            // before clearing the shared slot or scheduling another run;
+            // otherwise the next answer restarts the same proof forever and
+            // the diagnosis never reaches the stage machine.
+            if let Some(said) = self.finish_proof_check() {
+                return said;
+            }
             let named = self
                 .selfwork
                 .as_ref()
@@ -552,11 +559,17 @@ impl<'a> Daemon<'a> {
             // on briefly, so a quick answer still comes back in this reply;
             // a slow one is said when it lands (`finish_proof_check`).
             let slot = self.proof_check_done.clone();
-            if let Ok(mut s) = slot.lock().or_else(crate::crash::unpoison) {
-                *s = None;
-            }
-            let (n2, scfg2, root2, slot2) =
-                (named.clone(), scfg.clone(), root.clone(), slot.clone());
+            let goal = self
+                .selfwork
+                .as_ref()
+                .map_or_else(String::new, |s| s.goal.clone());
+            let (n2, goal2, scfg2, root2, slot2) = (
+                named.clone(),
+                goal.clone(),
+                scfg.clone(),
+                root.clone(),
+                slot.clone(),
+            );
             let heavy_label = format!(
                 "Self-repair: running a test to show the fault for {}",
                 self.selfwork
@@ -580,7 +593,10 @@ impl<'a> Daemon<'a> {
                     heavy.fail(why);
                 }
                 if let Ok(mut s) = slot2.lock().or_else(crate::crash::unpoison) {
-                    *s = Some((n2, outcome));
+                    // Do not clear the slot on the daemon thread: a worker
+                    // can publish in the gap between the completion check and
+                    // scheduling. Goal and proof name reject late results.
+                    *s = Some((goal2, n2, outcome));
                 }
                 Ok(String::new())
             });
@@ -739,102 +755,102 @@ impl<'a> Daemon<'a> {
             // However the work ends early, the job says so rather than
             // closing as "Finished." (`heavywork`, 21 Oct 2026).
             let result = (|| -> std::result::Result<String, String> {
-            // Local structured recipes are tested before any model is needed.
-            for (recipe, candidate) in crate::selfwork::recipe_candidates(&current) {
-                budget.check()?;
-                if let Ok(proved) =
-                    prove_in_a_copy(&thought, &candidate, &scfg, &root, Some(&budget))
-                {
-                    if let Ok(mut s) = slot.lock().or_else(crate::crash::unpoison) {
-                        *s = Some(SelfFixDone {
-                            thought,
-                            current,
-                            candidate,
-                            proved: Ok(proved),
-                        });
+                // Local structured recipes are tested before any model is needed.
+                for (recipe, candidate) in crate::selfwork::recipe_candidates(&current) {
+                    budget.check()?;
+                    if let Ok(proved) =
+                        prove_in_a_copy(&thought, &candidate, &scfg, &root, Some(&budget))
+                    {
+                        if let Ok(mut s) = slot.lock().or_else(crate::crash::unpoison) {
+                            *s = Some(SelfFixDone {
+                                thought,
+                                current,
+                                candidate,
+                                proved: Ok(proved),
+                            });
+                        }
+                        return Ok(format!("the local repair recipe was proven: {recipe}"));
                     }
-                    return Ok(format!("the local repair recipe was proven: {recipe}"));
                 }
-            }
-            budget.check()?;
-            let Some(llm) = llm.as_ref() else {
-                return Err("No local recipe proved a fix, and no bounded model connection is configured. Nothing was changed in the source.".into());
-            };
-            let bounded_model = crate::selfwork::BoundedModel {
-                model: llm.as_ref(),
-                budget: &budget,
-            };
-            let candidate =
-                crate::selfwork::draft_fix(&thought, &instruction, &current, &bounded_model)
-                    .map_err(|why| format!("I couldn't draft a fix for that yet: {why}."))?;
-            if c.stopping() {
-                return Err("stopped before proving the fix".into());
-            }
-            let mut candidate = candidate;
-            let mut proved = prove_in_a_copy(&thought, &candidate, &scfg, &root, Some(&budget));
-            // One draft didn't hold: the fix loop works the proving test from
-            // several angles, the real test output fed back each time, before
-            // giving up (`fixloop`; research report, Stage 2 item 15 -- it
-            // was a command-line tool only). Whatever it finds is proved the
-            // same way: the whole suite, and the mutation check.
-            if proved.is_err() && !c.stopping() && !thought.proof.trim().is_empty() {
-                let mut test: Vec<String> = scfg
-                    .test_command
-                    .split_whitespace()
-                    .map(String::from)
-                    .collect();
-                test.push(thought.proof.trim().to_string());
-                let job = crate::fixloop::Job {
-                    folder: root.clone(),
-                    test,
-                    goal: thought.symptom.clone(),
+                budget.check()?;
+                let Some(llm) = llm.as_ref() else {
+                    return Err("No local recipe proved a fix, and no bounded model connection is configured. Nothing was changed in the source.".into());
                 };
-                let mut counsel = crate::fixloop::ModelCounsel::new(&bounded_model);
-                if let Ok(o) = crate::fixloop::run_controlled(
-                    &job,
-                    &mut counsel,
-                    &crate::roots::tmp_dir().join("fix"),
-                    &strategy,
-                    &handoff,
-                    &consult,
-                    Some(&budget),
-                ) {
-                    if o.solved && !o.changes.is_empty() {
-                        let from_loop: Vec<crate::selfwork::Edit> = o
-                            .changes
-                            .iter()
-                            .map(|(path, content)| crate::selfwork::Edit {
-                                path: path.clone(),
-                                content: content.clone(),
-                                reason: format!(
-                                    "worked out in {} attempts by the fix loop",
-                                    o.attempts
-                                ),
-                            })
-                            .collect();
-                        let again =
-                            prove_in_a_copy(&thought, &from_loop, &scfg, &root, Some(&budget));
-                        if again.is_ok() {
-                            candidate = from_loop;
-                            proved = again;
+                let bounded_model = crate::selfwork::BoundedModel {
+                    model: llm.as_ref(),
+                    budget: &budget,
+                };
+                let candidate =
+                    crate::selfwork::draft_fix(&thought, &instruction, &current, &bounded_model)
+                        .map_err(|why| format!("I couldn't draft a fix for that yet: {why}."))?;
+                if c.stopping() {
+                    return Err("stopped before proving the fix".into());
+                }
+                let mut candidate = candidate;
+                let mut proved = prove_in_a_copy(&thought, &candidate, &scfg, &root, Some(&budget));
+                // One draft didn't hold: the fix loop works the proving test from
+                // several angles, the real test output fed back each time, before
+                // giving up (`fixloop`; research report, Stage 2 item 15 -- it
+                // was a command-line tool only). Whatever it finds is proved the
+                // same way: the whole suite, and the mutation check.
+                if proved.is_err() && !c.stopping() && !thought.proof.trim().is_empty() {
+                    let mut test: Vec<String> = scfg
+                        .test_command
+                        .split_whitespace()
+                        .map(String::from)
+                        .collect();
+                    test.push(thought.proof.trim().to_string());
+                    let job = crate::fixloop::Job {
+                        folder: root.clone(),
+                        test,
+                        goal: thought.symptom.clone(),
+                    };
+                    let mut counsel = crate::fixloop::ModelCounsel::new(&bounded_model);
+                    if let Ok(o) = crate::fixloop::run_controlled(
+                        &job,
+                        &mut counsel,
+                        &crate::roots::tmp_dir().join("fix"),
+                        &strategy,
+                        &handoff,
+                        &consult,
+                        Some(&budget),
+                    ) {
+                        if o.solved && !o.changes.is_empty() {
+                            let from_loop: Vec<crate::selfwork::Edit> = o
+                                .changes
+                                .iter()
+                                .map(|(path, content)| crate::selfwork::Edit {
+                                    path: path.clone(),
+                                    content: content.clone(),
+                                    reason: format!(
+                                        "worked out in {} attempts by the fix loop",
+                                        o.attempts
+                                    ),
+                                })
+                                .collect();
+                            let again =
+                                prove_in_a_copy(&thought, &from_loop, &scfg, &root, Some(&budget));
+                            if again.is_ok() {
+                                candidate = from_loop;
+                                proved = again;
+                            }
                         }
                     }
                 }
-            }
-            let ok = proved.is_ok();
-            if let Ok(mut s) = slot.lock().or_else(crate::crash::unpoison) {
-                *s = Some(SelfFixDone {
-                    thought,
-                    current,
-                    candidate,
-                    proved,
-                });
-            }
-            if ok {
-                Ok("the fix is proven".into())
-            } else {
-                Ok("the draft didn't hold".into())
-            }
+                let ok = proved.is_ok();
+                if let Ok(mut s) = slot.lock().or_else(crate::crash::unpoison) {
+                    *s = Some(SelfFixDone {
+                        thought,
+                        current,
+                        candidate,
+                        proved,
+                    });
+                }
+                if ok {
+                    Ok("the fix is proven".into())
+                } else {
+                    Ok("the draft didn't hold".into())
+                }
             })();
             match &result {
                 Err(why) if c.stopping() => heavy.cancel(why),
@@ -998,14 +1014,21 @@ impl<'a> Daemon<'a> {
     /// The proving test's run came back: what it means for the diagnosis,
     /// said. `None` while it's still running (or already said).
     pub(super) fn finish_proof_check(&mut self) -> Option<String> {
-        let (named, outcome) = self
+        let (goal, named, outcome) = self
             .proof_check_done
             .lock()
             .or_else(crate::crash::unpoison)
             .ok()?
             .take()?;
         let Some(session) = self.selfwork.as_mut() else {
-            return Some("Nothing to work on.".into());
+            return Some(format!(
+                "The proof result for {named} was discarded because its self-work session no longer exists."
+            ));
+        };
+        if session.goal != goal || session.proving_test() != Some(named.as_str()) {
+            return Some(format!(
+                "The proof result for {named} was stale because the self-work session changed; it was not used."
+            ));
         };
         match outcome {
             crate::selfwork::ProofToday::PassesAlready => {
@@ -1580,10 +1603,7 @@ impl<'a> Daemon<'a> {
         let task = self_repair_task(what, findings.as_deref(), &branch);
         let (root2, branch2) = (root.clone(), branch.clone());
         let heavy = self.tools_cfg().self_work.heavy.clone();
-        let heavy_label = format!(
-            "Self-repair: a coding agent is working on {}",
-            what.trim()
-        );
+        let heavy_label = format!("Self-repair: a coding agent is working on {}", what.trim());
         let heavy_store = self.store.clone();
         let work: crate::crew::Work = Box::new(move |ctl| {
             // The agent builds and tests as it goes. It is not started until

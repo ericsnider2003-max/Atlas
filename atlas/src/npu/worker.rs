@@ -798,7 +798,7 @@ mod budget_tests {
             dimensions(&[1, 3, 4096, 4096]).is_err(),
             "a runaway shape must still be refused"
         );
-        assert!(ELEMENTS * 12 <= FRAME);
+        const _: () = assert!(ELEMENTS * 12 <= FRAME);
     }
 }
 

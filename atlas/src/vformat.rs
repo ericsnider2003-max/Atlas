@@ -169,7 +169,8 @@ pub fn parse(text: &str) -> Result<Vec<Component>, String> {
         match p.name.as_str() {
             "BEGIN" => stack.push(Component {
                 name: p.value.to_ascii_uppercase(),
-                ..Default::default()
+                props: Vec::new(),
+                children: Vec::new(),
             }),
             "END" => {
                 let c = stack.pop().ok_or("END without BEGIN")?;
@@ -572,7 +573,7 @@ pub fn events_in(text: &str, home: &crate::tz::Zone) -> Result<(Vec<Event>, Zone
     let zones = Zones {
         home: home.clone(),
         own,
-        unknown: Default::default(),
+        unknown: std::cell::RefCell::new(Vec::new()),
     };
     let mut out = vec![];
     for cal in &cals {
@@ -681,7 +682,7 @@ mod tests {
             exdates: vec![],
             zone: None,
         };
-        let s = calendar(&[e.clone()], 0);
+        let s = calendar(std::slice::from_ref(&e), 0);
         assert!(s.contains("DTSTART;VALUE=DATE:20261002"));
         assert_eq!(events_in(&s, &crate::tz::Zone::utc()).unwrap().0, vec![e]);
     }

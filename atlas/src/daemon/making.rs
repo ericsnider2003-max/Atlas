@@ -227,6 +227,40 @@ impl<'a> Daemon<'a> {
         ))
     }
 
+    /// A FreeLLMAPI gateway worker, using the same vault-backed handoff and
+    /// local verification boundary as the existing online worker. The gateway
+    /// is loopback-only from Atlas's perspective, but it can route to remote
+    /// free providers, so it is never used while Google-held data is present.
+    pub(super) fn freellmapi_worker(
+        &mut self,
+    ) -> Option<(std::sync::Arc<dyn crate::brain::Llm>, crate::tools::Vars)> {
+        let cfg = self.tools_cfg().freellmapi.clone();
+        if !cfg.enabled
+            || self.connectivity.cached() != Reach::Online
+            || crate::brain::google_data_held()
+        {
+            return None;
+        }
+        let now = crate::store::now();
+        let token = self.vault.get(&cfg.token_vault, now).ok()?;
+        if !cfg.readiness(true).ready_now() {
+            return None;
+        }
+        let mut vars = self.tools_ref().map(|t| t.vars.clone()).unwrap_or_default();
+        vars.insert("token".into(), token);
+        let worker = crate::freellmapi::FreeLlmApiLlm::new(&cfg, vars.clone()).ok()?;
+        // The adapter owns the bearer token. Research/search tools receive a
+        // separate sanitized map so a custom `{token}` template cannot leak
+        // the gateway credential into a child process.
+        crate::freellmapi::remove_gateway_token_from_tool_vars(&mut vars);
+        let raw: std::sync::Arc<dyn crate::brain::Llm> = std::sync::Arc::new(worker);
+        Some((
+            std::sync::Arc::new(crate::brain::Scrubbed(raw))
+                as std::sync::Arc<dyn crate::brain::Llm>,
+            vars,
+        ))
+    }
+
     /// The models to write code with right now, in the order to try them,
     /// each named (`build_it::writers`, 2 Oct 2026): your own second model and
     /// your Cloudflare worker first, then the one on this computer, then the
@@ -241,7 +275,11 @@ impl<'a> Daemon<'a> {
         use crate::build_it::Writer;
         let tc = self.tools_cfg();
         let online = self.connectivity.cached() == Reach::Online;
-        let worker = self.cloudflare_worker().map(|(w, _)| w);
+        let free_worker = (!crate::brain::holds_something_private(request))
+            .then(|| self.freellmapi_worker())
+            .flatten();
+        let (worker, _) = super::prefer_free_gateway(free_worker, || self.cloudflare_worker());
+        let worker = worker.map(|(w, _)| w);
         let second = tc.llm_secondary.as_ref().map(|lc| {
             let raw: std::sync::Arc<dyn crate::brain::Llm> =
                 std::sync::Arc::new(crate::brain::ShellLlm {
@@ -475,7 +513,7 @@ impl<'a> Daemon<'a> {
         .then(|| writers.get(1).map(|(w, _)| w.named()))
         .flatten();
         let store = self.store.clone();
-        let job_id = format!("build-{}", crate::store::now());
+        let job_id = crate::job::unique_id("build");
         let mut job_record = crate::job::Record::planned(job_id.clone(), "code build");
         if let Ok(input) = crate::artifact::ArtifactRef::new(
             format!("build-request:{desc}"),
@@ -633,26 +671,21 @@ impl<'a> Daemon<'a> {
                     .map_err(|error| error.to_string())?];
                 }
             }
-            let state = if outcome.is_built() && saved {
+            let mut state = if outcome.is_built() && saved {
                 crate::job::State::Succeeded
             } else {
                 crate::job::State::Failed
             };
-            let detail = if state == crate::job::State::Succeeded {
-                "verified code saved"
+            let mut detail = if state == crate::job::State::Succeeded {
+                "verified code saved".to_string()
             } else {
-                "build did not produce verified saved code"
+                "build did not produce verified saved code".to_string()
             };
-            crate::kept!(job_record
-                .finish(state, detail, "local build")
-                .and_then(
-                    |_| crate::job::upsert(&store, job_record.clone()).map_err(|e| e.to_string())
-                ));
             match crate::evidence::build_outcome(
                 &job_id,
                 &desc,
                 state == crate::job::State::Succeeded,
-                detail,
+                &detail,
                 crate::store::now(),
             )
             .map_err(crate::error::AtlasError::Config)
@@ -660,9 +693,27 @@ impl<'a> Daemon<'a> {
             {
                 Ok(()) => {}
                 Err(error) => {
-                    crate::kept!(Err::<(), _>(error));
+                    if state == crate::job::State::Succeeded {
+                        state = crate::job::State::Failed;
+                        detail =
+                            format!("build completion evidence could not be recorded: {error}");
+                        said.push_str(&format!(
+                            "\n\nI couldn't verify the build completion evidence ({error}); it is marked failed rather than complete."
+                        ));
+                    } else {
+                        crate::kept!(Err::<(), _>(error));
+                    }
                 }
             }
+            let expected_revision = job_record.revision;
+            crate::kept!(job_record
+                .finish(state, &detail, "local build")
+                .and_then(|_| crate::job::upsert_cas(
+                    &store,
+                    job_record.clone(),
+                    expected_revision
+                )
+                .map_err(|e| e.to_string())));
             Ok(said)
         });
 
@@ -3101,6 +3152,22 @@ fn what_broke_test(said: &str) -> Option<String> {
             .chars()
             .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == ':');
     ok.then(|| name.to_string())
+}
+
+#[cfg(test)]
+mod free_gateway_preference_tests {
+    #[test]
+    fn free_gateway_is_selected_before_cloudflare() {
+        let mut cloudflare_constructed = false;
+        let (selected, used_cloudflare) = super::super::prefer_free_gateway(Some("free"), || {
+            cloudflare_constructed = true;
+            Some("cloudflare")
+        });
+
+        assert_eq!(selected, Some("free"));
+        assert!(!used_cloudflare);
+        assert!(!cloudflare_constructed);
+    }
 }
 
 impl<'a> Daemon<'a> {

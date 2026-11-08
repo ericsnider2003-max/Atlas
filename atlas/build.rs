@@ -41,8 +41,10 @@ fn main() {
     // build gives its frames several times the room an optimised one needs.
     // Eight is what the loop gets in every build now; a release build is
     // unaffected in behaviour. (23 Oct 2026)
-    if std::env::var("CARGO_CFG_TARGET_ENV").as_deref() == Ok("msvc") {
-        println!("cargo:rustc-link-arg-bins=/STACK:8388608");
+    match std::env::var("CARGO_CFG_TARGET_ENV").as_deref() {
+        Ok("msvc") => println!("cargo:rustc-link-arg-bins=/STACK:8388608"),
+        Ok("gnu") => println!("cargo:rustc-link-arg-bins=-Wl,--stack,8388608"),
+        _ => {}
     }
 
     let number = std::env::var("ATLAS_BUILD_NUMBER")

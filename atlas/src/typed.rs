@@ -430,7 +430,9 @@ mod tests {
         let (want, lines) = lines_on_demand(|_: &mut String| Ok(0));
         want.send(()).unwrap();
         assert_eq!(
-            lines.recv_timeout(std::time::Duration::from_secs(5)).unwrap(),
+            lines
+                .recv_timeout(std::time::Duration::from_secs(5))
+                .unwrap(),
             None
         );
     }

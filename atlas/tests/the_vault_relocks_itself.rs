@@ -24,7 +24,8 @@ use std::path::{Path, PathBuf};
 fn tmp(tag: &str) -> PathBuf {
     let p = std::env::temp_dir().join(format!("atlas-vault-relock-{tag}"));
     let _ = std::fs::remove_dir_all(&p);
-    std::fs::create_dir_all(&p).unwrap();
+    std::fs::create_dir_all(&p)
+        .unwrap_or_else(|error| panic!("temporary vault directory must be creatable: {error}"));
     p
 }
 

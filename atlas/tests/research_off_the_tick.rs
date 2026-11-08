@@ -17,7 +17,14 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 fn tmp(tag: &str) -> PathBuf {
-    let p = std::env::temp_dir().join(format!("atlas-research-crew-{tag}"));
+    let nonce = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("system clock is before the Unix epoch")
+        .as_nanos();
+    let p = std::env::temp_dir().join(format!(
+        "atlas-research-crew-{tag}-{}-{nonce}",
+        std::process::id()
+    ));
     let _ = std::fs::remove_dir_all(&p);
     std::fs::create_dir_all(&p).unwrap();
     p
@@ -155,7 +162,13 @@ fn the_real_answer_arrives_later_once_the_crew_actually_finishes() {
         t += 1;
     }
     assert!(saw_the_answer, "the real research result never arrived");
-    assert_eq!(d.crew.active(), 0);
+    let settle_deadline = Instant::now() + Duration::from_secs(5);
+    while d.crew.active() != 0 && Instant::now() < settle_deadline {
+        d.tick(t);
+        std::thread::sleep(Duration::from_millis(10));
+        t += 1;
+    }
+    assert_eq!(d.crew.active(), 0, "research indexing did not settle");
 }
 
 #[test]

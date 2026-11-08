@@ -14,16 +14,21 @@
 use crate::error::{AtlasError, Result};
 use serde::Deserialize;
 use std::collections::BTreeMap;
-use std::io::Write;
+use std::fs::File;
+use std::io::{Read, Write};
 use std::process::Stdio;
 
 pub type Vars = BTreeMap<String, String>;
+const MAX_RESULT_FILE_BYTES: u64 = 32 * 1024 * 1024;
 
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct ExternalTool {
     pub command: String,
     #[serde(default)]
     pub args: Vec<String>,
+    /// Optional working directory for tools that load adjacent artifacts.
+    #[serde(default)]
+    pub current_dir: Option<String>,
     /// Pipe the supplied text into the process's stdin (Piper works this way).
     #[serde(default)]
     pub stdin_text: bool,
@@ -44,6 +49,23 @@ pub struct ExternalTool {
     /// legitimately runs longer sets its own.
     #[serde(default = "default_timeout")]
     pub timeout_secs: u64,
+    /// When set, refuse to execute if the resolved executable changed after
+    /// provider selection. Private-model adapters use this at launch time.
+    #[serde(default)]
+    pub expected_sha256: Option<String>,
+}
+
+#[cfg(unix)]
+struct VerifiedEntrypoint {
+    path: std::path::PathBuf,
+}
+
+#[cfg(unix)]
+impl Drop for VerifiedEntrypoint {
+    fn drop(&mut self) {
+        // unheard-ok: best-effort cleanup; the OS reclaims the staging file on exit.
+        let _ = std::fs::remove_file(&self.path);
+    }
 }
 
 fn default_timeout() -> u64 {
@@ -629,18 +651,28 @@ fn wait_scoped(
         let _ = child.kill();
         crate::unwaited::dont_wait(child);
     }
-    let drain_until = std::time::Instant::now() + std::time::Duration::from_millis(250);
-    while started.elapsed() < limit && std::time::Instant::now() < drain_until {
-        if stdout.lock().unwrap_or_else(|e| e.into_inner()).done
-            && stderr.lock().unwrap_or_else(|e| e.into_inner()).done
-            && input_result
-                .lock()
-                .unwrap_or_else(|poison| poison.into_inner())
-                .is_some()
-        {
-            break;
+    // A child can exit before Windows has scheduled the reader threads to
+    // observe EOF. Under aggregate test or machine pressure, 250 ms turns a
+    // successful command into a false I/O failure. Give already-exited
+    // children a bounded grace period for pipe acknowledgement; this is not a
+    // reader join and descendants that keep a pipe open still remain bounded.
+    // For cancellation and timeout, output is intentionally discarded, so do
+    // not make the caller wait for pipe acknowledgement after the process tree
+    // has already been stopped.
+    if matches!(end, ProcessEnd::Exited(_)) {
+        let drain_until = std::time::Instant::now() + std::time::Duration::from_secs(2);
+        while started.elapsed() < limit && std::time::Instant::now() < drain_until {
+            if stdout.lock().unwrap_or_else(|e| e.into_inner()).done
+                && stderr.lock().unwrap_or_else(|e| e.into_inner()).done
+                && input_result
+                    .lock()
+                    .unwrap_or_else(|poison| poison.into_inner())
+                    .is_some()
+            {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(2));
         }
-        std::thread::sleep(std::time::Duration::from_millis(2));
     }
     let out = stdout.lock().unwrap_or_else(|e| e.into_inner());
     let err = stderr.lock().unwrap_or_else(|e| e.into_inner());
@@ -736,6 +768,33 @@ pub fn expand(template: &str, vars: &Vars) -> String {
     out
 }
 
+fn read_result_file_bounded(path: &str) -> Result<String> {
+    let metadata = std::fs::metadata(path).map_err(|e| AtlasError::Platform(e.to_string()))?;
+    if !metadata.is_file() {
+        return Err(AtlasError::Platform(
+            "external tool result is not a regular file".into(),
+        ));
+    }
+    if metadata.len() > MAX_RESULT_FILE_BYTES {
+        return Err(AtlasError::Platform(format!(
+            "external tool result exceeds the {} MiB limit",
+            MAX_RESULT_FILE_BYTES / (1024 * 1024)
+        )));
+    }
+    let file = std::fs::File::open(path).map_err(|e| AtlasError::Platform(e.to_string()))?;
+    let mut bytes = Vec::with_capacity(metadata.len() as usize);
+    file.take(MAX_RESULT_FILE_BYTES + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|e| AtlasError::Platform(e.to_string()))?;
+    if bytes.len() as u64 > MAX_RESULT_FILE_BYTES {
+        return Err(AtlasError::Platform(
+            "external tool result exceeded the read limit".into(),
+        ));
+    }
+    String::from_utf8(bytes)
+        .map_err(|e| AtlasError::Platform(format!("external tool result is not UTF-8: {e}")))
+}
+
 impl ExternalTool {
     pub fn resolved(&self, vars: &Vars) -> (String, Vec<String>) {
         (
@@ -782,6 +841,13 @@ impl ExternalTool {
     ) -> Result<Option<String>> {
         let (cmd, args) = self.resolved(vars);
 
+        // Keep a read handle open with write/delete sharing disabled while a
+        // validated private entrypoint is hashed and launched. On Windows
+        // this closes the verify-then-spawn replacement window: a writer
+        // cannot swap the path after validation but before CreateProcess.
+        let _entrypoint_lock = self.lock_expected_entrypoint(&cmd)?;
+        self.verify_expected_sha256(&cmd)?;
+
         // On a phone Atlas can't start other programs at all (iOS forbids it;
         // Android has no `curl`), and every model question -- to the phone's
         // own model or the laptop's over Tailscale -- is a `curl` to a plain
@@ -793,8 +859,25 @@ impl ExternalTool {
             }
         }
 
-        let mut command = crate::tools::command(&cmd);
+        // Unix has no Windows-style share mode: a path can be replaced after
+        // it is hashed and before execve. Execute a private tool from an
+        // Atlas-owned staged copy instead, so the verified bytes—not the
+        // mutable configured path—are what the child receives.
+        #[cfg(unix)]
+        let staged = self.stage_expected_entrypoint(&cmd)?;
+        #[cfg(unix)]
+        let launch_cmd = staged
+            .as_ref()
+            .and_then(|entry| entry.path.to_str())
+            .unwrap_or(&cmd);
+        #[cfg(not(unix))]
+        let launch_cmd = &cmd;
+
+        let mut command = crate::tools::command(launch_cmd);
         command.args(&args);
+        if let Some(current_dir) = self.current_dir.as_deref() {
+            command.current_dir(expand(current_dir, vars));
+        }
 
         let limit = std::time::Duration::from_secs(if self.timeout_secs == 0 {
             default_timeout()
@@ -810,6 +893,11 @@ impl ExternalTool {
         let Some(out) = process_output(ran, &cmd, limit)? else {
             return Ok(None);
         };
+        // A validated private entrypoint must remain the same artifact for the
+        // whole request. This closes the result-acceptance side of the
+        // replacement race: a file swapped while the child was running cannot
+        // produce an accepted model response.
+        self.verify_expected_sha256(&cmd)?;
         if !out.status.success() {
             let err = String::from_utf8_lossy(&out.stderr);
             return Err(AtlasError::Platform(format!(
@@ -822,7 +910,7 @@ impl ExternalTool {
         match &self.result_file {
             Some(t) => {
                 let path = expand(t, vars);
-                std::fs::read_to_string(&path).map(Some).map_err(|e| {
+                read_result_file_bounded(&path).map(Some).map_err(|e| {
                     // What the program itself said: whisper exits 0 and
                     // writes nothing when it can't read its input, and says
                     // why only on stderr (call notes, 4 Oct 2026: the reason
@@ -851,6 +939,88 @@ impl ExternalTool {
     pub fn available(&self, vars: &Vars) -> bool {
         let (cmd, _) = self.resolved(vars);
         which(&cmd).is_some()
+    }
+
+    fn verify_expected_sha256(&self, cmd: &str) -> Result<()> {
+        let Some(expected) = self.expected_sha256.as_deref() else {
+            return Ok(());
+        };
+        let actual = crate::digest::sha256_file_hex(std::path::Path::new(cmd))
+            .map_err(|e| AtlasError::Config(format!("validated tool cannot be hashed: {e}")))?;
+        if !actual.eq_ignore_ascii_case(expected) {
+            return Err(AtlasError::Config(
+                "validated tool changed after private-model selection".into(),
+            ));
+        }
+        Ok(())
+    }
+
+    fn lock_expected_entrypoint(&self, cmd: &str) -> Result<Option<File>> {
+        if self.expected_sha256.is_none() {
+            return Ok(None);
+        }
+        #[cfg(windows)]
+        {
+            use std::os::windows::fs::OpenOptionsExt;
+            let file = std::fs::OpenOptions::new()
+                .read(true)
+                // FILE_SHARE_READ: deny concurrent writes and deletes while
+                // the verified process is being launched and awaited.
+                .share_mode(0x0000_0001)
+                .open(cmd)
+                .map_err(|e| AtlasError::Config(format!("validated tool cannot be locked: {e}")))?;
+            Ok(Some(file))
+        }
+        #[cfg(not(windows))]
+        {
+            let _ = cmd;
+            Ok(None)
+        }
+    }
+
+    #[cfg(unix)]
+    fn stage_expected_entrypoint(&self, cmd: &str) -> Result<Option<VerifiedEntrypoint>> {
+        if self.expected_sha256.is_none() {
+            return Ok(None);
+        }
+        use std::os::unix::fs::PermissionsExt;
+        let bytes = std::fs::read(cmd)
+            .map_err(|e| AtlasError::Config(format!("validated tool cannot be staged: {e}")))?;
+        let mut path = std::env::temp_dir();
+        let pid = std::process::id();
+        for attempt in 0..100u32 {
+            path.push(format!("atlas-verified-{pid}-{attempt}"));
+            let result = std::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&path);
+            match result {
+                Ok(mut file) => {
+                    file.write_all(&bytes).map_err(|e| {
+                        AtlasError::Config(format!("validated tool cannot be staged: {e}"))
+                    })?;
+                    file.sync_all().map_err(|e| {
+                        AtlasError::Config(format!("validated tool cannot be staged: {e}"))
+                    })?;
+                    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o700))
+                        .map_err(|e| {
+                            AtlasError::Config(format!("validated tool cannot be staged: {e}"))
+                        })?;
+                    return Ok(Some(VerifiedEntrypoint { path }));
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+                    path.pop();
+                }
+                Err(e) => {
+                    return Err(AtlasError::Config(format!(
+                        "validated tool cannot be staged: {e}"
+                    )))
+                }
+            }
+        }
+        Err(AtlasError::Config(
+            "validated tool cannot be staged: temporary-name exhaustion".into(),
+        ))
     }
 }
 
@@ -1196,5 +1366,33 @@ mod finding_programs {
             "already named"
         );
         assert_eq!(resolve_on_path("missing", &dirs, ext), None);
+    }
+
+    #[test]
+    fn a_validated_tool_is_rejected_after_the_artifact_changes() {
+        let path = std::env::temp_dir().join(format!(
+            "atlas-validated-tool-{}-{}",
+            std::process::id(),
+            crate::store::now()
+        ));
+        std::fs::write(&path, b"original").unwrap();
+        let expected = crate::digest::sha256_file_hex(&path).unwrap();
+        let tool = super::ExternalTool {
+            command: path.to_string_lossy().into_owned(),
+            args: Vec::new(),
+            timeout_secs: 1,
+            stdin_text: false,
+            current_dir: None,
+            result_file: None,
+            expected_sha256: Some(expected),
+        };
+        tool.verify_expected_sha256(path.to_string_lossy().as_ref())
+            .unwrap();
+        std::fs::write(&path, b"replacement").unwrap();
+        let error = tool
+            .verify_expected_sha256(path.to_string_lossy().as_ref())
+            .unwrap_err();
+        assert!(error.to_string().contains("changed"));
+        let _ = std::fs::remove_file(path);
     }
 }

@@ -255,13 +255,13 @@ pub(crate) fn resolve(kind: &str, what_for: &str, ctx: &Context) -> Resolution {
     }
     let mut recents: Vec<&(String, String, u64)> =
         ctx.recent_targets.iter().filter(|t| t.0 == kind).collect();
-    recents.sort_by(|a, b| b.2.cmp(&a.2));
+    recents.sort_by_key(|a| std::cmp::Reverse(a.2));
     for (i, t) in recents.iter().enumerate() {
         found.push((t.1.clone(), Why::Recent(i == 0)));
     }
     let mut habits: Vec<&(String, String, u32)> =
         ctx.habits.iter().filter(|h| h.0 == kind).collect();
-    habits.sort_by(|a, b| b.2.cmp(&a.2));
+    habits.sort_by_key(|a| std::cmp::Reverse(a.2));
     for h in habits {
         found.push((h.1.clone(), Why::Habit));
     }
@@ -500,12 +500,14 @@ mod tests {
 
     #[test]
     fn one_candidate_from_the_conversation_is_clear() {
-        let mut c = Context::default();
-        c.recent_said = vec!["put it in Backups please".into()];
-        c.recent_targets = vec![
-            ("folder".into(), "D:\\Backups".into(), 5),
-            ("folder".into(), "C:\\Projects".into(), 9),
-        ];
+        let c = Context {
+            recent_said: vec!["put it in Backups please".into()],
+            recent_targets: vec![
+                ("folder".into(), "D:\\Backups".into(), 5),
+                ("folder".into(), "C:\\Projects".into(), 9),
+            ],
+            ..Default::default()
+        };
         let r = resolve("folder", "where to back up to", &c);
         assert_eq!(
             r,
@@ -520,8 +522,10 @@ mod tests {
 
     #[test]
     fn one_candidate_from_the_active_window_is_clear() {
-        let mut c = Context::default();
-        c.active_window = Some("Draft - Notepad".into());
+        let c = Context {
+            active_window: Some("Draft - Notepad".into()),
+            ..Default::default()
+        };
         let r = resolve("app", "which app to close", &c);
         assert_eq!(
             r,
@@ -531,10 +535,12 @@ mod tests {
             }
         );
         // A folder window is matched to a known folder by its name.
-        let mut c = Context::default();
-        c.active_window = Some("Projects".into());
-        c.recent_targets = vec![("folder".into(), "C:\\Work\\Projects".into(), 1)];
-        c.habits = vec![("folder".into(), "D:\\Backups".into(), 4)];
+        let c = Context {
+            active_window: Some("Projects".into()),
+            recent_targets: vec![("folder".into(), "C:\\Work\\Projects".into(), 1)],
+            habits: vec![("folder".into(), "D:\\Backups".into(), 4)],
+            ..Default::default()
+        };
         match resolve("folder", "where to back up to", &c) {
             Resolution::Choose { options, .. } => {
                 assert!(options[0].contains("Projects") && options[0].contains("open now"));
@@ -545,8 +551,10 @@ mod tests {
 
     #[test]
     fn the_only_recent_one_is_clear_as_last_time() {
-        let mut c = Context::default();
-        c.recent_targets = vec![("folder".into(), "D:\\Backups".into(), 3)];
+        let c = Context {
+            recent_targets: vec![("folder".into(), "D:\\Backups".into(), 3)],
+            ..Default::default()
+        };
         match resolve("folder", "where to back up to", &c) {
             Resolution::Clear { because, .. } => {
                 assert_eq!(because, "the one you used last time")
@@ -557,8 +565,10 @@ mod tests {
 
     #[test]
     fn a_habit_alone_is_clear_as_what_you_usually_pick() {
-        let mut c = Context::default();
-        c.habits = vec![("person".into(), "Sam".into(), 7)];
+        let c = Context {
+            habits: vec![("person".into(), "Sam".into(), 7)],
+            ..Default::default()
+        };
         match resolve("person", "who to message", &c) {
             Resolution::Clear { value, because } => {
                 assert_eq!(value, "Sam");
@@ -570,11 +580,13 @@ mod tests {
 
     #[test]
     fn two_candidates_are_one_question_naming_both() {
-        let mut c = Context::default();
-        c.recent_targets = vec![
-            ("folder".into(), "D:\\Backups".into(), 3),
-            ("folder".into(), "C:\\Projects".into(), 9),
-        ];
+        let c = Context {
+            recent_targets: vec![
+                ("folder".into(), "D:\\Backups".into(), 3),
+                ("folder".into(), "C:\\Projects".into(), 9),
+            ],
+            ..Default::default()
+        };
         match resolve("folder", "where to back up to", &c) {
             Resolution::Choose { question, options } => {
                 assert_eq!(options.len(), 2);
@@ -591,11 +603,13 @@ mod tests {
 
     #[test]
     fn at_most_three_are_offered_and_repeats_collapse() {
-        let mut c = Context::default();
-        c.recent_targets = (0..5)
-            .map(|i| ("file".to_string(), format!("C:\\f{i}.txt"), i))
-            .collect();
-        c.habits = vec![("file".into(), "c:\\F4.TXT".into(), 9)];
+        let c = Context {
+            recent_targets: (0..5)
+                .map(|i| ("file".to_string(), format!("C:\\f{i}.txt"), i))
+                .collect(),
+            habits: vec![("file".into(), "c:\\F4.TXT".into(), 9)],
+            ..Default::default()
+        };
         match resolve("file", "which file to open", &c) {
             Resolution::Choose { options, .. } => assert_eq!(options.len(), 3),
             other => panic!("{other:?}"),

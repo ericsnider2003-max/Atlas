@@ -691,12 +691,12 @@ fn hows_that_going_is_answered_from_what_is_actually_running() {
     d.long_work.update(
         id,
         atlas::watching::Outcome::Failed,
-        "every source failed to fetch",
+        "no relevant sources after reading candidates",
         t.saturating_sub(120),
     );
     assert_eq!(
         d.turn("is it done yet", NOW),
-        "Nothing's running now. The last thing, research, failed 2 minutes ago: every source failed to fetch."
+        "Nothing's running now. The last thing, research, failed 2 minutes ago: no relevant sources after reading candidates."
     );
 }
 
@@ -1190,6 +1190,18 @@ fn bing_results_are_read_through_its_redirect() {
         .args
         .iter()
         .any(|a| a.ends_with("q={query_pct}&form=QBLH")));
+}
+
+#[test]
+fn wikipedia_api_results_become_article_urls() {
+    let json = r#"{"query":{"search":[{"title":"Rust (programming language)"},{"title":"Rust release history"}]}}"#;
+    assert_eq!(
+        atlas::research::urls_from_wikipedia(json, 5),
+        vec![
+            "https://en.wikipedia.org/wiki/Rust_%28programming_language%29".to_string(),
+            "https://en.wikipedia.org/wiki/Rust_release_history".to_string(),
+        ]
+    );
 }
 
 /// Research report, Stage 1 item 10: a failed push waited a flat five

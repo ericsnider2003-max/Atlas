@@ -26,7 +26,12 @@ use std::path::PathBuf;
 fn tmp(tag: &str) -> PathBuf {
     let p = std::env::temp_dir().join(format!("atlas-handover-{tag}"));
     let _ = std::fs::remove_dir_all(&p);
-    std::fs::create_dir_all(&p).unwrap();
+    std::fs::create_dir_all(&p).unwrap_or_else(|error| {
+        panic!(
+            "failed to create scratch directory {}: {error}",
+            p.display()
+        )
+    });
     p
 }
 
@@ -38,9 +43,11 @@ const PHRASE: &str = "a long enough passphrase";
 fn a_real_vault(state: &Store) -> Vault {
     let mut v = Vault::default();
     v.open(PHRASE, 100, &VaultConfig::default())
-        .expect("the first unlock sets the passphrase");
-    v.put("something", Kind::ApiKey, "sk-test", 100).unwrap();
-    v.save(state).expect("the vault should write");
+        .unwrap_or_else(|error| panic!("the first unlock should set the passphrase: {error}"));
+    v.put("something", Kind::ApiKey, "sk-test", 100)
+        .unwrap_or_else(|error| panic!("the fixture secret should be stored: {error}"));
+    v.save(state)
+        .unwrap_or_else(|error| panic!("the fixture vault should write: {error}"));
     Vault::load(state)
 }
 
@@ -238,7 +245,10 @@ fn function_body<'a>(text: &'a str, signature: &str) -> &'a str {
     let start = text
         .find(signature)
         .unwrap_or_else(|| panic!("{signature} is gone or renamed"));
-    let open = start + text[start..].find('{').expect("no body");
+    let open = start
+        + text[start..]
+            .find('{')
+            .unwrap_or_else(|| panic!("{signature} has no opening body brace"));
     let bytes = text.as_bytes();
     let mut depth = 0usize;
     for i in open..bytes.len() {
@@ -322,10 +332,11 @@ fn everything_a_handover_refuses_is_something_atlas_can_actually_be_asked() {
 /// parses the arms of the one function whose output `Role::may` and
 /// `handover::refuses` are called with.
 fn every_kind_atlas_can_produce() -> Vec<String> {
-    let text = std::fs::read_to_string("src/session.rs").expect("src/session.rs");
+    let text = std::fs::read_to_string("src/session.rs")
+        .unwrap_or_else(|error| panic!("failed to read src/session.rs: {error}"));
     let body = text
         .split_once("pub fn kind_of(")
-        .expect("kind_of is gone or renamed")
+        .unwrap_or_else(|| panic!("kind_of is gone or renamed in src/session.rs"))
         .1;
     let mut out = Vec::new();
     for line in body.lines() {

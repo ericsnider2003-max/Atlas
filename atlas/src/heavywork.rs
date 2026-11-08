@@ -579,9 +579,10 @@ fn write_job(store: &crate::store::Store, id: &str, label: &str, phase: Phase, d
     } else {
         State::Checkpointed
     };
+    let expected_revision = record.revision;
     if record.transition(next, detail).is_ok() {
         record.heartbeat(detail);
-        crate::heard!(crate::job::upsert(store, record));
+        crate::heard!(crate::job::upsert_cas(store, record, expected_revision));
     }
 }
 

@@ -146,7 +146,10 @@ fn muse_is_asked_only_with_a_key_scrubbed_and_counted_until_the_limit() {
 struct Named(&'static str, Mutex<Vec<String>>, bool);
 impl Llm for Named {
     fn complete(&self, _s: &str, u: &str) -> atlas::error::Result<String> {
-        self.1.lock().unwrap().push(u.to_string());
+        self.1
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .push(u.to_string());
         if self.2 {
             return Err(atlas::error::AtlasError::Platform("down".into()));
         }

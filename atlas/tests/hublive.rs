@@ -16,16 +16,20 @@ use atlas::proactive::{Proactive, ProactiveConfig};
 use atlas::server::Action;
 use atlas::store::Store;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
+
+static NEXT_TMP: AtomicU64 = AtomicU64::new(0);
 
 fn tmp(tag: &str) -> PathBuf {
-    let p = std::env::temp_dir().join(format!("atlas-hublive-{tag}"));
-    let _ = std::fs::remove_dir_all(&p);
-    std::fs::create_dir_all(&p).unwrap();
+    let run = NEXT_TMP.fetch_add(1, Ordering::Relaxed);
+    let p = std::env::temp_dir().join(format!("atlas-hublive-{tag}-{}-{run}", std::process::id()));
+    std::fs::create_dir_all(&p)
+        .unwrap_or_else(|error| panic!("create hublive test directory {}: {error}", p.display()));
     p
 }
 
 fn cfg() -> Config {
-    Config::load(Path::new("config")).unwrap()
+    Config::load(Path::new("config")).unwrap_or_else(|error| panic!("load test config: {error}"))
 }
 
 fn plat() -> MockPlatform {
@@ -1173,7 +1177,8 @@ fn every_card_the_deck_can_show_has_something_in_it_including_projects() {
 // file makes the save fail the way a full disk or a locked file does.
 
 fn saves_of(dir: &Path, record: &str) {
-    std::fs::create_dir_all(dir.join(format!("{record}.{}.json.tmp", std::process::id()))).unwrap();
+    std::fs::create_dir_all(dir.join(format!("{record}.{}.json.tmp", std::process::id())))
+        .unwrap_or_else(|error| panic!("create failed-save fixture for {record}: {error}"));
 }
 
 fn said_in(reply: &atlas::server::Reply) -> String {

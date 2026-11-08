@@ -18,7 +18,8 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 fn cfg() -> atlas::config::Config {
-    let mut c = atlas::config::Config::load(Path::new("config")).unwrap();
+    let mut c = atlas::config::Config::load(Path::new("config"))
+        .unwrap_or_else(|error| panic!("load truthful-replies config: {error}"));
     c.indexing = None;
     c
 }
@@ -37,7 +38,8 @@ fn plat() -> MockPlatform {
 fn tmp(tag: &str) -> PathBuf {
     let p = std::env::temp_dir().join(format!("atlas-truthful-{tag}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&p);
-    std::fs::create_dir_all(&p).unwrap();
+    std::fs::create_dir_all(&p)
+        .unwrap_or_else(|error| panic!("create truthful-replies fixture {}: {error}", p.display()));
     p
 }
 

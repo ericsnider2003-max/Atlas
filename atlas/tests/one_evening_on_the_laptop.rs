@@ -137,6 +137,7 @@ fn the_evening_replayed_through_the_prompt_builder() {
         folded: t.folded,
         last_active: t.recent[0].at,
         current_topic: None,
+        load_error: None,
     };
     store.save("thread", &start).unwrap();
     let spy = Replay::of(&t);

@@ -237,6 +237,9 @@ const KNOWN: &[&str] = &[
     // tools `router::Router::for_turn` picks, not every core command; kept
     // for the tests that measure the old shape against the new.
     "intent::for_sentence",
+    // Same foundation seam: durable policy attribution is retained for the
+    // future provider boundary and is not yet called by a live provider.
+    "job::bind_policy_revision",
     "language::live_line",
     "language::notes",
     "ledger::relevant_rule",
@@ -517,7 +520,7 @@ fn current() -> BTreeSet<String> {
         .collect();
 
     let unwired: BTreeSet<String> = std::fs::read_to_string("tests/wiring.rs")
-        .expect("tests/wiring.rs")
+        .unwrap_or_else(|error| panic!("read wiring baseline tests/wiring.rs: {error}"))
         .lines()
         .filter_map(|l| {
             l.trim()

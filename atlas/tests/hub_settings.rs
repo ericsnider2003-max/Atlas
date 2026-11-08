@@ -8,8 +8,10 @@ use atlas::settings::{registry, Settings, Value, Weight};
 use atlas::voice::ToolsConfig;
 
 fn shipped() -> ToolsConfig {
-    let y = std::fs::read_to_string("config/tools.yaml").unwrap();
-    serde_yaml::from_str(&y).unwrap()
+    let y = std::fs::read_to_string("config/tools.yaml")
+        .unwrap_or_else(|error| panic!("config/tools.yaml must be readable: {error}"));
+    serde_yaml::from_str(&y)
+        .unwrap_or_else(|error| panic!("config/tools.yaml must be valid YAML: {error}"))
 }
 fn s() -> Settings {
     registry(&shipped())

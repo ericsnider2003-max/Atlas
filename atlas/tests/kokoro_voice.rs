@@ -260,6 +260,188 @@ fn kokoro_chosen_and_missing_still_speaks_in_the_usual_voice() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// On Windows, exercise the real pressure refusal rather than only the pure
+/// admission boundary: hold enough committed memory to put a fresh Kokoro
+/// load below its 636 MB admission line, then prove `Voice::speak` uses the
+/// configured Piper command and still produces output. This is deliberately
+/// ignored because it allocates a large temporary buffer and is a diagnostic
+/// gate, not a routine suite test.
+#[cfg(windows)]
+#[test]
+#[ignore = "allocates measured memory pressure; run explicitly on the target laptop"]
+fn windows_memory_pressure_falls_back_from_kokoro_to_piper() {
+    use atlas::tools::ExternalTool;
+
+    let root = atlas::roots::install_root();
+    atlas::kokoro::check(&root).expect("installed Kokoro assets are required");
+    atlas::kokoro::forget();
+    let available = atlas::relief::available_mb().expect("Windows memory must be readable");
+    assert!(
+        available > 1_024,
+        "not enough headroom for a safe pressure run: {available} MB"
+    );
+    let hold_mb = available.saturating_sub(550);
+    let mut pressure = vec![0_u8; hold_mb as usize * 1024 * 1024];
+    for page in pressure.chunks_mut(4096) {
+        page[0] = 0xA5;
+    }
+    let available_under_pressure = atlas::relief::available_mb().expect("pressure reading");
+    assert!(
+        available_under_pressure < 636,
+        "pressure allocation did not reach Kokoro's admission line"
+    );
+
+    let dir = std::env::temp_dir().join(format!("atlas-kokoro-pressure-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let script = dir.join("fake-piper.ps1");
+    std::fs::write(
+        &script,
+        "$voice = $args[0]\n$speed = $args[1]\n$out = $args[2]\n$text = [Console]::In.ReadToEnd()\n[IO.File]::WriteAllText($out, \"$voice $speed $text\")\n",
+    )
+    .unwrap();
+    let piper = dir.join("piper.cmd");
+    std::fs::write(
+        &piper,
+        "@echo off\r\npowershell.exe -NoProfile -ExecutionPolicy Bypass -File \"%~dp0fake-piper.ps1\" %*\r\n",
+    )
+    .unwrap();
+    let run = |command: &str, args: Vec<String>, stdin: bool| ExternalTool {
+        command: command.into(),
+        args,
+        stdin_text: stdin,
+        result_file: None,
+        current_dir: None,
+        timeout_secs: 30,
+        expected_sha256: None,
+    };
+    let mut cfg = atlas::voice::ToolsConfig {
+        enabled: true,
+        work_dir: dir.display().to_string(),
+        tts: run(
+            &piper.display().to_string(),
+            vec!["{voice_file}".into(), "{speed}".into(), "{out_wav}".into()],
+            true,
+        ),
+        play: run("cmd.exe", vec!["/C".into(), "exit 0".into()], false),
+        ..Default::default()
+    };
+    cfg.tts_engine.engine = atlas::tts::Engine::Kokoro;
+    cfg.voice_settings.voice = "af_heart".into();
+    cfg.voice_settings.speed = 1.25;
+
+    atlas::voice::Voice::new(&cfg)
+        .speak("pressure fallback works")
+        .unwrap();
+    drop(pressure);
+    let available_after = atlas::relief::available_mb();
+    let output = std::fs::read_dir(&dir)
+        .unwrap()
+        .flatten()
+        .map(|entry| entry.path())
+        .find(|path| {
+            path.file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| name.starts_with("turn-") && name.ends_with("_out.wav"))
+        })
+        .expect("pressure fallback should create a turn output");
+    let said = std::fs::read_to_string(output).unwrap();
+    assert!(
+        said.contains("pressure fallback works"),
+        "fallback did not speak: {said}"
+    );
+    assert!(
+        said.contains("en_US-amy-medium.onnx"),
+        "Piper did not receive its voice: {said}"
+    );
+    println!(
+        "Kokoro pressure fallback available_before_mb={available} hold_mb={hold_mb} available_under_pressure_mb={available_under_pressure} available_after_mb={available_after:?} output={said}"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// Prove the playback half of barge-in without pretending the machine has a
+/// microphone: the configured player sleeps, Atlas's real cancellation flag is
+/// raised from another thread, and the stoppable tool path must return before
+/// the player's ten-second timeout. This remains an ignored diagnostic gate.
+#[cfg(windows)]
+#[test]
+#[ignore = "runs a bounded Windows playback interruption diagnostic"]
+fn windows_playback_is_stoppable_when_cut_in_is_requested() {
+    use atlas::tools::ExternalTool;
+
+    atlas::micthread::clear_cut();
+    let dir = std::env::temp_dir().join(format!("atlas-playback-cut-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let tts_script = dir.join("fake-tts.ps1");
+    let play_script = dir.join("slow-play.ps1");
+    std::fs::write(
+        &tts_script,
+        "$out = $args[0]\n[IO.File]::WriteAllText($out, 'synthetic wav placeholder')\n",
+    )
+    .unwrap();
+    std::fs::write(&play_script, "Start-Sleep -Seconds 10\n").unwrap();
+    let run = |command: &str, args: Vec<String>, stdin: bool| ExternalTool {
+        command: command.into(),
+        args,
+        stdin_text: stdin,
+        result_file: None,
+        current_dir: None,
+        timeout_secs: 30,
+        expected_sha256: None,
+    };
+    let mut cfg = atlas::voice::ToolsConfig {
+        enabled: true,
+        work_dir: dir.display().to_string(),
+        tts: run(
+            "powershell.exe",
+            vec![
+                "-NoProfile".into(),
+                "-ExecutionPolicy".into(),
+                "Bypass".into(),
+                "-File".into(),
+                tts_script.display().to_string(),
+                "{out_wav}".into(),
+            ],
+            true,
+        ),
+        play: run(
+            "powershell.exe",
+            vec![
+                "-NoProfile".into(),
+                "-ExecutionPolicy".into(),
+                "Bypass".into(),
+                "-File".into(),
+                play_script.display().to_string(),
+            ],
+            false,
+        ),
+        ..Default::default()
+    };
+    cfg.tts_engine.engine = atlas::tts::Engine::Piper;
+    let cut = std::thread::spawn(|| {
+        std::thread::sleep(std::time::Duration::from_millis(250));
+        atlas::micthread::cut_playback();
+    });
+    let started = std::time::Instant::now();
+    let result = atlas::voice::Voice::new(&cfg).speak("interrupt this playback");
+    let elapsed = started.elapsed();
+    cut.join().unwrap();
+    atlas::micthread::clear_cut();
+    assert!(
+        result.is_ok(),
+        "cut playback should settle cleanly: {result:?}"
+    );
+    assert!(
+        elapsed < std::time::Duration::from_secs(5),
+        "playback was not stopped promptly: {elapsed:?}"
+    );
+    println!(
+        "Windows playback interruption elapsed_ms={}",
+        elapsed.as_millis()
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 #[test]
 fn the_engine_can_be_chosen_in_settings_and_needs_a_restart() {
     let t = atlas::voice::ToolsConfig::default();

@@ -190,6 +190,16 @@ fn a_round_trip_through_the_file_keeps_everything_that_matters() {
 }
 
 #[test]
+fn a_council_seat_survives_the_trace_file_round_trip() {
+    let mut c = call("council", 8);
+    c.seat = Some("skeptic".into());
+
+    let back = from_lines(&to_line(&c));
+
+    assert_eq!(back.calls[0].seat.as_deref(), Some("skeptic"));
+}
+
+#[test]
 fn the_typical_time_is_a_median_so_one_stall_does_not_define_a_model() {
     let mut t = Trace::default();
     for ms in [300, 320, 340, 30_000] {

@@ -37,9 +37,11 @@ struct Command {
 }
 
 fn commands() -> Vec<Command> {
-    let text = std::fs::read_to_string("config/commands.yaml").expect("config/commands.yaml");
+    let text = std::fs::read_to_string("config/commands.yaml").unwrap_or_else(|error| {
+        panic!("read config/commands.yaml for end-to-end command coverage: {error}")
+    });
     serde_yaml::from_str::<Commands>(&text)
-        .expect("commands.yaml parses")
+        .unwrap_or_else(|error| panic!("parse config/commands.yaml for command coverage: {error}"))
         .commands
 }
 
@@ -64,7 +66,8 @@ fn said(c: &Command) -> Option<String> {
 
 fn daemon(tag: &str) -> (atlas::daemon::Daemon<'static>, std::path::PathBuf) {
     let cfg: &'static atlas::config::Config = Box::leak(Box::new(
-        atlas::config::Config::load(Path::new("config")).expect("config"),
+        atlas::config::Config::load(Path::new("config"))
+            .unwrap_or_else(|error| panic!("load config for end-to-end daemon: {error}")),
     ));
     let plat = Box::leak(Box::new(atlas::platform::mock::MockPlatform::new(vec![
         atlas::platform::Monitor {
@@ -76,9 +79,16 @@ fn daemon(tag: &str) -> (atlas::daemon::Daemon<'static>, std::path::PathBuf) {
             primary: true,
         },
     ])));
-    let dir = std::env::temp_dir().join(format!("atlas-e2e-{tag}-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).expect("temp dir");
+    let dir = std::env::temp_dir().join(format!(
+        "atlas-e2e-{tag}-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_else(|error| panic!("read system clock for temporary store: {error}"))
+            .as_nanos()
+    ));
+    std::fs::create_dir_all(&dir)
+        .unwrap_or_else(|error| panic!("create temporary store {}: {error}", dir.display()));
     let d = atlas::daemon::Daemon::new(
         cfg,
         plat,
@@ -91,7 +101,8 @@ fn daemon(tag: &str) -> (atlas::daemon::Daemon<'static>, std::path::PathBuf) {
 
 #[test]
 fn every_command_is_understood_as_itself() {
-    let cfg = atlas::config::Config::load(Path::new("config")).expect("config");
+    let cfg = atlas::config::Config::load(Path::new("config"))
+        .unwrap_or_else(|error| panic!("load config for parser coverage: {error}"));
     let parser = atlas::intent::Parser::new(&cfg.commands);
     let mut wrong = Vec::new();
     for c in commands() {
@@ -139,7 +150,9 @@ fn fresh_install_state() {
     });
     assert!(ours, "install state is {} -- not this test's own folder, so a command said here would change a real Atlas", dir.display());
     if dir.exists() {
-        std::fs::remove_dir_all(&dir).expect("clear this test's install state");
+        std::fs::remove_dir_all(&dir).unwrap_or_else(|error| {
+            panic!("clear this test's install state {}: {error}", dir.display())
+        });
     }
 }
 
@@ -151,13 +164,14 @@ fn every_command_answers_when_said() {
         let Some(s) = said(&c) else { continue };
         fresh_install_state();
         let intent = c.intent.clone();
+        let thread_intent = intent.clone();
         let (tx, rx) = mpsc::channel();
         let words = s.clone();
         std::thread::Builder::new()
             .name(format!("e2e-{intent}"))
             .spawn(move || {
                 let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    let (mut d, dir) = daemon(&intent);
+                    let (mut d, dir) = daemon(&thread_intent);
                     let reply = d.turn(&words, t);
                     drop(d);
                     let _ = std::fs::remove_dir_all(&dir);
@@ -170,7 +184,9 @@ fn every_command_answers_when_said() {
                         .unwrap_or_default()
                 }));
             })
-            .expect("thread");
+            .unwrap_or_else(|error| {
+                panic!("spawn end-to-end command thread for {intent}: {error}")
+            });
         match rx.recv_timeout(Duration::from_secs(60)) {
             Ok(Ok(reply)) if !reply.trim().is_empty() => {}
             Ok(Ok(_)) => wrong.push(format!("{}: \"{s}\" -> an empty reply", c.intent)),

@@ -298,7 +298,10 @@ function Invoke-RealHubSurface {
         Wait-Process -Id $daemon.Id -Timeout 10 -ErrorAction SilentlyContinue
     }
     $daemon.Close()
-    Start-Sleep -Milliseconds 100
+    # Windows can release a killed daemon's native lock handle slightly after
+    # the process object reports exited.  The next contract must not race that
+    # release and misclassify cleanup contamination as Atlas startup failure.
+    Start-Sleep -Seconds 2
 }
 
 if (-not (Test-Path -LiteralPath $AtlasExe -PathType Leaf)) {

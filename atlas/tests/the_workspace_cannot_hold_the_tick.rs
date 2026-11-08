@@ -127,7 +127,8 @@ impl SlowToOpen {
 }
 
 fn conf() -> Config {
-    Config::load(Path::new("config")).unwrap()
+    Config::load(Path::new("config"))
+        .unwrap_or_else(|error| panic!("test config must load: {error}"))
 }
 
 /// An install of our own, set before anything asks `roots` anything.
@@ -144,7 +145,8 @@ fn home() -> std::path::PathBuf {
     let p = std::env::temp_dir().join(format!("atlas-bringup-{}", std::process::id()));
     ONCE.call_once(|| {
         let _ = std::fs::remove_dir_all(&p);
-        std::fs::create_dir_all(p.join("data")).unwrap();
+        std::fs::create_dir_all(p.join("data"))
+            .unwrap_or_else(|error| panic!("test data directory must be creatable: {error}"));
         std::env::set_var("ATLAS_HOME", &p);
     });
     p
@@ -248,15 +250,6 @@ fn the_budget_is_stated_in_seconds_a_person_would_recognise() {
     // that it is comfortably under `onlyone::GONE_AFTER_SECS`, because that
     // is the arithmetic that keeps two Atlases off one state folder even if
     // the heartbeat above were removed.
-    assert!(
-        BRINGUP_BUDGET_SECS < atlas::onlyone::GONE_AFTER_SECS,
-        "the bring-up may now run for {BRINGUP_BUDGET_SECS}s against a {}s staleness \
-         window, so a slow morning can look like a dead Atlas to a second one",
-        atlas::onlyone::GONE_AFTER_SECS
-    );
-    assert!(
-        BRINGUP_BUDGET_SECS < atlas::onlyone::GONE_AFTER_SECS / 2,
-        "the budget wants real headroom under the staleness window, not to sit just \
-         inside it"
-    );
+    const _: () = assert!(BRINGUP_BUDGET_SECS < atlas::onlyone::GONE_AFTER_SECS);
+    const _: () = assert!(BRINGUP_BUDGET_SECS < atlas::onlyone::GONE_AFTER_SECS / 2);
 }

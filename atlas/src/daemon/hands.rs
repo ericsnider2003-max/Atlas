@@ -2223,7 +2223,9 @@ impl<'a> Daemon<'a> {
                         match fetch.run(&vars, None) {
                             Ok(html) => {
                                 let text = crate::research::page_text(&html);
-                                if text.trim().len() < 80 {
+                                if text.trim().len() < 80
+                                    || !crate::research::page_is_content_complete(&html, &text)
+                                {
                                     Err("I opened it and there was nothing readable in it."
                                         .to_string())
                                 } else {

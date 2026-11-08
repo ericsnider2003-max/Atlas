@@ -715,14 +715,48 @@ impl<'a> Daemon<'a> {
                             out.push(format!("Your scheduled {} add-on has an interrupted or unresolved occurrence. Its last step may have happened; I won't replay it or claim it finished. Review its saved work before starting it again.", claim.plugin));
                         }
                     }
-                    let selected = due.into_iter().find(|(_, _, key)| {
-                        !runs.claims.values().any(|claim| {
-                            claim.schedule_key == *key
-                                && !matches!(
-                                    claim.phase,
-                                    crate::plugins::SchedulePhase::Done
-                                        | crate::plugins::SchedulePhase::Failed
-                                )
+                    // A reservation is durable before the first step starts.
+                    // If the Ready fence loses a brief lock race, keep using
+                    // that exact reservation on the next tick instead of
+                    // treating it as an active mystery claim forever.
+                    // A claim can outlive the plugin approval that created it.
+                    // Do not let an orphaned reservation win selection forever:
+                    // close it as failed, durably, then allow a valid due
+                    // schedule to be considered on this same tick.
+                    let stale_reserved: Vec<String> = runs
+                        .claims
+                        .iter()
+                        .filter(|(_, claim)| {
+                            matches!(claim.phase, crate::plugins::SchedulePhase::Reserved)
+                                && claim.run.is_none()
+                                && !reg.plugins.iter().any(|plugin| {
+                                    plugin.id == claim.plugin
+                                        && plugin.sha256 == claim.approved_sha256
+                                        && plugin.status == crate::plugins::Status::Active
+                                })
+                        })
+                        .map(|(token, _)| token.clone())
+                        .collect();
+                    for token in stale_reserved {
+                        if let Some(claim) = runs.claims.get_mut(&token) {
+                            claim.phase = crate::plugins::SchedulePhase::Failed;
+                        }
+                    }
+                    let retry_reserved = runs.claims.iter().find_map(|(token, claim)| {
+                        (matches!(claim.phase, crate::plugins::SchedulePhase::Reserved)
+                            && claim.run.is_none())
+                        .then(|| (claim.plugin.clone(), claim.workflow.clone(), token.clone()))
+                    });
+                    let selected = retry_reserved.or_else(|| {
+                        due.into_iter().find(|(_, _, key)| {
+                            !runs.claims.values().any(|claim| {
+                                claim.schedule_key == *key
+                                    && !matches!(
+                                        claim.phase,
+                                        crate::plugins::SchedulePhase::Done
+                                            | crate::plugins::SchedulePhase::Failed
+                                    )
+                            })
                         })
                     });
                     let selected = if let Some((id, flow, key)) = selected {
@@ -757,17 +791,15 @@ impl<'a> Daemon<'a> {
                         None
                     };
                     if runs != before {
-                        runs.save(&self.store)?;
+                        runs.save_held(&self.store)?;
                     }
                     self.scheduled_anchors_pending.clear();
                     Ok(selected)
                 })();
             match reserved {
                 Ok(Some((id, flow, token))) => {
-                    {
-                        let line = self.unattended(|d| d.start_scheduled_flow(flow, id, token, t));
-                        out.push(line)
-                    }
+                    let line = self.unattended(|d| d.start_scheduled_flow(flow, id, token, t));
+                    out.push(line)
                 }
                 Ok(None) => {}
                 Err(crate::error::AtlasError::Io(error))
@@ -2398,7 +2430,14 @@ impl<'a> Daemon<'a> {
         now: u64,
     ) -> Option<Vec<u8>> {
         let mut bundle = {
-            self.note_addon_changes(now).ok()?;
+            // Automatic direct sends are already off the tick. Do not make
+            // the tick scan add-ons, load identities, or write sync state just
+            // to prepare those bytes; the next folder/manual pass carries any
+            // new add-on events. Explicit sync keeps the complete preparation
+            // path because its answer is allowed to include those changes.
+            if !self.dial_later {
+                self.note_addon_changes(now).ok()?;
+            }
             crate::sync::make_bundle(&self.synclog, &self.synclog.device.clone(), 0, now)
         };
         bundle.belongs_to = cfg.belongs_to.clone();
@@ -2536,6 +2575,45 @@ impl<'a> Daemon<'a> {
             format!(
                 "Synced straight to your other devices, no folder needed. {}",
                 lines.join(" ")
+            )
+        }
+    }
+
+    /// Queue the cheap automatic direct-only route without touching the
+    /// store, add-on tree, or identity files on the tick. Complete bundle
+    /// preparation belongs to an explicit sync; automatic delivery snapshots
+    /// the already-kept log and hands socket work to its worker.
+    fn queue_direct_only_dials(&mut self, cfg: &crate::sync::SyncConfig, now: u64) -> String {
+        let mut bundle =
+            crate::sync::make_bundle(&self.synclog, &self.synclog.device.clone(), 0, now);
+        bundle.belongs_to = cfg.belongs_to.clone();
+        let Ok(bytes) = serde_json::to_vec(&bundle) else {
+            return "Automatic direct sync could not prepare its saved bundle; I'll try again."
+                .into();
+        };
+        let mut queued = 0usize;
+        for peer in self.tools_cfg().elsewhere.known.clone() {
+            let name = peer.name.trim().to_string();
+            let host = peer.host.trim().to_string();
+            if name.is_empty() || host.is_empty() {
+                continue;
+            }
+            self.dials.push(Dial {
+                name,
+                host,
+                port: peer.sync_port.unwrap_or(crate::transport::SYNC_PORT),
+                bytes: bytes.clone(),
+                timeout: DIAL_WITHIN,
+                sealed_key: None,
+            });
+            queued += 1;
+        }
+        if queued == 0 {
+            "No named device was ready for automatic direct sync; I'll try again.".into()
+        } else {
+            format!(
+                "Queued automatic direct sync to {queued} device{}.",
+                if queued == 1 { "" } else { "s" }
             )
         }
     }
@@ -3048,6 +3126,9 @@ impl<'a> Daemon<'a> {
             match self.plat.cloud_folder() {
                 Some(p) => dir = p.display().to_string(),
                 // No folder: straight to your named devices (`carry_direct_only`).
+                None if self.dial_later && !cfg.encrypt_bundles && self.has_named_peers() => {
+                    return self.queue_direct_only_dials(&cfg, now)
+                }
                 None if self.has_named_peers() => return self.carry_direct_only(&cfg, now),
                 None => return NOWHERE_TO_SYNC.into(),
             }
@@ -4784,7 +4865,10 @@ mod flow_steps_and_the_owner {
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_nanos())
             .unwrap_or(0);
-        let root = std::env::temp_dir().join(format!("atlas-flow-guard-{tag}-{}-{stamp}", std::process::id()));
+        let root = std::env::temp_dir().join(format!(
+            "atlas-flow-guard-{tag}-{}-{stamp}",
+            std::process::id()
+        ));
         std::fs::create_dir_all(root.join("plugins/wind-down")).unwrap();
         std::fs::write(root.join("plugins/wind-down/plugin.yaml"), ADDON).unwrap();
         let store = crate::store::Store::new(root.join("state"));
@@ -4833,7 +4917,13 @@ mod flow_steps_and_the_owner {
         }
         d.current_flow = Some(run);
         d.tick(1_000);
-        let focused = p.log.borrow().iter().skip(opened).filter(|a| matches!(a, Action::Focus(_))).count();
+        let focused = p
+            .log
+            .borrow()
+            .iter()
+            .skip(opened)
+            .filter(|a| matches!(a, Action::Focus(_)))
+            .count();
         (focused, d.current_flow.as_ref().map(|r| r.position))
     }
 
@@ -4869,14 +4959,26 @@ mod flow_steps_and_the_owner {
             crate::proactive::Proactive::new(crate::proactive::ProactiveConfig::default()),
         );
         p.launch(c.apps.get("notepad").unwrap()).unwrap();
-        let win = p.find_window(c.apps.get("notepad").unwrap()).unwrap().expect("a window");
+        let win = p
+            .find_window(c.apps.get("notepad").unwrap())
+            .unwrap()
+            .expect("a window");
         *p.input_idle.borrow_mut() = Some(0);
-        assert!(d.unless_owner_idle(|d| d.plat.focus(win)).is_err(), "typed over a person");
+        assert!(
+            d.unless_owner_idle(|d| d.plat.focus(win)).is_err(),
+            "typed over a person"
+        );
         assert!(d.unless_owner_idle(|d| d.plat.type_text("x")).is_err());
         *p.input_idle.borrow_mut() = Some(30);
-        assert!(d.unless_owner_idle(|d| d.plat.focus(win)).is_ok(), "refused in a gap");
+        assert!(
+            d.unless_owner_idle(|d| d.plat.focus(win)).is_ok(),
+            "refused in a gap"
+        );
         // And your own turn is never wrapped at all.
         *p.input_idle.borrow_mut() = Some(0);
-        assert!(d.plat.focus(win).is_ok(), "the owner's live turn was refused");
+        assert!(
+            d.plat.focus(win).is_ok(),
+            "the owner's live turn was refused"
+        );
     }
 }

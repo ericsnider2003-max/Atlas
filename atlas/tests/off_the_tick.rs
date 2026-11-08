@@ -25,7 +25,7 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 fn tmp(tag: &str) -> PathBuf {
-    let p = std::env::temp_dir().join(format!("atlas-off-tick-{tag}"));
+    let p = crate::common::unique_temp(&format!("off-tick-{tag}"));
     let _ = std::fs::remove_dir_all(&p);
     std::fs::create_dir_all(&p).unwrap();
     p
@@ -106,7 +106,7 @@ fn a_fast_successful_backup_is_logged_but_not_spoken() {
     // aggregate run can spend several seconds starting the worker and taking
     // the snapshot even for an empty store; this is an observation deadline,
     // not a product latency contract.
-    let deadline = Instant::now() + Duration::from_secs(15);
+    let deadline = Instant::now() + crate::common::allowed(Duration::from_secs(60));
     let mut settled = false;
     let mut t = FIRST_TICK;
     while Instant::now() < deadline {
@@ -115,7 +115,11 @@ fn a_fast_successful_backup_is_logged_but_not_spoken() {
             !said.iter().any(|l| l.contains("backed up")),
             "a fast, successful backup must never be spoken"
         );
-        if d.crew.active() == 0 && d.long_work.jobs.iter().any(|j| j.name == "backup") {
+        if d.long_work
+            .jobs
+            .iter()
+            .any(|j| j.name == "backup" && j.outcome == atlas::watching::Outcome::Finished)
+        {
             settled = true;
             break;
         }

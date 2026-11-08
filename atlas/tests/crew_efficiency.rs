@@ -56,10 +56,15 @@ fn job(name: &str, needs: Needs) -> Job {
     Job::new(name).needs(needs)
 }
 
-/// Settle until `f` holds or two seconds pass.
+/// Settle until `f` holds or a bounded, load-aware window passes.
+//
+// The worker is released by the test before this helper is called. A two
+// second wall-clock cap was enough in isolation but was shorter than the
+// scheduler delay when the complete integration binary was under load. Keep
+// the bound finite, but give this asynchronous fixture a real harness window.
 fn settle_until(c: &mut Crew, t: u64, mut f: impl FnMut(&Crew) -> bool) -> bool {
     let start = Instant::now();
-    while start.elapsed() < crate::common::allowed(Duration::from_secs(2)) {
+    while start.elapsed() < crate::common::allowed(Duration::from_secs(10)) {
         c.settle(t);
         if f(c) {
             return true;

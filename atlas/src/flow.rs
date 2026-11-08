@@ -162,12 +162,18 @@ impl Run {
                     .current()
                     .map(|s| s.command.clone())
                     .unwrap_or_default();
-                return Next::Approve(expand(&s, &self.outputs));
+                return match expand_checked(&s, &self.outputs) {
+                    Ok(command) => Next::Approve(command),
+                    Err(reason) => Next::Stopped(reason),
+                };
             }
             RunState::Running => {}
         }
         match self.current() {
-            Some(s) => Next::Run(expand(&s.command, &self.outputs)),
+            Some(s) => match expand_checked(&s.command, &self.outputs) {
+                Ok(command) => Next::Run(command),
+                Err(reason) => Next::Stopped(reason),
+            },
             None => Next::Finished,
         }
     }
@@ -284,6 +290,65 @@ pub fn expand(template: &str, outputs: &BTreeMap<String, String>) -> String {
         i += 1;
     }
     out
+}
+
+/// Expand a workflow command only when every placeholder has a bound value.
+///
+/// `expand` remains the lossless display/debug helper: leaving an unknown
+/// placeholder visible makes a malformed definition easy to inspect. A
+/// workflow about to cross into the command parser needs the stricter
+/// boundary, however. An unresolved or malformed placeholder is evidence
+/// debt at an executable boundary, not a literal command argument. This is
+/// the local equivalent of the research rule that template edges must be
+/// resolved under a declared environment before admission.
+pub fn expand_checked(
+    template: &str,
+    outputs: &BTreeMap<String, String>,
+) -> std::result::Result<String, String> {
+    let mut out = String::with_capacity(template.len());
+    let chars: Vec<char> = template.chars().collect();
+    let mut unresolved = Vec::new();
+    let mut i = 0;
+    while i < chars.len() {
+        if chars[i] == '{' {
+            let Some(close) = chars[i + 1..].iter().position(|c| *c == '}') else {
+                return Err(format!(
+                    "workflow command has an unclosed placeholder at character {i}"
+                ));
+            };
+            let end = i + 1 + close;
+            let key: String = chars[i + 1..end].iter().collect();
+            if key.is_empty() {
+                return Err(format!(
+                    "workflow command has an empty placeholder at character {i}"
+                ));
+            }
+            if let Some(value) = outputs.get(&key) {
+                out.push_str(value);
+            } else {
+                unresolved.push(key);
+                out.extend(chars[i..=end].iter());
+            }
+            i = end + 1;
+            continue;
+        }
+        out.push(chars[i]);
+        i += 1;
+    }
+    if unresolved.is_empty() {
+        Ok(out)
+    } else {
+        unresolved.sort();
+        unresolved.dedup();
+        Err(format!(
+            "workflow command has unresolved placeholder(s): {}",
+            unresolved
+                .into_iter()
+                .map(|key| format!("{{{key}}}"))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ))
+    }
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]

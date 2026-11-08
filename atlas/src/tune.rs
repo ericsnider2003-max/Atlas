@@ -970,12 +970,18 @@ mod runtime_folder_recovery_tests {
             NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
         ));
         let store = crate::store::Store::new(area.join("state"));
-        store.save("fixture", &1).unwrap();
+        store
+            .save("fixture", &1)
+            .unwrap_or_else(|error| panic!("save runtime-move fixture: {error}"));
         let from = area.join("models");
         let to = area.join("destination");
-        std::fs::create_dir(&from).unwrap();
-        std::fs::create_dir(from.join("empty")).unwrap();
-        std::fs::write(from.join("model.bin"), b"owner model bytes").unwrap();
+        std::fs::create_dir(&from).unwrap_or_else(|error| {
+            panic!("create runtime model directory {}: {error}", from.display())
+        });
+        std::fs::create_dir(from.join("empty"))
+            .unwrap_or_else(|error| panic!("create empty runtime model directory: {error}"));
+        std::fs::write(from.join("model.bin"), b"owner model bytes")
+            .unwrap_or_else(|error| panic!("write runtime model fixture: {error}"));
         (area, store, from, to)
     }
     #[test]

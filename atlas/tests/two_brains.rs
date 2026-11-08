@@ -195,7 +195,11 @@ impl Scripted {
                             serve_one(s, r, word_ms, prefill_ms, ready_at, sn)
                         });
                     }
-                    Err(_) => std::thread::sleep(Duration::from_millis(5)),
+                    // Keep the scripted endpoint responsive while the suite
+                    // is under load. Five milliseconds of polling compounded
+                    // with scheduler pressure can make the talking server
+                    // appear slow even though its request handler is ready.
+                    Err(_) => std::thread::sleep(Duration::from_millis(1)),
                 }
             }
         });

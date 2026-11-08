@@ -26,7 +26,13 @@ use super::*;
 pub(super) fn model_connection(tc: &atlas::voice::ToolsConfig) -> Option<std::sync::Arc<dyn Llm>> {
     // In the library since 27 Sep 2026, so the phone core builds the same
     // connection (it had none at all: OPEN_GAPS P.7).
-    atlas::models::connection(tc)
+    match atlas::models::connection_checked(tc) {
+        Ok(connection) => connection,
+        Err(error) => {
+            eprintln!("Atlas could not use the enabled private model: {error}");
+            None
+        }
+    }
 }
 
 pub(super) fn run_daemon(cfg: &Config, plat: &dyn Platform, unattended: bool) {
@@ -922,10 +928,12 @@ mod microphone_settings_tests {
     fn disabled_tools_never_invoke_device_probe_or_calibration() {
         let cfg = Config::load(std::path::Path::new("config")).unwrap();
         let platform = atlas::platform::mock::MockPlatform::new(Vec::new());
-        let mut tc = atlas::voice::ToolsConfig::default();
-        tc.enabled = false;
-        tc.work_dir = "disposable-disabled-tools".into();
-        tc.record_seconds = 7;
+        let tc = atlas::voice::ToolsConfig {
+            enabled: false,
+            work_dir: "disposable-disabled-tools".into(),
+            record_seconds: 7,
+            ..Default::default()
+        };
         let probed = std::cell::Cell::new(false);
         let result = pick_microphone_with(&cfg, &platform, &tc, || {
             probed.set(true);

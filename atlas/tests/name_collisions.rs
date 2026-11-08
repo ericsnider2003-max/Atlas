@@ -441,7 +441,9 @@ fn index(text: &str) -> Reach {
                 let parts: Vec<_> = line[start..end].split("::").collect();
                 let root = usize::from(parts.first() == Some(&"crate"));
                 if parts.len() > root + 2 && !matches!(parts[root], "self" | "super" | "Self") {
-                    paths.insert((parts[root].to_string(), parts.last().unwrap().to_string()));
+                    if let Some(name) = parts.last() {
+                        paths.insert((parts[root].to_string(), (*name).to_string()));
+                    }
                 }
             }
             i = at + 2;
@@ -483,9 +485,9 @@ fn index(text: &str) -> Reach {
         } else {
             let mut segs: Vec<&str> = stmt.trim_start_matches("use ").trim().split("::").collect();
             if segs.len() >= 2 {
-                let name = segs.pop().unwrap().trim().to_string();
-                let module = segs.pop().unwrap().trim().to_string();
-                imported.insert((module, name));
+                if let (Some(name), Some(module)) = (segs.pop(), segs.pop()) {
+                    imported.insert((module.trim().to_string(), name.trim().to_string()));
+                }
             }
         }
         from = at + 4;
@@ -513,7 +515,7 @@ impl Reach {
 
 fn unwired_modules() -> BTreeSet<String> {
     std::fs::read_to_string("tests/wiring.rs")
-        .expect("tests/wiring.rs")
+        .unwrap_or_else(|error| panic!("read tests/wiring.rs: {error}"))
         .lines()
         .filter_map(|l| {
             l.trim()

@@ -257,6 +257,25 @@ fn the_thread_survives_a_restart() {
     );
 }
 
+#[test]
+fn corrupt_thread_state_cannot_be_replaced_by_an_empty_thread() {
+    let d = std::env::temp_dir().join("atlas-thread-corrupt-state-test");
+    let _ = std::fs::remove_dir_all(&d);
+    let s = Store::new(&d);
+    let mut original = Thread::default();
+    original.append("remember this task", "still working on it", None, 100);
+    original.save(&s).unwrap();
+    let path = s.root().join("thread.json");
+    std::fs::write(&path, b"not valid thread state").unwrap();
+
+    let recovered = Thread::load(&s);
+    assert!(recovered.is_empty());
+    let error = recovered.save(&s).unwrap_err().to_string();
+    assert!(error.contains("recovery is required"), "{error}");
+    assert_eq!(std::fs::read(&path).unwrap(), b"not valid thread state");
+    let _ = std::fs::remove_dir_all(&d);
+}
+
 // ================= doing it before you ask =================
 
 fn moment() -> Moment {

@@ -165,6 +165,10 @@ const NOT_A_CAPABILITY: &[(&str, &str)] = &[
     ("job", "the shared lifecycle and durable job envelope used by domain capabilities"),
     ("main", "the entry point"),
     ("mobile", "the phones' C entry points (atlas_mobile_*), called from Swift and Kotlin, which this scan of Rust sources cannot see"),
+    (
+        "capability_boundary",
+        "policy-admission foundation; provider execution remains outside the user-facing capability surface",
+    ),
     ("error", "the error type every module returns"),
     ("store", "how everything persists; used by name everywhere"),
     ("voice", "the config tree itself"),
@@ -227,6 +231,10 @@ fn source_files() -> Vec<(String, String)> {
 /// `cosine` is arithmetic that happens to live there.
 fn public_types(src: &str) -> BTreeSet<String> {
     let mut out = BTreeSet::new();
+    // PrivateModelsConfig is itself the provider boundary: its exported
+    // runtime-seam functions are the capability, not inert settings. Keep
+    // this one config type visible so the audit recognizes those calls.
+    let retain_private_provider_config = src.contains("pub struct PrivateModelsConfig");
     for line in src.lines() {
         let line = line.trim();
         for kind in ["pub struct ", "pub enum ", "pub trait "] {
@@ -243,7 +251,9 @@ fn public_types(src: &str) -> BTreeSet<String> {
             // Config is named in `voice.rs` whether or not the module does
             // anything. Counting it reproduces the same false green one layer
             // down.
-            if name.ends_with("Config") {
+            if name.ends_with("Config")
+                && !(retain_private_provider_config && name == "PrivateModelsConfig")
+            {
                 continue;
             }
             out.insert(name);

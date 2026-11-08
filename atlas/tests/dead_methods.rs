@@ -414,6 +414,8 @@ const ORPHAN_METHODS: &[&str] = &[
     // real reader of that threshold is the recent-clips check in the same
     // file, which is unchanged. Also removed from KNOWN in
     // new_capabilities_are_wired.rs in the same change.
+    // 6 Nov 2026: these are the future provider-admission foundation seam.
+    "job::bind_policy_revision",
     "session::is_overlap",
     // `log::warn` was an ORPHAN until 17 Sep -- no caller AND no test, so
     // nothing in the repository had ever shown that Atlas's warning level

@@ -39,13 +39,32 @@ fn private_config(tag: &str) -> std::path::PathBuf {
 }
 
 fn copy_tree(from: &Path, to: &Path) {
-    std::fs::create_dir_all(to).unwrap();
-    for e in std::fs::read_dir(from).unwrap().flatten() {
+    std::fs::create_dir_all(to).unwrap_or_else(|error| {
+        panic!(
+            "failed to create config directory {}: {error}",
+            to.display()
+        )
+    });
+    for e in std::fs::read_dir(from)
+        .unwrap_or_else(|error| {
+            panic!(
+                "failed to read config directory {}: {error}",
+                from.display()
+            )
+        })
+        .flatten()
+    {
         let (src, dst) = (e.path(), to.join(e.file_name()));
         if src.is_dir() {
             copy_tree(&src, &dst);
         } else {
-            std::fs::copy(&src, &dst).unwrap();
+            std::fs::copy(&src, &dst).unwrap_or_else(|error| {
+                panic!(
+                    "failed to copy {} to {}: {error}",
+                    src.display(),
+                    dst.display()
+                )
+            });
         }
     }
 }
@@ -53,7 +72,12 @@ fn copy_tree(from: &Path, to: &Path) {
 fn tmp(tag: &str) -> std::path::PathBuf {
     let p = std::env::temp_dir().join(format!("atlas-onebutton-{tag}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&p);
-    std::fs::create_dir_all(&p).unwrap();
+    std::fs::create_dir_all(&p).unwrap_or_else(|error| {
+        panic!(
+            "failed to create scratch directory {}: {error}",
+            p.display()
+        )
+    });
     p
 }
 
@@ -276,7 +300,7 @@ fn nonce_for(page: &str, what: &str) -> String {
         .split("name=nonce value=\"")
         .nth(1)
         .and_then(|r| r.split('"').next())
-        .unwrap()
+        .unwrap_or_else(|| panic!("the Connect form at {at} has no nonce in {page}"))
         .to_string()
 }
 

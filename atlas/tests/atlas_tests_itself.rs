@@ -9,11 +9,27 @@ use atlas::platform::Monitor;
 use atlas::selftest::{run_all, SafePlatform, Tier, Verdict};
 use std::path::Path;
 
+fn save_handover_after_workers_release() {
+    let state = atlas::roots::install_state();
+    let deadline =
+        std::time::Instant::now() + crate::common::allowed(std::time::Duration::from_secs(10));
+    loop {
+        match atlas::handover::Handover::default().save(&state) {
+            Ok(()) => return,
+            Err(atlas::error::AtlasError::Io(error))
+                if error.kind() == std::io::ErrorKind::WouldBlock
+                    && std::time::Instant::now() < deadline =>
+            {
+                std::thread::sleep(std::time::Duration::from_millis(20));
+            }
+            Err(error) => panic!("saving the self-test handover: {error}"),
+        }
+    }
+}
+
 #[test]
 fn every_command_is_tried_and_nothing_is_broken() {
-    atlas::handover::Handover::default()
-        .save(&atlas::roots::install_state())
-        .unwrap();
+    save_handover_after_workers_release();
     let c = Config::load(Path::new("config")).unwrap();
     let real = MockPlatform::new(vec![Monitor {
         id: 1,
@@ -27,9 +43,7 @@ fn every_command_is_tried_and_nothing_is_broken() {
     let dir = std::env::temp_dir().join(format!("atlas-selftest-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     let rows = run_all(&c, &plat, None, &dir, 1_790_760_000, &mut |_| {});
-    atlas::handover::Handover::default()
-        .save(&atlas::roots::install_state())
-        .unwrap();
+    save_handover_after_workers_release();
     let _ = std::fs::remove_dir_all(&dir);
     assert!(rows.len() > 150, "{}", rows.len());
     let broken: Vec<String> = rows

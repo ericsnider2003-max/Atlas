@@ -48,7 +48,12 @@ fn home() -> PathBuf {
     let p = std::env::temp_dir().join("atlas-branches-that-do-damage");
     ONCE.call_once(|| {
         let _ = std::fs::remove_dir_all(&p);
-        std::fs::create_dir_all(p.join("data").join("state")).unwrap();
+        std::fs::create_dir_all(p.join("data").join("state")).unwrap_or_else(|error| {
+            panic!(
+                "create sensitive-branch test state directory {}: {error}",
+                p.display()
+            )
+        });
         std::env::set_var("ATLAS_HOME", &p);
     });
     p
@@ -60,7 +65,9 @@ fn install() -> Store {
 }
 
 fn it_is_yours() {
-    Handover::default().save(&install()).unwrap();
+    Handover::default()
+        .save(&install())
+        .unwrap_or_else(|error| panic!("reset handover fixture: {error}"));
 }
 
 /// Run a test that touches the handover flag, alone.
@@ -93,12 +100,14 @@ fn alone<T>(body: impl FnOnce() -> T) -> T {
 fn tmp(tag: &str) -> PathBuf {
     let p = std::env::temp_dir().join(format!("atlas-damage-{tag}"));
     let _ = std::fs::remove_dir_all(&p);
-    std::fs::create_dir_all(&p).unwrap();
+    std::fs::create_dir_all(&p)
+        .unwrap_or_else(|error| panic!("create sensitive-branch fixture {}: {error}", p.display()));
     p
 }
 
 fn cfg() -> Config {
-    Config::load(Path::new("config")).expect("config")
+    Config::load(Path::new("config"))
+        .unwrap_or_else(|error| panic!("load sensitive-branch config: {error}"))
 }
 
 fn plat() -> MockPlatform {

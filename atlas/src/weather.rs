@@ -269,8 +269,10 @@ fn get(url: &str) -> Result<String, String> {
             .map(|s| s.to_string())
             .collect(),
         stdin_text: false,
+        current_dir: None,
         result_file: None,
         timeout_secs: 15,
+        expected_sha256: None,
     };
     tool.run(&Default::default(), None)
         .map_err(|e| e.to_string())

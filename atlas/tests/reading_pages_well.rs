@@ -16,7 +16,8 @@
 
 use atlas::brain::Llm;
 use atlas::research::{
-    page_markdown, page_text, searxng_url, urls_from_searxng, Research, ResearchConfig,
+    page_is_content_complete, page_markdown, page_text, searxng_url, urls_from_searxng, Research,
+    ResearchConfig,
 };
 use atlas::tools::ExternalTool;
 use std::io::{BufRead, BufReader, Write};
@@ -133,6 +134,45 @@ fn what_the_page_hides_is_not_read() {
     ] {
         assert!(!t.contains(gone), "read what the page hides: {gone:?}\n{t}");
     }
+}
+
+#[test]
+fn a_long_javascript_shell_is_not_admitted_as_page_content() {
+    let shell = r#"<html><head><title>Loading</title></head><body>
+        <div class="app">Please enable JavaScript to continue. Please enable JavaScript to continue.
+        Please enable JavaScript to continue. This page is checking your browser before showing
+        the article. Please wait while we verify you are human and prepare the page.</div>
+        <script>/* application shell */</script>
+    </body></html>"#;
+    let text = page_text(shell);
+    assert!(
+        text.len() >= 200,
+        "fixture must cross the old length gate: {text}"
+    );
+    assert!(
+        !page_is_content_complete(shell, &text),
+        "shell was admitted: {text}"
+    );
+
+    let article = r#"<html><body><article>
+        <p>This article explains how a local research system should distinguish a transport
+        shell from content and preserve the original source boundary for later review.</p>
+        <p>It also describes why a readable page may mention JavaScript without being a shell,
+        because the article itself contains enough independently extracted material to inspect.</p>
+        <p>The rest of the article supplies concrete examples, failure cases, and recovery steps
+        so the page is substantial evidence rather than a status message repeated by a gateway.</p>
+        <p>Please enable JavaScript if you want the optional interactive chart, but the article
+        remains readable without it and its claims are present in the visible text.</p>
+        <p>A careful reader can therefore inspect the source, compare its statements with other
+        sources, and retain the page hash without confusing the transport layer with the content
+        layer. The visible paragraphs explain the subject, name the limits of the observation,
+        and provide enough context for a later reviewer to decide whether the claims are current.
+        That is materially different from a gateway that only repeats a browser check, because
+        the article contains a coherent argument, independent details, and a recoverable source
+        boundary even when its optional interactive features are unavailable.</p>
+    </article></body></html>"#;
+    let article_text = page_text(article);
+    assert!(page_is_content_complete(article, &article_text));
 }
 
 // ================= SearXNG =================

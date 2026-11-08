@@ -16,6 +16,12 @@ use std::path::{Path, PathBuf};
 #[serde(default)]
 pub struct ResearchConfig {
     pub enabled: bool,
+    /// Wall-clock budget for a background research run. This is deliberately
+    /// separate from per-tool timeouts: a cold local model may need several
+    /// minutes after the network work is complete, while cancellation still
+    /// stops the run at every source and model checkpoint.
+    #[serde(default = "default_deadline_secs")]
+    pub deadline_secs: u64,
     pub max_sources: usize,
     /// Cap on characters fed to the model per source.
     pub max_chars_per_source: usize,
@@ -34,6 +40,20 @@ pub struct ResearchConfig {
     /// (`public_address`).
     #[serde(default)]
     pub pages_on_this_machine: bool,
+    /// Optional structured sources selected by topic words. Keeping these in
+    /// configuration makes provider-specific fallbacks inspectable and keeps
+    /// the orchestrator free of topic-specific branches.
+    #[serde(default)]
+    pub structured_sources: Vec<StructuredSource>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct StructuredSource {
+    #[serde(default)]
+    pub all: Vec<String>,
+    #[serde(default)]
+    pub any: Vec<String>,
+    pub url: String,
 }
 
 impl Default for ResearchConfig {
@@ -42,6 +62,7 @@ impl Default for ResearchConfig {
             // On (Eric, 27 Sep 2026): Atlas looks up what it doesn't know.
             // It's the one thing that leaves the machine; Settings turns it off.
             enabled: true,
+            deadline_secs: default_deadline_secs(),
             max_sources: 4,
             max_chars_per_source: 6000,
             // Empty means "the install's own `data/notes`" — see
@@ -52,8 +73,13 @@ impl Default for ResearchConfig {
             fetch: None,
             searxng_url: String::new(),
             pages_on_this_machine: false,
+            structured_sources: Vec::new(),
         }
     }
+}
+
+fn default_deadline_secs() -> u64 {
+    600
 }
 
 impl ResearchConfig {
@@ -84,6 +110,10 @@ impl ResearchConfig {
 pub struct Source {
     pub url: String,
     pub chars: usize,
+    /// SHA-256 of the bounded text captured from this URL. An empty value is
+    /// accepted when loading older notes that predate source revision binding.
+    #[serde(default)]
+    pub content_sha256: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -270,7 +300,8 @@ impl Research {
             topic,
             llm,
             should_stop,
-            std::time::Instant::now() + std::time::Duration::from_secs(120),
+            std::time::Instant::now()
+                + std::time::Duration::from_secs(self.cfg.deadline_secs.max(1)),
         )
     }
 
@@ -327,28 +358,90 @@ impl Research {
                 .as_ref()
                 .ok_or_else(|| AtlasError::Config("no search tool configured".into()))?;
             let results = bounded_tool(search, &v, should_stop)?;
-            urls = extract_urls(&results, self.cfg.max_sources);
+            // Fetch a wider candidate set than the final source budget. Search
+            // engines routinely mix weak or unrelated links into the first few
+            // results; relevance filtering below must be able to replace them.
+            let candidate_limit = self
+                .cfg
+                .max_sources
+                .saturating_mul(3)
+                .max(self.cfg.max_sources);
+            urls = extract_urls(&results, candidate_limit);
             // DuckDuckGo answers a program with a robot check ("anomaly",
             // HTTP 202) and no results -- every research run on Eric's
             // laptop on 30 Sep 2026 ended "no sources found". Bing, asked
             // the same way, answers; its links are decoded above.
-            if urls.is_empty()
-                && search.args.iter().any(|a| a.contains("duckduckgo.com"))
-                && results.contains("anomaly")
-            {
-                if let Ok(page) = bounded_tool(&bing_search(), &v, should_stop) {
-                    urls = extract_urls(&page, self.cfg.max_sources);
+            // Only the shipped curl-backed DuckDuckGo route owns this
+            // provider fallback. Custom search tools must keep their own
+            // no-result semantics and must not unexpectedly issue a second
+            // network request.
+            let shipped_duckduckgo =
+                search
+                    .command
+                    .rsplit(['/', '\\'])
+                    .next()
+                    .is_some_and(|name| {
+                        name.eq_ignore_ascii_case("curl") || name.eq_ignore_ascii_case("curl.exe")
+                    })
+                    && search.args.iter().any(|a| a.contains("duckduckgo.com"));
+            if shipped_duckduckgo {
+                if urls.is_empty() {
+                    if let Ok(page) = bounded_tool(&bing_search(), &v, should_stop) {
+                        urls = extract_urls(&page, candidate_limit);
+                    }
+                }
+                if urls.len() < candidate_limit {
+                    if let Ok(page) = bounded_tool(&wikipedia_search(topic), &v, should_stop) {
+                        for url in urls_from_wikipedia(&page, candidate_limit) {
+                            if !urls.contains(&url) {
+                                urls.push(url);
+                            }
+                            if urls.len() >= candidate_limit {
+                                break;
+                            }
+                        }
+                    }
+                }
+                for url in structured_topic_sources(topic, &self.cfg.structured_sources)
+                    .into_iter()
+                    .rev()
+                {
+                    if let Some(existing) = urls.iter().position(|candidate| candidate == &url) {
+                        urls.remove(existing);
+                    }
+                    urls.insert(0, url);
+                    urls.truncate(candidate_limit);
                 }
             }
-            if urls.is_empty() {
+            // A challenge page can contain a few decoded but useless links;
+            // treating that as a successful search prevents the browser from
+            // supplying the real result links. Keep the browser supplement
+            // bounded by the same candidate budget and merge only new URLs.
+            if urls.len() < candidate_limit {
                 if let Some(bcfg) = &self.browser {
                     if let Some(page) = search_page_url(search, &v) {
                         tried_browser = true;
-                        // Any failure here -- no Chrome, no launch command, a
-                        // page that never rendered -- is the same outcome as
-                        // before the fallback existed: no sources.
-                        if let Ok(links) = self.links_via_browser(bcfg, &page, should_stop) {
-                            urls = urls_from_links(&links, self.cfg.max_sources);
+                        // Search pages are network inputs too. Do not let a
+                        // custom search command turn this fallback into a
+                        // browser request to a loopback, private, or metadata
+                        // address merely because its partial result set was
+                        // small.
+                        let search_is_public = public_address_until(&page, should_stop).is_some();
+                        if search_is_public {
+                            // Any failure here -- no Chrome, no launch
+                            // command, a page that never rendered -- is the
+                            // same outcome as before the fallback existed:
+                            // no sources.
+                            if let Ok(links) = self.links_via_browser(bcfg, &page, should_stop) {
+                                for url in urls_from_links(&links, candidate_limit) {
+                                    if !urls.contains(&url) {
+                                        urls.push(url);
+                                    }
+                                    if urls.len() >= candidate_limit {
+                                        break;
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -370,6 +463,9 @@ impl Research {
         let mut corpus = String::new();
         let mut sources = Vec::new();
         let mut attempts: Vec<String> = Vec::new();
+        let mut rejected_urls = 0usize;
+        let mut failed_fetches = 0usize;
+        let mut topic_rejections = 0usize;
         for url in &urls {
             if should_stop() {
                 return Err(AtlasError::Platform("stopped before finishing".into()));
@@ -381,34 +477,64 @@ impl Research {
             } else {
                 match public_address_until(url, should_stop) {
                     Some(p) => Some(p),
-                    None => continue,
+                    None => {
+                        rejected_urls += 1;
+                        continue;
+                    }
                 }
-            };
-            let fetch_now = match &held {
-                Some((host, ip))
-                    if fetch.command.contains("{browser}") || is_a_browser(&fetch.command) =>
-                {
-                    fenced(fetch, host, *ip)
-                }
-                _ => fetch.clone(),
             };
             let mut fv = v.clone();
             fv.insert("url".into(), url.clone());
-            // One dead link must not sink the whole job.
-            let Ok(html) = bounded_tool(&fetch_now, &fv, should_stop) else {
-                continue;
+            // One dead link must not sink the whole job. For a public URL,
+            // curl is the bounded, low-overhead path: the address was already
+            // checked above and --resolve prevents a later DNS change from
+            // escaping that check. Headless Chrome remains the rich fallback
+            // for pages curl cannot read, but must not consume the whole
+            // research budget before the reliable path gets a chance.
+            let html = if let Some((host, ip)) = held.as_ref() {
+                let primary = if is_trusted_curl(&fetch.command) {
+                    public_curl_fetch(host, *ip, url)
+                } else if fetch.command.contains("{browser}") || is_a_browser(&fetch.command) {
+                    // Preserve the configured browser's flags, profile and
+                    // policy while pinning its resolver to the address that
+                    // already passed the public-address gate.
+                    fenced(fetch, host, *ip)
+                } else {
+                    // A generic external fetcher cannot receive the checked
+                    // address. Do not silently replace its policy with curl,
+                    // and do not reopen a DNS-rebinding window by running it.
+                    return Err(AtlasError::Platform(
+                        "the configured fetcher cannot pin the checked public address".into(),
+                    ));
+                };
+                bounded_tool(&primary, &fv, should_stop)
+            } else {
+                bounded_tool(fetch, &fv, should_stop)
+            };
+            let html = match html {
+                Ok(html) => html,
+                Err(_) => {
+                    failed_fetches += 1;
+                    continue;
+                }
             };
             // Kept as Markdown: a heading, a list and a code block stay what
             // they are, which a small model reads far better than one run of
             // lines (`readable::Article::markdown`).
             let text = page_markdown(&html);
             let text: String = text.chars().take(self.cfg.max_chars_per_source).collect();
-            if text.len() < 200 {
+            if text.len() < 200 || !page_is_content_complete(&html, &text) {
+                failed_fetches += 1;
+                continue;
+            }
+            if !topic_matches(topic, &text) {
+                topic_rejections += 1;
                 continue;
             }
             sources.push(Source {
                 url: url.clone(),
                 chars: text.len(),
+                content_sha256: crate::digest::sha256_hex(text.as_bytes()),
             });
 
             // A fetched page is the canonical untrusted read, and this is the
@@ -436,10 +562,16 @@ impl Research {
             }
             corpus.push_str("\n\n");
             corpus.push_str(&read.quoted());
+            if sources.len() >= self.cfg.max_sources {
+                break;
+            }
         }
 
         if sources.is_empty() {
-            return Err(AtlasError::Platform("every source failed to fetch".into()));
+            return Err(AtlasError::Platform(format!(
+                "no relevant sources after reading candidates ({} rejected by network safety, {} fetch failures, {} topic mismatches)",
+                rejected_urls, failed_fetches, topic_rejections
+            )));
         }
 
         if should_stop() {
@@ -470,6 +602,7 @@ impl Research {
                     .into(),
             ));
         }
+        validate_report(topic, &body, &corpus)?;
         let spoken = first_sentences(&body, 2);
         // Numbers the topic itself carries ("the 2026 budget") aren't claims.
         let ungrounded = figures_not_in(&body, &format!("{topic}\n{corpus}"));
@@ -522,7 +655,46 @@ impl Research {
         let path = format!("{}/{}-{}.md", self.cfg.notes_dir, note.created, slug);
         let mut md = format!("# {}\n\n{}\n\n## Sources\n", note.topic, note.body);
         for s in &note.sources {
-            md.push_str(&format!("- {}\n", s.url));
+            if s.content_sha256.is_empty() {
+                md.push_str(&format!("- {} ({} captured characters)\n", s.url, s.chars));
+            } else {
+                md.push_str(&format!(
+                    "- {} ({} captured characters; content_sha256: {})\n",
+                    s.url, s.chars, s.content_sha256
+                ));
+            }
+        }
+        let captured_chars: usize = note.sources.iter().map(|source| source.chars).sum();
+        let substantial_sources = note
+            .sources
+            .iter()
+            .filter(|source| source.chars >= SUBSTANTIAL)
+            .count();
+        md.push_str("\n## Evidence boundary\n\n");
+        md.push_str(&format!("- captured_at_unix: {}\n", note.created));
+        md.push_str(&format!("- sources_read: {}\n", note.sources.len()));
+        md.push_str(&format!(
+            "- captured_source_characters: {}\n",
+            captured_chars
+        ));
+        md.push_str(&format!(
+            "- substantial_sources_at_least_{}: {}\n",
+            SUBSTANTIAL, substantial_sources
+        ));
+        md.push_str("- source_revision: per-source SHA-256 of the bounded captured text when available; a changed digest requires rereading\n");
+        md.push_str(&format!(
+            "- scope: public pages selected for the topic; each source was capped at {} configured characters\n",
+            self.cfg.max_chars_per_source
+        ));
+        md.push_str("- limitations: source freshness, rights, independent verification, and owner/device proof remain separate\n");
+        md.push_str("- disposition: planning-input; the saved note is not independent source or runtime admission\n");
+        md.push_str("- next_action: independently verify time-sensitive, high-impact, and rights-sensitive claims before relying on them\n");
+        if !note.attempts.is_empty() {
+            md.push_str("\n## Source warnings\n\n");
+            md.push_str("These source-level instruction attempts were observed and quoted rather than followed:\n\n");
+            for attempt in &note.attempts {
+                md.push_str(&format!("- {attempt}\n"));
+            }
         }
         if !note.ungrounded.is_empty() {
             md.push_str("\n## Figures not found in the sources\n\n");
@@ -535,6 +707,178 @@ impl Research {
         mark_last_until(&self.cfg.notes_dir, LAST_RESEARCH, &path, stop)?;
         Ok(path)
     }
+}
+
+fn validate_report(topic: &str, body: &str, corpus: &str) -> Result<()> {
+    let lower = body.to_ascii_lowercase();
+    let forbidden = [
+        "couldn't finish",
+        "every source failed",
+        "no relevant sources",
+        "not provided in the sources",
+        "i couldn't research",
+    ];
+    if forbidden.iter().any(|phrase| lower.contains(phrase)) {
+        return Err(AtlasError::Platform(
+            "research write-up failed substantive grounding validation".into(),
+        ));
+    }
+    if body.split_whitespace().count() < 8 {
+        return Err(AtlasError::Platform(
+            "research write-up was too thin to answer the requested topic".into(),
+        ));
+    }
+    let topic_words = meaningful_words(topic);
+    let body_words = meaningful_words(body);
+    let topic_matches = topic_words
+        .iter()
+        .filter(|topic_word| {
+            body_words.iter().any(|body_word| {
+                body_word == *topic_word
+                    || body_word.starts_with(topic_word.as_str())
+                    || topic_word.starts_with(body_word.as_str())
+            })
+        })
+        .count();
+    if topic_matches == 0 {
+        return Err(AtlasError::Platform(
+            "research write-up did not address the requested topic".into(),
+        ));
+    }
+    let corpus_words = meaningful_words(corpus);
+    let evidence_words = body_words
+        .iter()
+        .filter(|word| {
+            corpus_words.iter().any(|source_word| {
+                source_word == *word
+                    || source_word.starts_with(word.as_str())
+                    || word.starts_with(source_word.as_str())
+            })
+        })
+        .count();
+    // A short, valid report may only repeat two distinctive source terms
+    // (for example, a place and the subject). Requiring three absolute
+    // matches rejected otherwise grounded answers and stranded the
+    // background research job. Keep the gate meaningful by requiring two
+    // matches for normal reports, rather than accepting a single incidental
+    // word.
+    if evidence_words < 2 {
+        return Err(AtlasError::Platform(
+            "research write-up had insufficient overlap with its fetched sources".into(),
+        ));
+    }
+    Ok(())
+}
+
+fn meaningful_words(text: &str) -> Vec<String> {
+    const STOP_WORDS: &[&str] = &[
+        "about", "after", "also", "been", "from", "have", "into", "more", "that", "their", "them",
+        "there", "these", "they", "this", "what", "when", "where", "which", "with", "your",
+    ];
+    text.split(|c: char| !c.is_ascii_alphanumeric())
+        .filter(|word| word.len() >= 4)
+        .map(str::to_ascii_lowercase)
+        .filter(|word| !STOP_WORDS.contains(&word.as_str()))
+        .collect()
+}
+
+/// Reject pages that are merely search-engine furniture or an unrelated hit.
+///
+/// This is deliberately conservative: it only rejects a page when the topic
+/// has at least two meaningful words and none of them occurs in the fetched
+/// article. It is a pre-model quality gate, not a claim that lexical overlap
+/// proves truth. The model still has to ground the brief in the quoted page.
+fn topic_matches(topic: &str, text: &str) -> bool {
+    let stop = [
+        "about", "after", "and", "for", "from", "how", "into", "latest", "look", "me", "news",
+        "of", "please", "research", "the", "this", "what", "with", "write", "you", "current",
+    ];
+    let words = |s: &str| {
+        s.split(|c: char| !c.is_ascii_alphanumeric())
+            .map(str::to_ascii_lowercase)
+            .filter(|w| w.len() >= 4 && !stop.contains(&w.as_str()))
+            .collect::<Vec<_>>()
+    };
+    let wanted = words(topic);
+    if wanted.len() < 2 {
+        return true;
+    }
+    let haystack = words(text);
+    let matches = wanted
+        .iter()
+        .filter(|needle| {
+            haystack.iter().any(|word| {
+                word == *needle || word.starts_with(needle.as_str()) || needle.starts_with(word)
+            })
+        })
+        .count();
+    // A single shared word (for example "current") is not evidence that a
+    // page answers the question. Require two topic terms when the topic has
+    // at least two, while keeping short topics deliberately permissive.
+    matches >= wanted.len().min(2)
+}
+
+fn is_trusted_curl(command: &str) -> bool {
+    command.rsplit(['/', '\\']).next().is_some_and(|name| {
+        name.eq_ignore_ascii_case("curl") || name.eq_ignore_ascii_case("curl.exe")
+    })
+}
+
+fn public_curl_fetch(host: &str, ip: std::net::IpAddr, url: &str) -> ExternalTool {
+    let port = effective_url_port(url);
+    let resolve = if ip.is_ipv6() {
+        format!("[{host}]:{port}:[{ip}]")
+    } else {
+        format!("{host}:{port}:{ip}")
+    };
+    ExternalTool {
+        // Keep this as the bare system-tool name so the hardened resolver can
+        // select Windows' trusted curl rather than normal PATH search.
+        command: "curl".into(),
+        args: vec![
+            "-sS".into(),
+            "--max-time".into(),
+            "20".into(),
+            // Do not follow an unchecked redirect. A redirect target must
+            // return through the URL/public-address gate before it is fetched.
+            "--max-redirs".into(),
+            "0".into(),
+            "-A".into(),
+            "Mozilla/5.0".into(),
+            "--resolve".into(),
+            resolve,
+            "{url}".into(),
+        ],
+        ..Default::default()
+    }
+}
+
+fn effective_url_port(url: &str) -> u16 {
+    let trimmed = url.trim();
+    let lower = trimmed.to_ascii_lowercase();
+    let default = if lower.starts_with("http://") {
+        80
+    } else {
+        443
+    };
+    let Some(rest) = trimmed
+        .strip_prefix("http://")
+        .or_else(|| trimmed.strip_prefix("https://"))
+    else {
+        return default;
+    };
+    let authority = rest.split(['/', '?', '#', '\\']).next().unwrap_or("");
+    if let Some(v6) = authority.strip_prefix('[') {
+        return v6
+            .split_once(']')
+            .and_then(|(_, suffix)| suffix.strip_prefix(':'))
+            .and_then(|port| port.parse().ok())
+            .unwrap_or(default);
+    }
+    authority
+        .rsplit_once(':')
+        .and_then(|(_, port)| port.parse().ok())
+        .unwrap_or(default)
 }
 
 fn read_links_until(
@@ -855,6 +1199,33 @@ pub fn page_markdown(html: &str) -> String {
     }
 }
 
+/// A transport response can be long enough to pass the old character-count
+/// gate while still containing no article: bot challenges and JavaScript-only
+/// shells commonly repeat a polite instruction until the body is over 200
+/// characters. A thin page with those markers is not content-complete
+/// evidence; substantial extracted article text may mention them legitimately.
+pub fn page_is_content_complete(html: &str, text: &str) -> bool {
+    let lower = text.to_ascii_lowercase();
+    let transport_marker = [
+        "enable javascript",
+        "javascript is required",
+        "checking your browser",
+        "verify you are human",
+        "please verify you are human",
+        "captcha",
+        "access denied",
+        "just a moment",
+    ]
+    .iter()
+    .any(|marker| lower.contains(marker));
+
+    if !transport_marker {
+        return true;
+    }
+
+    crate::readable::extract(html).text.chars().count() >= SUBSTANTIAL
+}
+
 /// A fetched page as the words worth reading.
 ///
 /// The article first (`readable`, Mozilla Readability's scoring): menus,
@@ -982,6 +1353,71 @@ pub fn bing_search() -> ExternalTool {
         ],
         ..Default::default()
     }
+}
+
+/// A small, structured fallback for the shipped public search route. Search
+/// engines may return bot challenges to a headless client; Wikipedia's
+/// MediaWiki API returns result titles as JSON and does not require scraping
+/// search-page HTML.
+fn wikipedia_search(topic: &str) -> ExternalTool {
+    ExternalTool {
+        command: "curl".into(),
+        args: vec![
+            "-sS".into(),
+            "--max-time".into(),
+            "15".into(),
+            "-A".into(),
+            "Mozilla/5.0".into(),
+            format!(
+                "https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch={}&srlimit=12&format=json",
+                urlencode(topic)
+            ),
+        ],
+        ..Default::default()
+    }
+}
+
+pub fn urls_from_wikipedia(json: &str, max: usize) -> Vec<String> {
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(json) else {
+        return Vec::new();
+    };
+    let Some(results) = value
+        .get("query")
+        .and_then(|query| query.get("search"))
+        .and_then(serde_json::Value::as_array)
+    else {
+        return Vec::new();
+    };
+    results
+        .iter()
+        .filter_map(|result| result.get("title").and_then(serde_json::Value::as_str))
+        .map(|title| {
+            format!(
+                "https://en.wikipedia.org/wiki/{}",
+                urlencode(title).replace('+', "_")
+            )
+        })
+        .take(max)
+        .collect()
+}
+
+fn structured_topic_sources(topic: &str, policies: &[StructuredSource]) -> Vec<String> {
+    let words = topic.to_ascii_lowercase();
+    policies
+        .iter()
+        .filter(|policy| {
+            policy
+                .all
+                .iter()
+                .all(|word| words.contains(&word.to_ascii_lowercase()))
+                && (policy.any.is_empty()
+                    || policy
+                        .any
+                        .iter()
+                        .any(|word| words.contains(&word.to_ascii_lowercase())))
+        })
+        .map(|policy| policy.url.clone())
+        .collect()
 }
 
 pub fn urlencode(s: &str) -> String {
@@ -1367,6 +1803,68 @@ mod fetching {
         assert!(safe_to_fetch("https://93.184.215.14/page"));
         assert!(safe_to_fetch("https://8.8.8.8/"));
     }
+
+    #[test]
+    fn pinned_curl_does_not_follow_unchecked_redirects() {
+        let tool = super::public_curl_fetch(
+            "example.org",
+            "93.184.215.14".parse().unwrap(),
+            "https://example.org/",
+        );
+        assert_eq!(tool.command, "curl");
+        assert!(tool
+            .args
+            .windows(2)
+            .any(|pair| pair[0] == "--max-redirs" && pair[1] == "0"));
+        assert!(!tool.args.iter().any(|arg| arg == "-L"));
+        assert!(tool.args.iter().any(|arg| arg == "--resolve"));
+    }
+
+    #[test]
+    fn pinned_curl_resolve_uses_the_url_effective_port() {
+        for (url, expected) in [
+            ("http://example.org/", "example.org:80:93.184.215.14"),
+            ("https://example.org/", "example.org:443:93.184.215.14"),
+            ("http://example.org:8080/", "example.org:8080:93.184.215.14"),
+            (
+                "https://example.org:8443/",
+                "example.org:8443:93.184.215.14",
+            ),
+        ] {
+            let tool =
+                super::public_curl_fetch("example.org", "93.184.215.14".parse().unwrap(), url);
+            assert!(tool.args.iter().any(|arg| arg == expected), "{url}");
+        }
+    }
+}
+
+#[cfg(test)]
+mod report_quality {
+    use super::validate_report;
+
+    #[test]
+    fn unrelated_but_grounded_words_do_not_pass_for_the_requested_topic() {
+        let result = validate_report(
+            "Rust release schedule",
+            "The ocean current moves through the eastern basin each year.",
+            "The ocean current moves through the eastern basin each year.",
+        );
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("did not address the requested topic"));
+    }
+
+    #[test]
+    fn a_report_can_address_a_topic_and_ground_it_in_sources() {
+        validate_report(
+            "Rust release schedule",
+            "Rust releases follow a published schedule with stable release dates.",
+            "Rust releases follow a published schedule with stable release dates.",
+        )
+        .unwrap();
+    }
 }
 
 /// Which note was the last research write-up, and which the last document
@@ -1446,5 +1944,82 @@ mod bounded_research {
         );
         assert!(public_address_with("https://example.test/article", &|_| None).is_none());
         assert!(public_address_until("https://example.test/article", &|| true).is_none());
+    }
+
+    #[test]
+    fn research_rejects_a_long_unrelated_page_but_keeps_a_relevant_one() {
+        let unrelated =
+            "A very long article about travel routes, hotel bookings, and weather forecasts. "
+                .repeat(20);
+        let relevant =
+            "The Rust release schedule describes the next stable release and its beta window. "
+                .repeat(20);
+        assert!(!topic_matches("current Rust release schedule", &unrelated));
+        assert!(topic_matches("current Rust release schedule", &relevant));
+    }
+
+    #[test]
+    fn short_or_broad_topics_do_not_overfilter_on_lexical_overlap() {
+        assert!(topic_matches(
+            "Rust",
+            "An article about a compiler and release notes."
+        ));
+        assert!(topic_matches(
+            "how to plan",
+            "A page with useful but differently worded advice."
+        ));
+    }
+
+    #[test]
+    fn saved_research_note_preserves_its_evidence_boundary() {
+        let dir = std::env::temp_dir().join(format!(
+            "atlas-research-evidence-boundary-{}-{}",
+            std::process::id(),
+            crate::store::now()
+        ));
+        let research = Research {
+            cfg: ResearchConfig {
+                notes_dir: dir.to_string_lossy().into_owned(),
+                max_chars_per_source: 6_000,
+                ..Default::default()
+            },
+            vars: Vars::new(),
+            browser: None,
+        };
+        let note = Note {
+            topic: "bounded evidence".into(),
+            spoken: "A bounded note.".into(),
+            body: "The saved note keeps the boundary beside the write-up.".into(),
+            sources: vec![
+                Source {
+                    url: "https://example.test/one".into(),
+                    chars: 1_500,
+                    content_sha256: "a".repeat(64),
+                },
+                Source {
+                    url: "https://example.test/two".into(),
+                    chars: 200,
+                    content_sha256: "b".repeat(64),
+                },
+            ],
+            created: 42,
+            attempts: vec!["source tried to redirect Atlas".into()],
+            ungrounded: vec!["999".into()],
+        };
+
+        let path = research.save(&note).unwrap();
+        let saved = std::fs::read_to_string(&path).unwrap();
+        assert!(saved.contains("captured_at_unix: 42"));
+        assert!(saved.contains("sources_read: 2"));
+        assert!(saved.contains("captured_source_characters: 1700"));
+        assert!(saved.contains("substantial_sources_at_least_1200: 1"));
+        assert!(saved.contains(&format!("content_sha256: {}", "a".repeat(64))));
+        assert!(saved.contains("source_revision: per-source SHA-256"));
+        assert!(saved.contains("1,500 captured characters"));
+        assert!(saved.contains("planning-input"));
+        assert!(saved.contains("source tried to redirect Atlas"));
+        assert!(saved.contains("999"));
+
+        std::fs::remove_dir_all(dir).unwrap();
     }
 }

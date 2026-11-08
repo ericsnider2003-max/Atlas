@@ -177,9 +177,11 @@ fn the_server_that_lost_its_graphics_is_started_again_once_without_them() {
         server: Some(atlas::tools::ExternalTool {
             command: fake_server(&dir).display().to_string(),
             args: Vec::new(),
+            current_dir: None,
             stdin_text: false,
             result_file: None,
             timeout_secs: 30,
+            expected_sha256: None,
         }),
         ..ModelsConfig::default()
     };

@@ -166,7 +166,7 @@ fn a_consent_decision_is_the_same_every_time_it_is_asked() {
 /// a yes; `Feedback` and `Updates("undo")` hold their own question;
 /// `MoveBigFiles`, `TidyDesktop`, `PcTune` and `EditMedia` show a plan and wait.
 fn hard_to_undo() -> Vec<Intent> {
-    let mut v = vec![
+    let v = vec![
         // sending
         Intent::Message("sam hello".into()),
         // moving and deleting files (closing an app discards work too)
@@ -241,7 +241,10 @@ fn the_easy_neighbours_are_not_newly_asked() {
 fn history_cannot_relax_a_hard_to_undo_confirm() {
     let mut mem = Memory::default();
     for i in hard_to_undo() {
-        assert!(policy::is_hard_to_undo(&i), "{i:?} is missing from is_hard_to_undo");
+        assert!(
+            policy::is_hard_to_undo(&i),
+            "{i:?} is missing from is_hard_to_undo"
+        );
         let kind = atlas::session::kind_of(&i);
         for _ in 0..50 {
             mem.record_approval(kind, true, None);
@@ -294,7 +297,11 @@ fn the_follow_ups_after_a_yes_do_not_ask_again() {
     let mut seen = 0;
     for said in ["Build", "Improve"] {
         let w = format!("{HAND_OVER}make a script");
-        let i = if said == "Build" { Intent::Build(w) } else { Intent::Improve(w) };
+        let i = if said == "Build" {
+            Intent::Build(w)
+        } else {
+            Intent::Improve(w)
+        };
         let own = declined(&i).expect("a hand-over has its own fallback");
         assert!(!policy::is_hard_to_undo(&own), "{own:?}");
         seen += 1;

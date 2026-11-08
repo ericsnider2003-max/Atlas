@@ -22,7 +22,7 @@ use std::time::{Duration, Instant};
 fn tmp(tag: &str) -> PathBuf {
     let p = std::env::temp_dir().join(format!("atlas-mail-crew-{tag}"));
     let _ = std::fs::remove_dir_all(&p);
-    std::fs::create_dir_all(&p).unwrap();
+    std::fs::create_dir_all(&p).unwrap_or_else(|error| panic!("create {p:?}: {error}"));
     p
 }
 
@@ -38,11 +38,12 @@ fn plat() -> MockPlatform {
 }
 
 fn cfg_with_account(account: Account) -> Config {
-    let mut c = Config::load(Path::new("config")).unwrap();
+    let mut c = Config::load(Path::new("config"))
+        .unwrap_or_else(|error| panic!("load shipped config: {error}"));
     let tools = c
         .tools
         .as_mut()
-        .expect("the shipped config has a tools section");
+        .unwrap_or_else(|| panic!("the shipped config has a tools section"));
     tools.mail.enabled = true;
     tools.mail.accounts = vec![account];
     c
@@ -89,7 +90,7 @@ fn set_up_vault(d: &mut Daemon) {
             0,
             &VaultConfig::default(),
         )
-        .unwrap();
+        .unwrap_or_else(|error| panic!("open test vault: {error}"));
     d.vault
         .put(
             "gmail app password",
@@ -97,13 +98,18 @@ fn set_up_vault(d: &mut Daemon) {
             "app-specific-password",
             0,
         )
-        .unwrap();
+        .unwrap_or_else(|error| panic!("put test mail credential: {error}"));
 }
 
 #[test]
 fn no_accounts_configured_is_reported_immediately_not_deferred() {
-    let mut c = Config::load(Path::new("config")).unwrap();
-    c.tools.as_mut().unwrap().mail.enabled = true;
+    let mut c = Config::load(Path::new("config"))
+        .unwrap_or_else(|error| panic!("load shipped config: {error}"));
+    c.tools
+        .as_mut()
+        .unwrap_or_else(|| panic!("the shipped config has a tools section"))
+        .mail
+        .enabled = true;
     // accounts stays empty -- MailConfig's own honest default.
     let p = plat();
     let mut d = daemon(&c, &p, "no-accounts");
@@ -180,7 +186,7 @@ fn an_unreachable_account_gets_an_honest_ack_then_a_real_failure_report() {
             0,
             &VaultConfig::default(),
         )
-        .unwrap();
+        .unwrap_or_else(|error| panic!("open unreachable-mail vault: {error}"));
     d.vault
         .put(
             "gmail app password",
@@ -188,7 +194,7 @@ fn an_unreachable_account_gets_an_honest_ack_then_a_real_failure_report() {
             "app-specific-password",
             0,
         )
-        .unwrap();
+        .unwrap_or_else(|error| panic!("put unreachable-mail credential: {error}"));
 
     let ack = d.execute(&Intent::Mail(String::new()));
     assert!(
@@ -242,7 +248,7 @@ fn asking_to_clear_out_mail_goes_through_the_unsubscribe_path_not_check_mail() {
             0,
             &VaultConfig::default(),
         )
-        .unwrap();
+        .unwrap_or_else(|error| panic!("open unsubscribe-mail vault: {error}"));
     d.vault
         .put(
             "gmail app password",
@@ -250,7 +256,7 @@ fn asking_to_clear_out_mail_goes_through_the_unsubscribe_path_not_check_mail() {
             "app-specific-password",
             0,
         )
-        .unwrap();
+        .unwrap_or_else(|error| panic!("put unsubscribe-mail credential: {error}"));
 
     let ack = d.execute(&Intent::Mail("clear out my inbox".into()));
     assert!(
@@ -310,7 +316,9 @@ fn pulling_up_a_draft_reads_the_outbox_directly_without_touching_the_crew() {
         status: atlas::outbox::Status::Waiting,
         thread: Default::default(),
     });
-    outbox.save(&d.store).unwrap();
+    outbox
+        .save(&d.store)
+        .unwrap_or_else(|error| panic!("save draft fixture: {error}"));
 
     let said = d.execute(&Intent::Mail("pull up the reply to jane".into()));
     assert!(
@@ -368,7 +376,9 @@ fn throwing_away_a_draft_marks_it_discarded_and_removes_it_from_the_waiting_set(
         status: atlas::outbox::Status::Waiting,
         thread: Default::default(),
     });
-    outbox.save(&d.store).unwrap();
+    outbox
+        .save(&d.store)
+        .unwrap_or_else(|error| panic!("save discard fixture: {error}"));
 
     let said = d.execute(&Intent::Mail("throw away the reply to jane".into()));
     assert!(
@@ -390,7 +400,10 @@ fn throwing_away_a_draft_marks_it_discarded_and_removes_it_from_the_waiting_set(
         "the discarded draft must leave the waiting set"
     );
     assert_eq!(
-        reloaded.get("id-1").unwrap().status,
+        reloaded
+            .get("id-1")
+            .unwrap_or_else(|| panic!("discarded draft fixture exists"))
+            .status,
         atlas::outbox::Status::Discarded
     );
 }
@@ -448,7 +461,11 @@ fn outreach_without_approval_is_drafted_and_held_not_sent() {
 #[test]
 fn outreach_with_the_master_switch_on_but_recipient_unapproved_still_does_not_send() {
     let mut c = cfg_with_account(account_for("unapproved"));
-    c.tools.as_mut().unwrap().mail.may_email_brands = true;
+    c.tools
+        .as_mut()
+        .unwrap_or_else(|| panic!("the shipped config has a tools section"))
+        .mail
+        .may_email_brands = true;
     let p = plat();
     let mut d = daemon_with_llm(&c, &p, "outreach-unapproved");
     set_up_vault(&mut d);
@@ -467,15 +484,25 @@ fn outreach_with_the_master_switch_on_but_recipient_unapproved_still_does_not_se
 #[test]
 fn outreach_at_the_daily_cap_is_held_rather_than_sent() {
     let mut c = cfg_with_account(account_for("capped"));
-    c.tools.as_mut().unwrap().mail.may_email_brands = true;
-    c.tools.as_mut().unwrap().mail.cold_outreach_daily_cap = 1;
+    c.tools
+        .as_mut()
+        .unwrap_or_else(|| panic!("the shipped config has a tools section"))
+        .mail
+        .may_email_brands = true;
+    c.tools
+        .as_mut()
+        .unwrap_or_else(|| panic!("the shipped config has a tools section"))
+        .mail
+        .cold_outreach_daily_cap = 1;
     let p = plat();
     let mut d = daemon_with_llm(&c, &p, "outreach-capped");
     set_up_vault(&mut d);
 
     let mut targets = atlas::outreach::OutreachTargets::load(&d.store);
     targets.approve("brand@example.com", "Some Brand", 0);
-    targets.save(&d.store).unwrap();
+    targets
+        .save(&d.store)
+        .unwrap_or_else(|error| panic!("save approved outreach target: {error}"));
 
     // Already at the cap for today -- one cold-outreach send recorded a
     // moment ago.
@@ -493,7 +520,9 @@ fn outreach_at_the_daily_cap_is_held_rather_than_sent() {
         status: atlas::outbox::Status::Sent,
         thread: Default::default(),
     });
-    outbox.save(&d.store).unwrap();
+    outbox
+        .save(&d.store)
+        .unwrap_or_else(|error| panic!("save cap fixture: {error}"));
 
     d.execute(&Intent::Mail(
         "draft outreach to brand@example.com about a partnership".into(),
@@ -532,7 +561,9 @@ fn asking_about_an_order_reads_the_order_store_directly() {
         atlas::orders::Status::Shipped,
         0,
     );
-    orders.save(&d.store).unwrap();
+    orders
+        .save(&d.store)
+        .unwrap_or_else(|error| panic!("save order fixture: {error}"));
 
     let said = d.execute(&Intent::Mail("what's the status of my amazon order".into()));
     assert!(said.contains("Amazon"), "got: {said}");

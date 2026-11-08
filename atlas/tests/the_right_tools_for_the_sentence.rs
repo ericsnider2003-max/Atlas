@@ -261,6 +261,7 @@ fn a_normal_turn_is_under_nine_hundred_tokens_and_starts_the_same_every_time() {
         folded: 71,
         last_active: 1_790_740_000,
         current_topic: None,
+        load_error: None,
     };
     store.save("thread", &start).unwrap();
     let spy = Arc::new(Spy {

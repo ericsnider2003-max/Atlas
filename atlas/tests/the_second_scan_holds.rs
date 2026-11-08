@@ -821,6 +821,25 @@ fn the_prompt_is_cut_to_fit_the_context_history_first_then_tools_then_what_was_s
     assert_eq!(turn.tools.len(), core, "the core tools went");
 }
 
+#[test]
+fn context_shortening_reaches_the_budget_even_when_the_active_request_is_huge() {
+    let mut turn = Turn {
+        said: format!("ACTIVE REQUEST {}", "details ".repeat(20_000)),
+        system: "SAFETY BOUNDARY: never invent approval".into(),
+        max_tokens: 32,
+        ..Default::default()
+    };
+
+    assert!(turn.fit(128, 0));
+    assert!(
+        turn.estimated_tokens() <= 128 - 32 - 64,
+        "shortening left the request over budget: {} tokens",
+        turn.estimated_tokens()
+    );
+    assert!(turn.said.starts_with("ACTIVE REQUEST"));
+    assert!(turn.system.contains("SAFETY BOUNDARY"));
+}
+
 // ================= 8 and 9: what reaches the speaker =================
 
 fn brain_turn(said: &str, history: Vec<Msg>, tools: Vec<serde_json::Value>) -> Turn {

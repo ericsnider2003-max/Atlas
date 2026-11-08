@@ -48,7 +48,12 @@ fn home() -> PathBuf {
     let p = std::env::temp_dir().join("atlas-what-a-stranger-gets");
     ONCE.call_once(|| {
         let _ = std::fs::remove_dir_all(&p);
-        std::fs::create_dir_all(p.join("data").join("state")).unwrap();
+        std::fs::create_dir_all(p.join("data").join("state")).unwrap_or_else(|error| {
+            panic!(
+                "create handover test state directory {}: {error}",
+                p.display()
+            )
+        });
         std::env::set_var("ATLAS_HOME", &p);
     });
     p
@@ -62,15 +67,18 @@ fn install() -> Store {
 fn hand_it_over() {
     let mut h = Handover::default();
     h.hand_over("Sam has it", 1_000);
-    h.save(&install()).unwrap();
+    h.save(&install())
+        .unwrap_or_else(|error| panic!("save handover fixture: {error}"));
 }
 
 fn it_is_yours() {
-    Handover::default().save(&install()).unwrap();
+    Handover::default()
+        .save(&install())
+        .unwrap_or_else(|error| panic!("clear handover fixture: {error}"));
 }
 
 fn cfg() -> Config {
-    Config::load(Path::new("config")).unwrap()
+    Config::load(Path::new("config")).unwrap_or_else(|error| panic!("load test config: {error}"))
 }
 
 fn plat() -> MockPlatform {
@@ -87,7 +95,8 @@ fn plat() -> MockPlatform {
 fn daemon<'a>(c: &'a Config, p: &'a MockPlatform, tag: &str) -> Daemon<'a> {
     let dir = home().join(format!("person-{tag}"));
     let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::create_dir_all(&dir)
+        .unwrap_or_else(|error| panic!("create daemon test directory {}: {error}", dir.display()));
     Daemon::new(
         c,
         p,
@@ -365,7 +374,10 @@ fn function_body<'a>(text: &'a str, signature: &str) -> &'a str {
     let start = text
         .find(signature)
         .unwrap_or_else(|| panic!("{signature} is gone or renamed"));
-    let open = start + text[start..].find('{').expect("no body");
+    let open = start
+        + text[start..]
+            .find('{')
+            .unwrap_or_else(|| panic!("response body has no opening brace after {start}"));
     let bytes = text.as_bytes();
     let mut depth = 0usize;
     for i in open..bytes.len() {

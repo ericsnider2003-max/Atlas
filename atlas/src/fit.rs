@@ -560,58 +560,6 @@ fn read_graphics() -> Graphics {
     }
 }
 
-#[cfg(test)]
-mod device_tests {
-    use super::*;
-
-    fn readings() -> crate::health::Readings {
-        crate::health::Readings {
-            ram_total_gb: 16.0,
-            ram_used_gb: 10.0,
-            disk_free_gb: 100.0,
-            ..Default::default()
-        }
-    }
-
-    #[test]
-    fn discrete_gpu_and_npu_are_recorded() {
-        let g = Graphics {
-            dedicated_mb: 8192,
-            shared_mb: 8000,
-        };
-        let m = machine_from(&readings(), g, true);
-        assert_eq!(m.vram_mb, 8192);
-        assert!(m.has_npu);
-        assert_eq!(m.usable_vram_mb(), 8192);
-    }
-
-    #[test]
-    fn integrated_gpu_is_recorded_but_adds_no_budget() {
-        let g = Graphics {
-            dedicated_mb: 128,
-            shared_mb: 8000,
-        };
-        let m = machine_from(&readings(), g, false);
-        assert_eq!(m.vram_mb, 128);
-        assert_eq!(m.usable_vram_mb(), 0);
-        assert!(!m.has_npu);
-        assert_eq!(m.total_ram_mb, 16 * 1024);
-        assert_eq!(m.free_ram_mb, 6 * 1024);
-    }
-
-    #[test]
-    fn unreadable_graphics_is_zero_not_a_guess() {
-        let m = machine_from(&readings(), Graphics::default(), false);
-        assert_eq!(m.vram_mb, 0);
-    }
-
-    #[test]
-    fn the_real_adapter_can_be_read_without_panicking() {
-        let g = graphics();
-        eprintln!("graphics here: {g:?}");
-    }
-}
-
 /// Everything Atlas has downloaded, with what each costs on disk.
 ///
 /// Surveys `models/` and `tools/` — the two folders Atlas installs into. Not
@@ -683,4 +631,56 @@ pub fn spare_weight(cfg_text: &str) -> Vec<Trim> {
         .map(|(name, _)| name.rsplit(['/', '\\']).next().unwrap_or(name).to_string())
         .collect();
     what_to_drop(&installed, &referenced)
+}
+
+#[cfg(test)]
+mod device_tests {
+    use super::*;
+
+    fn readings() -> crate::health::Readings {
+        crate::health::Readings {
+            ram_total_gb: 16.0,
+            ram_used_gb: 10.0,
+            disk_free_gb: 100.0,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn discrete_gpu_and_npu_are_recorded() {
+        let g = Graphics {
+            dedicated_mb: 8192,
+            shared_mb: 8000,
+        };
+        let m = machine_from(&readings(), g, true);
+        assert_eq!(m.vram_mb, 8192);
+        assert!(m.has_npu);
+        assert_eq!(m.usable_vram_mb(), 8192);
+    }
+
+    #[test]
+    fn integrated_gpu_is_recorded_but_adds_no_budget() {
+        let g = Graphics {
+            dedicated_mb: 128,
+            shared_mb: 8000,
+        };
+        let m = machine_from(&readings(), g, false);
+        assert_eq!(m.vram_mb, 128);
+        assert_eq!(m.usable_vram_mb(), 0);
+        assert!(!m.has_npu);
+        assert_eq!(m.total_ram_mb, 16 * 1024);
+        assert_eq!(m.free_ram_mb, 6 * 1024);
+    }
+
+    #[test]
+    fn unreadable_graphics_is_zero_not_a_guess() {
+        let m = machine_from(&readings(), Graphics::default(), false);
+        assert_eq!(m.vram_mb, 0);
+    }
+
+    #[test]
+    fn the_real_adapter_can_be_read_without_panicking() {
+        let g = graphics();
+        eprintln!("graphics here: {g:?}");
+    }
 }

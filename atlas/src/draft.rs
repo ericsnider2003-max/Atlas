@@ -502,6 +502,24 @@ pub fn revise(text: &str, llm: &dyn crate::brain::Llm, cfg: &DraftConfig) -> Out
     }
 }
 
+/// How a reply written as you in a chat or mail window is checked. A chat
+/// reply is short and casual: "maybe", a question back, one short line are
+/// all normal there, so hedging, questions, length, vagueness and rhythm
+/// aren't faults. Sounding like a chatbot, leaving a blank, stock openers,
+/// filler and saying things twice are.
+pub fn for_replies() -> DraftConfig {
+    DraftConfig {
+        revise: true,
+        max_passes: 1,
+        ignore: vec![
+            Fault::Hedging,
+            Fault::TackedOnQuestion,
+            Fault::TooLong,
+            Fault::Vague,
+            Fault::Monotonous,
+        ],
+    }
+}
 #[cfg(test)]
 mod revise_tests {
     use super::*;
@@ -562,24 +580,5 @@ mod revise_tests {
             revise(flawed, &llm, &c),
             Outcome::KeptOriginal(flawed.to_string())
         );
-    }
-}
-
-/// How a reply written as you in a chat or mail window is checked. A chat
-/// reply is short and casual: "maybe", a question back, one short line are
-/// all normal there, so hedging, questions, length, vagueness and rhythm
-/// aren't faults. Sounding like a chatbot, leaving a blank, stock openers,
-/// filler and saying things twice are.
-pub fn for_replies() -> DraftConfig {
-    DraftConfig {
-        revise: true,
-        max_passes: 1,
-        ignore: vec![
-            Fault::Hedging,
-            Fault::TackedOnQuestion,
-            Fault::TooLong,
-            Fault::Vague,
-            Fault::Monotonous,
-        ],
     }
 }

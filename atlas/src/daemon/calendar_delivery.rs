@@ -700,6 +700,210 @@ impl Daemon<'_> {
     }
 }
 
+impl Daemon<'_> {
+    pub(crate) fn calendar_review_rows(
+        &self,
+    ) -> std::result::Result<Vec<(String, String, String)>, String> {
+        let owner = self.calendar_owner_stamp()?;
+        let calendar = self
+            .store
+            .load_checked_bounded::<crate::calendar::Calendar>("calendar", LIMIT)
+            .map_err(|e| e.to_string())?;
+        let mut rows = Vec::new();
+        if let Some(intent) = self
+            .store
+            .load_checked_bounded::<Option<BookingCommit>>(BOOKING_COMMIT, LIMIT)
+            .map_err(|e| e.to_string())?
+            .flatten()
+        {
+            let saved = self
+                .store
+                .load_checked_bounded::<crate::calendar::Calendar>("calendar", LIMIT)
+                .map_err(|e| e.to_string())?;
+            let present =
+                saved.as_ref().and_then(|c| c.event(intent.event.id)) == Some(&intent.event);
+            rows.push((format!("booking:{}:{}",intent.proposal.id,intent.event.id),format!(
+                "{} booking for {}. {} Dismiss after reviewing to release the pending request; saved events are retained.",
+                if intent.canceled {"Stopped"} else {"Unconfirmed"},if intent.owner==owner {intent.event.title.as_str()} else {"a previous owner's appointment"},
+                if present {"The exact event is saved; the complete booking outcome requires review."} else {"The intended event is not confirmed in the current calendar."}), calendar_review_token(&intent,&owner)?));
+        }
+        let now = crate::store::now();
+        for r in self.reminder_receipts()? {
+            if r.state == ReceiptState::Delivered {
+                continue;
+            }
+            let explanation = if r.owner != owner
+                || calendar.as_ref().and_then(|c| c.event(r.event.id)) != Some(&r.event)
+            {
+                "Owner or event changed; the old reminder requires review"
+            } else {
+                match r.state {
+                    ReceiptState::Pending
+                        if r.start
+                            .saturating_add(crate::calendar::Calendar::REMIND_LATE_SECS)
+                            > now =>
+                    {
+                        r.held_reason.as_deref().unwrap_or("Waiting to reach you")
+                    }
+                    ReceiptState::Pending => "Expired before confirmed delivery",
+                    ReceiptState::Dispatching => {
+                        "Delivery is unknown; it may already have reached you"
+                    }
+                    ReceiptState::Unconfirmed => "Stopped or interrupted; delivery is unconfirmed",
+                    ReceiptState::Delivered => unreachable!(),
+                }
+            };
+            rows.push((format!("reminder:{}",r.delivery_id),format!("{explanation}: {}. An explicit retry may repeat a reminder; dismiss does not mark it delivered.",if r.owner==owner {r.event.title.as_str()} else {"a previous owner's reminder"}),calendar_review_token(&r,&owner)?));
+        }
+        Ok(rows)
+    }
+
+    pub(crate) fn resolve_calendar_review(&mut self, id: &str, what: &str, token: &str) -> String {
+        match self.resolve_calendar_review_checked(id,what,token) {
+            Ok(line)=>line,
+            Err(e)=>format!("Calendar review was not confirmed ({e}); refresh its current status before trying again."),
+        }
+    }
+    fn resolve_calendar_review_checked(
+        &mut self,
+        id: &str,
+        what: &str,
+        token: &str,
+    ) -> std::result::Result<String, String> {
+        if !matches!(what, "retry" | "dismiss") {
+            return Err("unsupported review action".into());
+        }
+        let owner_store = crate::store::Store::new(self.owner_state_root());
+        let _owner = owner_store.transaction().map_err(|e| e.to_string())?;
+        let store = self.store.clone();
+        let _guard = store.transaction().map_err(|e| e.to_string())?;
+        let owner = self.calendar_owner_stamp()?;
+        if id.starts_with("booking:") {
+            if what != "dismiss" {
+                return Err("booking recovery cannot be replayed from this button".into());
+            }
+            let intent = store
+                .load_checked_bounded::<Option<BookingCommit>>(BOOKING_COMMIT, LIMIT)
+                .map_err(|e| e.to_string())?
+                .flatten()
+                .ok_or("booking review no longer exists")?;
+            if id != format!("booking:{}:{}", intent.proposal.id, intent.event.id) {
+                return Err("booking review identity changed".into());
+            }
+            if token != calendar_review_token(&intent, &owner)? {
+                return Err("booking review changed; refresh before deciding".into());
+            }
+            let calendar = store
+                .load_checked_bounded::<crate::calendar::Calendar>("calendar", LIMIT)
+                .map_err(|e| e.to_string())?;
+            // Retain the complete reviewed request and partial-event evidence before retiring it.
+            let mut reviewed = store
+                .load_checked_bounded::<Vec<serde_json::Value>>(BOOKING_RECEIPTS, LIMIT)
+                .map_err(|e| e.to_string())?
+                .unwrap_or_default();
+            if reviewed.len() >= 128 {
+                return Err("booking review archive is full; no request was retired".into());
+            }
+            if !reviewed
+                .iter()
+                .any(|v| v.get("id").and_then(|v| v.as_str()) == Some(id))
+            {
+                reviewed.push(serde_json::json!({"id":id,"request":intent,"reviewed_by":owner,
+                    "exact_event_present":calendar.as_ref().and_then(|c|c.event(intent.event.id))==Some(&intent.event)}));
+                save_booking_receipts(&store, &reviewed).map_err(|e| e.to_string())?;
+            }
+            store
+                .save(BOOKING_COMMIT, &Option::<BookingCommit>::None)
+                .map_err(|e| e.to_string())?;
+            self.calendar_booking_problem = None;
+            return Ok("Reviewed booking request retired. Any event already saved remains on the calendar; a new booking can now be considered.".into());
+        }
+        let mut receipts = self.reminder_receipts()?;
+        let index = receipts
+            .iter()
+            .position(|r| id == format!("reminder:{}", r.delivery_id))
+            .ok_or("reminder review no longer exists")?;
+        if token != calendar_review_token(&receipts[index], &owner)? {
+            return Err("reminder review changed; refresh before deciding".into());
+        }
+        if self
+            .calendar_active_delivery_ids
+            .contains(&receipts[index].delivery_id)
+            || self
+                .calendar_delivery_bindings
+                .iter()
+                .any(|(bound, _, _)| bound == &receipts[index].delivery_id)
+        {
+            return Err("this exact reminder is currently queued or playing; stop it before reviewing an unknown delivery".into());
+        }
+        if receipts[index].state == ReceiptState::Delivered {
+            return Err("this reminder is already confirmed delivered".into());
+        }
+        if what == "retry" {
+            if self.attention.is_paused() || self.calendar_cancel_pending {
+                return Err("Atlas is paused or stopping; the reminder was not restarted".into());
+            }
+            let calendar = store
+                .load_checked_bounded::<crate::calendar::Calendar>("calendar", LIMIT)
+                .map_err(|e| e.to_string())?
+                .ok_or("calendar is missing")?;
+            if receipts[index].owner != owner
+                || calendar.event(receipts[index].event.id) != Some(&receipts[index].event)
+            {
+                return Err(
+                    "the owner or event changed; this old reminder cannot be retried".into(),
+                );
+            }
+            if !matches!(
+                receipts[index].state,
+                ReceiptState::Dispatching | ReceiptState::Unconfirmed
+            ) {
+                return Err(
+                    "this reminder is already waiting; no duplicate retry was queued".into(),
+                );
+            }
+            receipts[index].state = ReceiptState::Pending;
+            receipts[index].retry_at = crate::store::now();
+            receipts[index].explicit_retry = true;
+            receipts[index].line = format!(
+                "Reminder you asked to hear again: \"{}\", scheduled {}.",
+                receipts[index].event.title,
+                receipts[index].event.say_when_in(&self.home_zone())
+            );
+            save_reminder_receipts(&store, &receipts).map_err(|e| e.to_string())?;
+            return Ok("Reminder retry saved at your request. It may repeat an earlier delivery; it is not marked delivered.".into());
+        }
+        let removed = receipts.remove(index);
+        // A dismissal tombstone suppresses this occurrence without asserting delivery.
+        let mut dismissed = store
+            .load_checked_bounded::<Vec<(u64, u64)>>("calendar_reminder_dismissed", LIMIT)
+            .map_err(|e| e.to_string())?
+            .unwrap_or_default();
+        let key = (removed.event.id, removed.start);
+        if !dismissed.contains(&key) {
+            dismissed.push(key);
+        }
+        dismissed.retain(|(_, start)| {
+            start.saturating_add(crate::calendar::Calendar::REMIND_LATE_SECS) > crate::store::now()
+        });
+        store
+            .save("calendar_reminder_dismissed", &dismissed)
+            .map_err(|e| e.to_string())?;
+        save_reminder_receipts(&store, &receipts).map_err(|e| e.to_string())?;
+        self.calendar_delivery_bindings
+            .retain(|(bound, _, _)| bound != &removed.delivery_id);
+        Ok("Reminder dismissed after review. It was not marked delivered and will not automatically repeat.".into())
+    }
+}
+
+fn calendar_review_token(
+    value: &impl Serialize,
+    owner: &serde_json::Value,
+) -> std::result::Result<String, String> {
+    use sha2::Digest;
+    let bytes = serde_json::to_vec(&(value, owner)).map_err(|e| e.to_string())?;
+    Ok(format!("{:x}", sha2::Sha256::digest(bytes)))
+}
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1179,209 +1383,4 @@ mod tests {
         assert!(d.prepare_brief_inline(NOW).is_err());
         assert_eq!(d.calendar.len(), 0);
     }
-}
-
-impl Daemon<'_> {
-    pub(crate) fn calendar_review_rows(
-        &self,
-    ) -> std::result::Result<Vec<(String, String, String)>, String> {
-        let owner = self.calendar_owner_stamp()?;
-        let calendar = self
-            .store
-            .load_checked_bounded::<crate::calendar::Calendar>("calendar", LIMIT)
-            .map_err(|e| e.to_string())?;
-        let mut rows = Vec::new();
-        if let Some(intent) = self
-            .store
-            .load_checked_bounded::<Option<BookingCommit>>(BOOKING_COMMIT, LIMIT)
-            .map_err(|e| e.to_string())?
-            .flatten()
-        {
-            let saved = self
-                .store
-                .load_checked_bounded::<crate::calendar::Calendar>("calendar", LIMIT)
-                .map_err(|e| e.to_string())?;
-            let present =
-                saved.as_ref().and_then(|c| c.event(intent.event.id)) == Some(&intent.event);
-            rows.push((format!("booking:{}:{}",intent.proposal.id,intent.event.id),format!(
-                "{} booking for {}. {} Dismiss after reviewing to release the pending request; saved events are retained.",
-                if intent.canceled {"Stopped"} else {"Unconfirmed"},if intent.owner==owner {intent.event.title.as_str()} else {"a previous owner's appointment"},
-                if present {"The exact event is saved; the complete booking outcome requires review."} else {"The intended event is not confirmed in the current calendar."}), calendar_review_token(&intent,&owner)?));
-        }
-        let now = crate::store::now();
-        for r in self.reminder_receipts()? {
-            if r.state == ReceiptState::Delivered {
-                continue;
-            }
-            let explanation = if r.owner != owner
-                || calendar.as_ref().and_then(|c| c.event(r.event.id)) != Some(&r.event)
-            {
-                "Owner or event changed; the old reminder requires review"
-            } else {
-                match r.state {
-                    ReceiptState::Pending
-                        if r.start
-                            .saturating_add(crate::calendar::Calendar::REMIND_LATE_SECS)
-                            > now =>
-                    {
-                        r.held_reason.as_deref().unwrap_or("Waiting to reach you")
-                    }
-                    ReceiptState::Pending => "Expired before confirmed delivery",
-                    ReceiptState::Dispatching => {
-                        "Delivery is unknown; it may already have reached you"
-                    }
-                    ReceiptState::Unconfirmed => "Stopped or interrupted; delivery is unconfirmed",
-                    ReceiptState::Delivered => unreachable!(),
-                }
-            };
-            rows.push((format!("reminder:{}",r.delivery_id),format!("{explanation}: {}. An explicit retry may repeat a reminder; dismiss does not mark it delivered.",if r.owner==owner {r.event.title.as_str()} else {"a previous owner's reminder"}),calendar_review_token(&r,&owner)?));
-        }
-        Ok(rows)
-    }
-
-    pub(crate) fn resolve_calendar_review(&mut self, id: &str, what: &str, token: &str) -> String {
-        match self.resolve_calendar_review_checked(id,what,token) {
-            Ok(line)=>line,
-            Err(e)=>format!("Calendar review was not confirmed ({e}); refresh its current status before trying again."),
-        }
-    }
-    fn resolve_calendar_review_checked(
-        &mut self,
-        id: &str,
-        what: &str,
-        token: &str,
-    ) -> std::result::Result<String, String> {
-        if !matches!(what, "retry" | "dismiss") {
-            return Err("unsupported review action".into());
-        }
-        let owner_store = crate::store::Store::new(self.owner_state_root());
-        let _owner = owner_store.transaction().map_err(|e| e.to_string())?;
-        let store = self.store.clone();
-        let _guard = store.transaction().map_err(|e| e.to_string())?;
-        let owner = self.calendar_owner_stamp()?;
-        if id.starts_with("booking:") {
-            if what != "dismiss" {
-                return Err("booking recovery cannot be replayed from this button".into());
-            }
-            let intent = store
-                .load_checked_bounded::<Option<BookingCommit>>(BOOKING_COMMIT, LIMIT)
-                .map_err(|e| e.to_string())?
-                .flatten()
-                .ok_or("booking review no longer exists")?;
-            if id != format!("booking:{}:{}", intent.proposal.id, intent.event.id) {
-                return Err("booking review identity changed".into());
-            }
-            if token != calendar_review_token(&intent, &owner)? {
-                return Err("booking review changed; refresh before deciding".into());
-            }
-            let calendar = store
-                .load_checked_bounded::<crate::calendar::Calendar>("calendar", LIMIT)
-                .map_err(|e| e.to_string())?;
-            // Retain the complete reviewed request and partial-event evidence before retiring it.
-            let mut reviewed = store
-                .load_checked_bounded::<Vec<serde_json::Value>>(BOOKING_RECEIPTS, LIMIT)
-                .map_err(|e| e.to_string())?
-                .unwrap_or_default();
-            if reviewed.len() >= 128 {
-                return Err("booking review archive is full; no request was retired".into());
-            }
-            if !reviewed
-                .iter()
-                .any(|v| v.get("id").and_then(|v| v.as_str()) == Some(id))
-            {
-                reviewed.push(serde_json::json!({"id":id,"request":intent,"reviewed_by":owner,
-                    "exact_event_present":calendar.as_ref().and_then(|c|c.event(intent.event.id))==Some(&intent.event)}));
-                save_booking_receipts(&store, &reviewed).map_err(|e| e.to_string())?;
-            }
-            store
-                .save(BOOKING_COMMIT, &Option::<BookingCommit>::None)
-                .map_err(|e| e.to_string())?;
-            self.calendar_booking_problem = None;
-            return Ok("Reviewed booking request retired. Any event already saved remains on the calendar; a new booking can now be considered.".into());
-        }
-        let mut receipts = self.reminder_receipts()?;
-        let index = receipts
-            .iter()
-            .position(|r| id == format!("reminder:{}", r.delivery_id))
-            .ok_or("reminder review no longer exists")?;
-        if token != calendar_review_token(&receipts[index], &owner)? {
-            return Err("reminder review changed; refresh before deciding".into());
-        }
-        if self
-            .calendar_active_delivery_ids
-            .contains(&receipts[index].delivery_id)
-            || self
-                .calendar_delivery_bindings
-                .iter()
-                .any(|(bound, _, _)| bound == &receipts[index].delivery_id)
-        {
-            return Err("this exact reminder is currently queued or playing; stop it before reviewing an unknown delivery".into());
-        }
-        if receipts[index].state == ReceiptState::Delivered {
-            return Err("this reminder is already confirmed delivered".into());
-        }
-        if what == "retry" {
-            if self.attention.is_paused() || self.calendar_cancel_pending {
-                return Err("Atlas is paused or stopping; the reminder was not restarted".into());
-            }
-            let calendar = store
-                .load_checked_bounded::<crate::calendar::Calendar>("calendar", LIMIT)
-                .map_err(|e| e.to_string())?
-                .ok_or("calendar is missing")?;
-            if receipts[index].owner != owner
-                || calendar.event(receipts[index].event.id) != Some(&receipts[index].event)
-            {
-                return Err(
-                    "the owner or event changed; this old reminder cannot be retried".into(),
-                );
-            }
-            if !matches!(
-                receipts[index].state,
-                ReceiptState::Dispatching | ReceiptState::Unconfirmed
-            ) {
-                return Err(
-                    "this reminder is already waiting; no duplicate retry was queued".into(),
-                );
-            }
-            receipts[index].state = ReceiptState::Pending;
-            receipts[index].retry_at = crate::store::now();
-            receipts[index].explicit_retry = true;
-            receipts[index].line = format!(
-                "Reminder you asked to hear again: \"{}\", scheduled {}.",
-                receipts[index].event.title,
-                receipts[index].event.say_when_in(&self.home_zone())
-            );
-            save_reminder_receipts(&store, &receipts).map_err(|e| e.to_string())?;
-            return Ok("Reminder retry saved at your request. It may repeat an earlier delivery; it is not marked delivered.".into());
-        }
-        let removed = receipts.remove(index);
-        // A dismissal tombstone suppresses this occurrence without asserting delivery.
-        let mut dismissed = store
-            .load_checked_bounded::<Vec<(u64, u64)>>("calendar_reminder_dismissed", LIMIT)
-            .map_err(|e| e.to_string())?
-            .unwrap_or_default();
-        let key = (removed.event.id, removed.start);
-        if !dismissed.contains(&key) {
-            dismissed.push(key);
-        }
-        dismissed.retain(|(_, start)| {
-            start.saturating_add(crate::calendar::Calendar::REMIND_LATE_SECS) > crate::store::now()
-        });
-        store
-            .save("calendar_reminder_dismissed", &dismissed)
-            .map_err(|e| e.to_string())?;
-        save_reminder_receipts(&store, &receipts).map_err(|e| e.to_string())?;
-        self.calendar_delivery_bindings
-            .retain(|(bound, _, _)| bound != &removed.delivery_id);
-        Ok("Reminder dismissed after review. It was not marked delivered and will not automatically repeat.".into())
-    }
-}
-
-fn calendar_review_token(
-    value: &impl Serialize,
-    owner: &serde_json::Value,
-) -> std::result::Result<String, String> {
-    use sha2::Digest;
-    let bytes = serde_json::to_vec(&(value, owner)).map_err(|e| e.to_string())?;
-    Ok(format!("{:x}", sha2::Sha256::digest(bytes)))
 }

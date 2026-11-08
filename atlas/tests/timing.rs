@@ -27,6 +27,75 @@ fn ordinary() -> Turn {
     )
 }
 
+#[test]
+fn a_runtime_receipt_keeps_stage_model_context_and_terminal_facts_together() {
+    let mut turn = Turn::default();
+    turn.note(Stage::Understanding, 120);
+    turn.note(Stage::Speaking, 240);
+    let receipt = RuntimeReceipt::new(
+        turn,
+        "qwen3-vl-4b".into(),
+        8192,
+        Some(1_200),
+        Some("cpu_fallback".into()),
+        "completed".into(),
+    );
+
+    assert_eq!(receipt.model_id, "qwen3-vl-4b");
+    assert_eq!(receipt.context_tokens, 8192);
+    assert_eq!(receipt.prompt_tokens, Some(1_200));
+    assert_eq!(receipt.fallback_reason.as_deref(), Some("cpu_fallback"));
+    assert_eq!(receipt.terminal, "completed");
+    assert_eq!(receipt.turn.get(Stage::Speaking), Some(240));
+}
+
+#[test]
+fn a_runtime_receipt_records_the_redacted_action_boundary() {
+    let receipt = RuntimeReceipt::new(
+        Turn::default(),
+        "qwen".into(),
+        4096,
+        None,
+        None,
+        "completed".into(),
+    )
+    .with_action("find_file".into(), "completed".into());
+
+    let action = receipt
+        .action
+        .expect("action outcome is part of the receipt");
+    assert_eq!(action.id, "find_file");
+    assert_eq!(action.status, "completed");
+}
+
+#[test]
+fn a_runtime_receipt_carries_server_cache_and_failed_terminal_facts() {
+    let receipt = RuntimeReceipt::new(
+        Turn::default(),
+        "qwen".into(),
+        4096,
+        None,
+        Some("server_unreachable".into()),
+        "failed".into(),
+    )
+    .with_server_timings(ServerTimingsReceipt {
+        cached_prompt_tokens: 300,
+        prompt_tokens: 120,
+        prompt_ms: 14,
+        completion_tokens: 0,
+        completion_ms: 0,
+    });
+
+    assert_eq!(receipt.terminal, "failed");
+    assert_eq!(
+        receipt.fallback_reason.as_deref(),
+        Some("server_unreachable")
+    );
+    let timings = receipt.server_timings.expect("server metrics are retained");
+    assert_eq!(timings.cached_prompt_tokens, 300);
+    assert_eq!(timings.prompt_tokens, 120);
+}
+
 // --- what counts as slowness ------------------------------------------------
 
 #[test]

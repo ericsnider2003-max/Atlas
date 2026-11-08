@@ -117,196 +117,6 @@ pub struct Survey {
 const ALREADY_SENT: &str =
     "That form had already been sent, so I didn't act on it again. Nothing changed.";
 
-#[cfg(test)]
-mod signing_form_tests {
-    use super::*;
-    #[test]
-    fn legacy_receipt_and_retained_unknown_attempts_are_displayed_without_claiming_resolution() {
-        let cfg = crate::config::Config::load(std::path::Path::new("config")).unwrap();
-        let platform = crate::platform::mock::MockPlatform::new(vec![]);
-        let root = std::env::temp_dir().join(format!(
-            "atlas-signing-receipt-ui-{}-{}",
-            std::process::id(),
-            crate::store::now()
-        ));
-        let store = crate::store::Store::new(root.clone());
-        let mut d = Daemon::new(
-            &cfg,
-            &platform,
-            None,
-            store.clone(),
-            crate::proactive::Proactive::new(crate::proactive::ProactiveConfig::default()),
-        );
-        d.vault_home = store.clone();
-        store.save("signing_protection_receipt", &serde_json::json!({"operation":"protect","status":"pending","message":"Original retained; no final receipt."})).unwrap();
-        let legacy = d.vault_section_live();
-        assert!(
-            legacy.contains("Outcome unconfirmed") && !legacy.contains("Verified saved result")
-        );
-        assert!(legacy.contains("Selected file was not recorded"));
-        store.save("signing_protection_receipt", &serde_json::json!({"operation":"export","status":"verified","message":"Current recovery copy verified.","target":"C:/synthetic/<script>recovery.json","prior_unconfirmed":[{"operation_id":"opaque-old","operation":"protect","message":"Earlier <attempt> still needs inspection.","target":"Owner (C:/synthetic/<script>owner.key)"}]})).unwrap();
-        let html = d.vault_section_live();
-        assert!(
-            html.contains("Verified saved result")
-                && html.contains("Earlier outcomes still unconfirmed")
-        );
-        assert!(html.contains("Earlier &lt;attempt&gt;") && !html.contains("Earlier <attempt>"));
-        assert!(!html.contains("opaque-old"));
-        assert!(
-            html.contains("C:/synthetic/&lt;script&gt;recovery.json")
-                && html.contains("C:/synthetic/&lt;script&gt;owner.key")
-        );
-        assert!(!html.contains("<script>"));
-        assert!(html.contains("does not resolve these earlier attempts"));
-        drop(d);
-        std::fs::remove_dir_all(root).unwrap();
-    }
-    #[test]
-    fn failed_passphrase_and_recovery_saves_preserve_cached_owner_identity() {
-        let mut cfg = crate::config::Config::load(std::path::Path::new("config")).unwrap();
-        cfg.tools.as_mut().unwrap().vault.open_on_this_login = false;
-        let platform = crate::platform::mock::MockPlatform::new(vec![]);
-        let root = std::env::temp_dir().join(format!(
-            "atlas-vault-form-ack-{}-{}",
-            std::process::id(),
-            crate::store::now()
-        ));
-        let state = crate::store::Store::new(root.clone());
-        let mut d = Daemon::new(
-            &cfg,
-            &platform,
-            None,
-            state.clone(),
-            crate::proactive::Proactive::new(crate::proactive::ProactiveConfig::default()),
-        );
-        d.vault_home = state.clone();
-        let phrase = "synthetic violet lantern orbit canyon willow";
-        crate::vault::set_passphrase(
-            &mut d.vault,
-            "",
-            phrase,
-            phrase,
-            &cfg.tools.as_ref().unwrap().vault,
-            crate::store::now(),
-        )
-        .unwrap();
-        d.vault.save(&state).unwrap();
-        let html = d.vault_section_live();
-        assert!(
-            html.contains("action='/hub/signing'")
-                && html.contains("for='signing-protect-path'")
-                && html.contains("for='signing-export-unlock'")
-        );
-        assert!(
-            html.contains("all protected signing copies")
-                && html.contains("No file is selected by default")
-        );
-        assert!(!html.contains(phrase));
-        let before = serde_json::to_value(&d.vault).unwrap();
-        let path = root.join("vault.json");
-        let disk = std::fs::read(&path).unwrap();
-        std::fs::remove_file(&path).unwrap();
-        std::fs::create_dir(&path).unwrap();
-        for what in ["change", "recovery"] {
-            let nonce = d.shown_once.mark();
-            let new = "synthetic cedar galaxy river meadow planet";
-            d.vault_post(
-                what,
-                &Secret::new(phrase),
-                &Secret::new(new),
-                &Secret::new(new),
-                &nonce,
-            );
-            assert_eq!(serde_json::to_value(&d.vault).unwrap(), before);
-            assert!(d.shown_once.key.is_none());
-            assert!(d
-                .shown_once
-                .said_vault
-                .as_ref()
-                .is_some_and(|said| said.contains("couldn't confirm the saved")));
-        }
-        std::fs::remove_dir(&path).unwrap();
-        std::fs::write(&path, &disk).unwrap();
-        assert_eq!(std::fs::read(&path).unwrap(), disk);
-        let (held_tx, held_rx) = std::sync::mpsc::channel();
-        let (release_tx, release_rx) = std::sync::mpsc::channel();
-        let locked = state.clone();
-        let holder = std::thread::spawn(move || {
-            let _guard = locked.transaction().unwrap();
-            held_tx.send(()).unwrap();
-            release_rx
-                .recv_timeout(std::time::Duration::from_secs(10))
-                .expect("release fixture root lock");
-        });
-        held_rx
-            .recv_timeout(std::time::Duration::from_secs(2))
-            .unwrap();
-        let nonce = d.shown_once.mark();
-        d.vault_post(
-            "recovery",
-            &Secret::new(phrase),
-            &Secret::default(),
-            &Secret::default(),
-            &nonce,
-        );
-        release_tx.send(()).unwrap();
-        holder.join().unwrap();
-        assert_eq!(serde_json::to_value(&d.vault).unwrap(), before);
-        assert_eq!(
-            std::fs::read(&path).unwrap(),
-            disk,
-            "a busy root must preserve the actual saved owner vault"
-        );
-        assert!(d.shown_once.key.is_none());
-        let mut restarted = crate::vault::Vault::load(&state);
-        assert!(restarted
-            .open(
-                phrase,
-                crate::store::now(),
-                &cfg.tools.as_ref().unwrap().vault
-            )
-            .is_ok());
-        drop(d);
-        std::fs::remove_dir_all(root).unwrap();
-    }
-    #[test]
-    fn signing_nonce_is_one_use_and_cannot_authorize_another_action_or_vault_form() {
-        let mut shown = ShownOnce::default();
-        let protect = shown.mark_signing("protect");
-        assert!(!protect.is_empty());
-        assert!(!shown.spend(&protect));
-        assert!(!shown.spend_signing(&protect, "export"));
-        assert!(shown.spend_signing(&protect, "protect"));
-        assert!(!shown.spend_signing(&protect, "protect"));
-        let ordinary = shown.mark();
-        assert!(!shown.spend_signing(&ordinary, "protect"));
-    }
-    #[test]
-    fn an_uninitialized_owner_vault_never_offers_signing_file_actions() {
-        let cfg = crate::config::Config::load(std::path::Path::new("config")).unwrap();
-        let platform = crate::platform::mock::MockPlatform::new(vec![]);
-        let root = std::env::temp_dir().join(format!(
-            "atlas-signing-page-owner-{}-{}",
-            std::process::id(),
-            crate::store::now()
-        ));
-        let mut d = Daemon::new(
-            &cfg,
-            &platform,
-            None,
-            crate::store::Store::new(root.clone()),
-            crate::proactive::Proactive::new(crate::proactive::ProactiveConfig::default()),
-        );
-        let html = d.vault_section_live();
-        assert!(!d.vault.has_a_passphrase());
-        assert!(!html.contains("action='/hub/signing'"));
-        assert!(html.contains("established owner's vault passphrase"));
-        assert!(d.shown_once.signing_marks.is_empty());
-        drop(d);
-        std::fs::remove_dir_all(root).unwrap();
-    }
-}
-
 impl Daemon<'_> {
     fn back_to_vault(&mut self, said: String) -> Reply {
         self.shown_once.said_vault = Some(said);
@@ -916,5 +726,195 @@ impl Daemon<'_> {
             said: self.shown_once.said_space.take(),
         };
         hub::space_section(&v)
+    }
+}
+
+#[cfg(test)]
+mod signing_form_tests {
+    use super::*;
+    #[test]
+    fn legacy_receipt_and_retained_unknown_attempts_are_displayed_without_claiming_resolution() {
+        let cfg = crate::config::Config::load(std::path::Path::new("config")).unwrap();
+        let platform = crate::platform::mock::MockPlatform::new(vec![]);
+        let root = std::env::temp_dir().join(format!(
+            "atlas-signing-receipt-ui-{}-{}",
+            std::process::id(),
+            crate::store::now()
+        ));
+        let store = crate::store::Store::new(root.clone());
+        let mut d = Daemon::new(
+            &cfg,
+            &platform,
+            None,
+            store.clone(),
+            crate::proactive::Proactive::new(crate::proactive::ProactiveConfig::default()),
+        );
+        d.vault_home = store.clone();
+        store.save("signing_protection_receipt", &serde_json::json!({"operation":"protect","status":"pending","message":"Original retained; no final receipt."})).unwrap();
+        let legacy = d.vault_section_live();
+        assert!(
+            legacy.contains("Outcome unconfirmed") && !legacy.contains("Verified saved result")
+        );
+        assert!(legacy.contains("Selected file was not recorded"));
+        store.save("signing_protection_receipt", &serde_json::json!({"operation":"export","status":"verified","message":"Current recovery copy verified.","target":"C:/synthetic/<script>recovery.json","prior_unconfirmed":[{"operation_id":"opaque-old","operation":"protect","message":"Earlier <attempt> still needs inspection.","target":"Owner (C:/synthetic/<script>owner.key)"}]})).unwrap();
+        let html = d.vault_section_live();
+        assert!(
+            html.contains("Verified saved result")
+                && html.contains("Earlier outcomes still unconfirmed")
+        );
+        assert!(html.contains("Earlier &lt;attempt&gt;") && !html.contains("Earlier <attempt>"));
+        assert!(!html.contains("opaque-old"));
+        assert!(
+            html.contains("C:/synthetic/&lt;script&gt;recovery.json")
+                && html.contains("C:/synthetic/&lt;script&gt;owner.key")
+        );
+        assert!(!html.contains("<script>"));
+        assert!(html.contains("does not resolve these earlier attempts"));
+        drop(d);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    fn failed_passphrase_and_recovery_saves_preserve_cached_owner_identity() {
+        let mut cfg = crate::config::Config::load(std::path::Path::new("config")).unwrap();
+        cfg.tools.as_mut().unwrap().vault.open_on_this_login = false;
+        let platform = crate::platform::mock::MockPlatform::new(vec![]);
+        let root = std::env::temp_dir().join(format!(
+            "atlas-vault-form-ack-{}-{}",
+            std::process::id(),
+            crate::store::now()
+        ));
+        let state = crate::store::Store::new(root.clone());
+        let mut d = Daemon::new(
+            &cfg,
+            &platform,
+            None,
+            state.clone(),
+            crate::proactive::Proactive::new(crate::proactive::ProactiveConfig::default()),
+        );
+        d.vault_home = state.clone();
+        let phrase = "synthetic violet lantern orbit canyon willow";
+        crate::vault::set_passphrase(
+            &mut d.vault,
+            "",
+            phrase,
+            phrase,
+            &cfg.tools.as_ref().unwrap().vault,
+            crate::store::now(),
+        )
+        .unwrap();
+        d.vault.save(&state).unwrap();
+        let html = d.vault_section_live();
+        assert!(
+            html.contains("action='/hub/signing'")
+                && html.contains("for='signing-protect-path'")
+                && html.contains("for='signing-export-unlock'")
+        );
+        assert!(
+            html.contains("all protected signing copies")
+                && html.contains("No file is selected by default")
+        );
+        assert!(!html.contains(phrase));
+        let before = serde_json::to_value(&d.vault).unwrap();
+        let path = root.join("vault.json");
+        let disk = std::fs::read(&path).unwrap();
+        std::fs::remove_file(&path).unwrap();
+        std::fs::create_dir(&path).unwrap();
+        for what in ["change", "recovery"] {
+            let nonce = d.shown_once.mark();
+            let new = "synthetic cedar galaxy river meadow planet";
+            d.vault_post(
+                what,
+                &Secret::new(phrase),
+                &Secret::new(new),
+                &Secret::new(new),
+                &nonce,
+            );
+            assert_eq!(serde_json::to_value(&d.vault).unwrap(), before);
+            assert!(d.shown_once.key.is_none());
+            assert!(d
+                .shown_once
+                .said_vault
+                .as_ref()
+                .is_some_and(|said| said.contains("couldn't confirm the saved")));
+        }
+        std::fs::remove_dir(&path).unwrap();
+        std::fs::write(&path, &disk).unwrap();
+        assert_eq!(std::fs::read(&path).unwrap(), disk);
+        let (held_tx, held_rx) = std::sync::mpsc::channel();
+        let (release_tx, release_rx) = std::sync::mpsc::channel();
+        let locked = state.clone();
+        let holder = std::thread::spawn(move || {
+            let _guard = locked.transaction().unwrap();
+            held_tx.send(()).unwrap();
+            release_rx
+                .recv_timeout(std::time::Duration::from_secs(10))
+                .expect("release fixture root lock");
+        });
+        held_rx
+            .recv_timeout(std::time::Duration::from_secs(2))
+            .unwrap();
+        let nonce = d.shown_once.mark();
+        d.vault_post(
+            "recovery",
+            &Secret::new(phrase),
+            &Secret::default(),
+            &Secret::default(),
+            &nonce,
+        );
+        release_tx.send(()).unwrap();
+        holder.join().unwrap();
+        assert_eq!(serde_json::to_value(&d.vault).unwrap(), before);
+        assert_eq!(
+            std::fs::read(&path).unwrap(),
+            disk,
+            "a busy root must preserve the actual saved owner vault"
+        );
+        assert!(d.shown_once.key.is_none());
+        let mut restarted = crate::vault::Vault::load(&state);
+        assert!(restarted
+            .open(
+                phrase,
+                crate::store::now(),
+                &cfg.tools.as_ref().unwrap().vault
+            )
+            .is_ok());
+        drop(d);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    fn signing_nonce_is_one_use_and_cannot_authorize_another_action_or_vault_form() {
+        let mut shown = ShownOnce::default();
+        let protect = shown.mark_signing("protect");
+        assert!(!protect.is_empty());
+        assert!(!shown.spend(&protect));
+        assert!(!shown.spend_signing(&protect, "export"));
+        assert!(shown.spend_signing(&protect, "protect"));
+        assert!(!shown.spend_signing(&protect, "protect"));
+        let ordinary = shown.mark();
+        assert!(!shown.spend_signing(&ordinary, "protect"));
+    }
+    #[test]
+    fn an_uninitialized_owner_vault_never_offers_signing_file_actions() {
+        let cfg = crate::config::Config::load(std::path::Path::new("config")).unwrap();
+        let platform = crate::platform::mock::MockPlatform::new(vec![]);
+        let root = std::env::temp_dir().join(format!(
+            "atlas-signing-page-owner-{}-{}",
+            std::process::id(),
+            crate::store::now()
+        ));
+        let mut d = Daemon::new(
+            &cfg,
+            &platform,
+            None,
+            crate::store::Store::new(root.clone()),
+            crate::proactive::Proactive::new(crate::proactive::ProactiveConfig::default()),
+        );
+        let html = d.vault_section_live();
+        assert!(!d.vault.has_a_passphrase());
+        assert!(!html.contains("action='/hub/signing'"));
+        assert!(html.contains("established owner's vault passphrase"));
+        assert!(d.shown_once.signing_marks.is_empty());
+        drop(d);
+        std::fs::remove_dir_all(root).unwrap();
     }
 }

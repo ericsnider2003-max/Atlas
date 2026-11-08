@@ -28,8 +28,6 @@ mod common;
 
 #[path = "a_backup_that_holds_everything.rs"]
 mod a_backup_that_holds_everything;
-#[path = "private_model_contract.rs"]
-mod private_model_contract;
 #[path = "a_bar_knows_when_it_opened_and_closed.rs"]
 mod a_bar_knows_when_it_opened_and_closed;
 #[path = "a_brief_without_an_inbox.rs"]
@@ -104,6 +102,8 @@ mod asking_atlas_to_work_on_itself;
 mod asking_twice_is_noticed_through_the_daemon;
 #[path = "asking_which_one_you_meant.rs"]
 mod asking_which_one_you_meant;
+#[path = "asks_are_specific.rs"]
+mod asks_are_specific;
 #[path = "atlas_can_be_told_to_stop.rs"]
 mod atlas_can_be_told_to_stop;
 #[path = "atlas_writes_real_code.rs"]
@@ -336,8 +336,6 @@ mod installing_a_release;
 mod kokoro_voice;
 #[path = "mail_through_himalaya.rs"]
 mod mail_through_himalaya;
-#[path = "asks_are_specific.rs"]
-mod asks_are_specific;
 #[path = "new_capabilities_are_wired.rs"]
 mod new_capabilities_are_wired;
 #[path = "no_silent_discards.rs"]
@@ -348,6 +346,8 @@ mod nothing_from_any_version_was_lost;
 mod one_way_to_do_each_small_thing;
 #[path = "other_programs_tools.rs"]
 mod other_programs_tools;
+#[path = "private_model_contract.rs"]
+mod private_model_contract;
 #[path = "prompt_economy.rs"]
 mod prompt_economy;
 #[path = "q4_a_save_that_fails_is_not_a_success.rs"]
@@ -914,6 +914,8 @@ mod atlas_looks_when_you_ask;
 mod atlas_tests_itself;
 #[path = "atlas_works_an_app.rs"]
 mod atlas_works_an_app;
+#[path = "background_keeps_its_hands_off.rs"]
+mod background_keeps_its_hands_off;
 #[path = "call_notes.rs"]
 mod call_notes;
 #[path = "connecting_accounts.rs"]
@@ -1015,6 +1017,8 @@ mod taking_things_off_outstanding;
 mod talking_does_not_hold_the_loop;
 #[path = "the_background_atlas_hears_you.rs"]
 mod the_background_atlas_hears_you;
+#[path = "the_correction_log.rs"]
+mod the_correction_log;
 #[path = "the_envelope_when_asked.rs"]
 mod the_envelope_when_asked;
 #[path = "the_gaps_the_audit_found.rs"]
@@ -1077,8 +1081,12 @@ mod what_broke_it;
 mod what_eric_said_on_1_oct;
 #[path = "what_gets_used_is_counted.rs"]
 mod what_gets_used_is_counted;
+#[path = "what_if_is_read_only.rs"]
+mod what_if_is_read_only;
 #[path = "what_the_model_ranking_found.rs"]
 mod what_the_model_ranking_found;
+#[path = "what_this_computer_runs.rs"]
+mod what_this_computer_runs;
 #[path = "wit_setting.rs"]
 mod wit_setting;
 #[path = "work_goes_through_the_crew.rs"]
@@ -1089,11 +1097,3 @@ mod working_a_window_for_you;
 mod writing_checked;
 #[path = "your_answers_of_the_25th.rs"]
 mod your_answers_of_the_25th;
-#[path = "the_correction_log.rs"]
-mod the_correction_log;
-#[path = "what_this_computer_runs.rs"]
-mod what_this_computer_runs;
-#[path = "background_keeps_its_hands_off.rs"]
-mod background_keeps_its_hands_off;
-#[path = "what_if_is_read_only.rs"]
-mod what_if_is_read_only;

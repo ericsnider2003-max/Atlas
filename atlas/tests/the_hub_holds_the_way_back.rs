@@ -38,9 +38,12 @@ fn home() -> PathBuf {
     let p = std::env::temp_dir().join(format!("atlas-hub-way-back-{}", std::process::id()));
     ONCE.call_once(|| {
         let _ = std::fs::remove_dir_all(&p);
-        std::fs::create_dir_all(p.join("data").join("state")).unwrap();
-        std::fs::create_dir_all(p.join("home")).unwrap();
-        std::fs::create_dir_all(p.join("temp")).unwrap();
+        std::fs::create_dir_all(p.join("data").join("state"))
+            .unwrap_or_else(|error| panic!("hub state directory: {error}"));
+        std::fs::create_dir_all(p.join("home"))
+            .unwrap_or_else(|error| panic!("hub home directory: {error}"));
+        std::fs::create_dir_all(p.join("temp"))
+            .unwrap_or_else(|error| panic!("hub temp directory: {error}"));
         std::env::set_var("ATLAS_HOME", &p);
         std::env::set_var("HOME", p.join("home"));
         std::env::set_var("USERPROFILE", p.join("home"));
@@ -62,14 +65,20 @@ fn install() -> Store {
 fn config(tag: &str) -> PathBuf {
     let dir = home().join(format!("config-{tag}"));
     let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    for e in std::fs::read_dir("config").unwrap().flatten() {
+    std::fs::create_dir_all(&dir)
+        .unwrap_or_else(|error| panic!("hub test config directory: {error}"));
+    for e in std::fs::read_dir("config")
+        .unwrap_or_else(|error| panic!("shipped config directory: {error}"))
+        .flatten()
+    {
         let p = e.path();
-        if p.is_file()
-            && p.extension().and_then(|x| x.to_str()) == Some("yaml")
-            && p.file_name().unwrap() != "settings.yaml"
-        {
-            std::fs::copy(&p, dir.join(p.file_name().unwrap())).unwrap();
+        if p.is_file() && p.extension().and_then(|x| x.to_str()) == Some("yaml") {
+            let Some(name) = p.file_name() else { continue };
+            if name == "settings.yaml" {
+                continue;
+            }
+            std::fs::copy(&p, dir.join(name))
+                .unwrap_or_else(|error| panic!("copy hub config file: {error}"));
         }
     }
     std::env::set_var("ATLAS_CONFIG", &dir);
@@ -90,7 +99,7 @@ fn plat() -> MockPlatform {
 fn daemon<'a>(c: &'a Config, p: &'a MockPlatform, tag: &str, dir: &Path) -> Daemon<'a> {
     let store = home().join(format!("person-{tag}"));
     let _ = std::fs::remove_dir_all(&store);
-    std::fs::create_dir_all(&store).unwrap();
+    std::fs::create_dir_all(&store).unwrap_or_else(|error| panic!("hub person directory: {error}"));
     // A daemon on its own profile directory keeps its vault there, not in the
     // install's state, so start it with the one the fixture just saved.
     let _ = std::fs::copy(
@@ -111,7 +120,8 @@ fn empty_vault() {
     no_vault_yet();
     let mut v = Vault::default();
     v.lock();
-    v.save(&install()).unwrap();
+    v.save(&install())
+        .unwrap_or_else(|error| panic!("empty vault fixture: {error}"));
 }
 
 /// Every test here starts from a vault nobody has saved yet. The vault now
@@ -124,9 +134,11 @@ fn no_vault_yet() {
 fn a_vault_with_a_passphrase() {
     no_vault_yet();
     let mut v = Vault::default();
-    v.open(PASSPHRASE, 100, &VaultConfig::default()).unwrap();
+    v.open(PASSPHRASE, 100, &VaultConfig::default())
+        .unwrap_or_else(|error| panic!("vault fixture opens: {error}"));
     v.lock();
-    v.save(&install()).unwrap();
+    v.save(&install())
+        .unwrap_or_else(|error| panic!("vault fixture saves: {error}"));
 }
 
 fn handed_over(yes: bool) {
@@ -134,7 +146,8 @@ fn handed_over(yes: bool) {
     if yes {
         h.hand_over("", 1_000);
     }
-    h.save(&install()).unwrap();
+    h.save(&install())
+        .unwrap_or_else(|error| panic!("handover fixture saves: {error}"));
 }
 
 fn post(path: &str, body: &str) -> Action {
@@ -164,9 +177,13 @@ fn page(d: &mut Daemon, p: atlas::hub::Page) -> String {
 fn mark(html: &str) -> String {
     let at = html
         .find("name=nonce value=\"")
-        .expect("the vault form carries no one-time mark")
+        .unwrap_or_else(|| panic!("the vault form carries no one-time mark"))
         + 18;
-    html[at..].split('"').next().unwrap().to_string()
+    html[at..]
+        .split('"')
+        .next()
+        .unwrap_or_else(|| panic!("the vault form nonce is not closed"))
+        .to_string()
 }
 
 /// Every reply in these journeys, checked for the thing this work removed.
@@ -735,8 +752,9 @@ fn a_key_from_another_device_is_checked_and_does_not_replace_one_unasked() {
 
 fn folder(name: &str) -> PathBuf {
     let p = home().join("home").join("space").join(name);
-    std::fs::create_dir_all(&p).unwrap();
-    std::fs::write(p.join("junk.bin"), vec![0u8; 1024]).unwrap();
+    std::fs::create_dir_all(&p).unwrap_or_else(|error| panic!("space fixture directory: {error}"));
+    std::fs::write(p.join("junk.bin"), vec![0u8; 1024])
+        .unwrap_or_else(|error| panic!("space fixture file: {error}"));
     p
 }
 
@@ -919,11 +937,14 @@ fn with_split_children(path: &str) -> String {
                 walk(&p, out);
             } else if p.extension().is_some_and(|e| e == "rs") {
                 out.push('\n');
-                out.push_str(&std::fs::read_to_string(&p).unwrap());
+                out.push_str(&std::fs::read_to_string(&p).unwrap_or_else(|error| {
+                    panic!("read source fixture {}: {error}", p.display())
+                }));
             }
         }
     }
-    let mut text = std::fs::read_to_string(path).unwrap();
+    let mut text = std::fs::read_to_string(path)
+        .unwrap_or_else(|error| panic!("read source fixture {path}: {error}"));
     walk(&Path::new(path).with_extension(""), &mut text);
     text
 }

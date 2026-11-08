@@ -536,8 +536,8 @@ mod tests {
     #[test]
     fn a_weekend_is_recognised_as_a_weekend_not_a_fault() {
         let b = rebuild(&good(200, 60), |_, _, _, _, t| {
-            for i in 100..200 {
-                t[i] += 48 * MS_PER_HOUR;
+            for value in t.iter_mut().take(200).skip(100) {
+                *value += 48 * MS_PER_HOUR;
             }
         });
         let r = accept(&b, Some(LATER)).unwrap();
@@ -551,8 +551,8 @@ mod tests {
     #[test]
     fn a_hole_is_noted_and_says_what_it_does_to_a_reading() {
         let b = rebuild(&good(200, 60), |_, _, _, _, t| {
-            for i in 100..200 {
-                t[i] += 6 * MS_PER_HOUR;
+            for value in t.iter_mut().take(200).skip(100) {
+                *value += 6 * MS_PER_HOUR;
             }
         });
         let r = accept(&b, Some(LATER)).unwrap();
@@ -567,11 +567,9 @@ mod tests {
     #[test]
     fn zero_range_bars_are_noted_with_what_they_do_to_the_atr() {
         let b = rebuild(&good(300, 60), |o, h, l, c, _| {
-            for i in 40..43 {
-                h[i] = l[i];
-                o[i] = l[i];
-                c[i] = l[i];
-            }
+            h[40..43].copy_from_slice(&l[40..43]);
+            o[40..43].copy_from_slice(&l[40..43]);
+            c[40..43].copy_from_slice(&l[40..43]);
         });
         let r = accept(&b, Some(LATER)).unwrap();
         let flat = r.of_kind(NoteKind::Flat);
@@ -593,8 +591,8 @@ mod tests {
     #[test]
     fn the_report_summarises_what_it_found() {
         let b = rebuild(&good(200, 60), |_, _, _, _, t| {
-            for i in 100..200 {
-                t[i] += 6 * MS_PER_HOUR;
+            for value in t.iter_mut().take(200).skip(100) {
+                *value += 6 * MS_PER_HOUR;
             }
         });
         let s = accept(&b, Some(LATER)).unwrap().say();

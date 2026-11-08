@@ -1604,8 +1604,10 @@ mod one_count_tests {
         )
         .unwrap();
         let mut bad = crate::job::Record::planned("chat:9:9", "open the ledger");
-        bad.transition(crate::job::State::Running, "started").unwrap();
-        bad.finish(crate::job::State::Failed, "the file is locked", "t").unwrap();
+        bad.transition(crate::job::State::Running, "started")
+            .unwrap();
+        bad.finish(crate::job::State::Failed, "the file is locked", "t")
+            .unwrap();
         crate::job::upsert(&store, bad).unwrap();
 
         let needs = d.needs_you_now(now);
@@ -1645,13 +1647,19 @@ mod one_count_tests {
         for page in crate::server::SNAPSHOT_PAGES {
             assert!(
                 published.iter().any(|(p, _)| *p == page),
-                "{} was not published", page.href()
+                "{} was not published",
+                page.href()
             );
         }
         for page in [Page::Settings, Page::Permissions, Page::Help, Page::Trusted] {
             let copy = &published.iter().find(|(p, _)| *p == page).unwrap().1.body;
             let live = d.hub_reply(crate::server::Action::Hub(page)).body;
-            assert_eq!(copy, &live, "{}: the copy is not what the live page draws", page.href());
+            assert_eq!(
+                copy,
+                &live,
+                "{}: the copy is not what the live page draws",
+                page.href()
+            );
         }
         // A one-time line waiting for Help: Help is not published, so the
         // live page says it (and only the live page consumes it).
@@ -1700,15 +1708,29 @@ mod one_count_tests {
         for page in pages {
             let copy = copy_of(&mut d, page).expect("published");
             let live = d.hub_reply(crate::server::Action::Hub(page)).body;
-            assert!(copy.contains("memory.json"), "{}: the copy lost the banner", page.href());
-            assert!(live.contains("memory.json"), "{}: the live page lost it", page.href());
+            assert!(
+                copy.contains("memory.json"),
+                "{}: the copy lost the banner",
+                page.href()
+            );
+            assert!(
+                live.contains("memory.json"),
+                "{}: the live page lost it",
+                page.href()
+            );
         }
         // An answer nobody has been shown: the copy waits, the live page says
         // it once, and the copy is back afterwards.
         let id = d.hub_jobs.start(Page::Now, "Sending the plan");
         d.hub_jobs.finish(id, Ok("Plan sent to Sam.".into()), false);
-        assert!(copy_of(&mut d, Page::Now).is_none(), "an unsaid answer is not hidden by a copy");
-        assert!(copy_of(&mut d, Page::Outstanding).is_some(), "other pages are not held back");
+        assert!(
+            copy_of(&mut d, Page::Now).is_none(),
+            "an unsaid answer is not hidden by a copy"
+        );
+        assert!(
+            copy_of(&mut d, Page::Outstanding).is_some(),
+            "other pages are not held back"
+        );
         let first = d.hub_reply(crate::server::Action::Hub(Page::Now)).body;
         assert!(first.contains("Plan sent to Sam."));
         let second = d.hub_reply(crate::server::Action::Hub(Page::Now)).body;
@@ -1721,9 +1743,13 @@ mod one_count_tests {
             crate::store::now() + 60,
         ));
         assert!(copy_of(&mut d, Page::Outstanding).is_none());
-        let first = d.hub_reply(crate::server::Action::Hub(Page::Outstanding)).body;
+        let first = d
+            .hub_reply(crate::server::Action::Hub(Page::Outstanding))
+            .body;
         assert!(first.contains("Dropped it."));
-        let second = d.hub_reply(crate::server::Action::Hub(Page::Outstanding)).body;
+        let second = d
+            .hub_reply(crate::server::Action::Hub(Page::Outstanding))
+            .body;
         assert!(!second.contains("Dropped it."), "said exactly once");
         assert!(copy_of(&mut d, Page::Outstanding).is_some());
     }
@@ -1733,7 +1759,13 @@ mod one_count_tests {
         let dir = std::env::temp_dir().join(format!("atlas-kept-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
-        for f in ["apps.yaml", "layouts.yaml", "commands.yaml", "tools.yaml", "policy.yaml"] {
+        for f in [
+            "apps.yaml",
+            "layouts.yaml",
+            "commands.yaml",
+            "tools.yaml",
+            "policy.yaml",
+        ] {
             std::fs::copy(std::path::Path::new("config").join(f), dir.join(f)).unwrap();
         }
         let before = crate::hublive::kept_settings(&dir).expect("readable");
@@ -1776,8 +1808,7 @@ mod one_count_tests {
             .stack_size(1024 * 1024)
             .spawn(|| {
                 let store = scratch("stack");
-                let config =
-                    crate::config::Config::load(std::path::Path::new("config")).unwrap();
+                let config = crate::config::Config::load(std::path::Path::new("config")).unwrap();
                 let platform = crate::platform::mock::MockPlatform::new(Vec::new());
                 let mut d = Daemon::new(
                     &config,
@@ -1792,7 +1823,9 @@ mod one_count_tests {
                 assert!(all.len() >= 7);
             })
             .unwrap();
-        handle.join().expect("the page was drawn within 1 MiB of stack");
+        handle
+            .join()
+            .expect("the page was drawn within 1 MiB of stack");
     }
 
     #[test]

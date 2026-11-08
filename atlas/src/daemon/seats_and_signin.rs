@@ -40,6 +40,7 @@ pub(super) fn ask_seats(
             }
         });
         calls.push(SeatCall {
+            seat: Some(seat.clone()),
             took_ms: started.elapsed().as_millis() as u64,
             prompt_chars: prompt.len(),
             reply_chars: answer.as_ref().map(|r| r.len()).unwrap_or(0),
@@ -64,6 +65,7 @@ impl crate::brain::Llm for CountedLlm<'_> {
         let r = self.inner.complete(system, user);
         if let Ok(mut c) = self.calls.lock().or_else(crate::crash::unpoison) {
             c.push(SeatCall {
+                seat: None,
                 took_ms: started.elapsed().as_millis() as u64,
                 prompt_chars: system.len() + user.len(),
                 reply_chars: r.as_ref().map(|t| t.len()).unwrap_or(0),

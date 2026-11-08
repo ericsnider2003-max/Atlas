@@ -199,7 +199,7 @@ fn a_finished_call_is_written_up_by_the_crew_and_its_summary_recorded() {
         t.research.notes_dir = dir.join("notes").display().to_string();
         // A stand-in transcriber: writes one timed line for any recording.
         t.stt_timed = Some(if cfg!(windows) {
-            // Windows has no sh or printf: cmd copies a ready transcript.
+            // Windows has no sh or printf: PowerShell copies a ready transcript.
             let line = dir.join("line.srt");
             std::fs::create_dir_all(&dir).unwrap();
             std::fs::write(
@@ -208,8 +208,8 @@ fn a_finished_call_is_written_up_by_the_crew_and_its_summary_recorded() {
             )
             .unwrap();
             serde_yaml::from_str(&format!(
-                "command: cmd\nargs: [\"/c\", \"copy /y {} {{srt}} >nul\"]\nresult_file: \"{{srt}}\"\n",
-                line.display().to_string().replace('\\', "\\\\")
+                "command: powershell\nargs: [\"-NoProfile\", \"-Command\", \"Copy-Item -LiteralPath '{}' -Destination '{{srt}}' -Force\"]\nresult_file: \"{{srt}}\"\n",
+                line.display().to_string().replace('\\', "/").replace('\'', "''")
             ))
             .unwrap()
         } else {

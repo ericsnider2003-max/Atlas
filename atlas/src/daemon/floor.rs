@@ -9,6 +9,20 @@ use std::sync::Arc;
 
 static SEQ: AtomicU64 = AtomicU64::new(1);
 
+fn receipt_detail(s: &str) -> String {
+    const LIMIT: usize = 300;
+    let chars: Vec<char> = s.chars().collect();
+    if chars.len() <= LIMIT {
+        return s.to_string();
+    }
+    let head = 140;
+    let tail = LIMIT - head - 5;
+    let mut out: String = chars[..head].iter().collect();
+    out.push_str(" ... ");
+    out.extend(chars[chars.len() - tail..].iter());
+    out
+}
+
 const MONTHS: [&str; 12] = [
     "January",
     "February",
@@ -69,7 +83,7 @@ impl<'a> Daemon<'a> {
         } else {
             crate::job::State::Failed
         };
-        let detail: String = done.said.chars().take(300).collect();
+        let detail = receipt_detail(&done.said);
         if let Err(e) = crate::job::end(&self.store, &id, stage, state, &detail) {
             self.log
                 .warn(&format!("couldn't write down how \"{what}\" ended: {e}"));
@@ -146,7 +160,7 @@ impl<'a> Daemon<'a> {
         let now = crate::store::now();
         let recent = self.hub_jobs.snapshot().iter().any(|j| {
             j.finished_at()
-                .map_or(true, |at| now.saturating_sub(at) <= 600)
+                .is_none_or(|at| now.saturating_sub(at) <= 600)
         });
         recent.then(|| self.on_job_status(&ask))
     }
@@ -174,7 +188,11 @@ impl<'a> Daemon<'a> {
             if r.internal || r.job_id.starts_with("errand:floor-") {
                 continue;
             }
-            let said = r.receipt.as_ref().map(|x| x.detail.clone()).unwrap_or_default();
+            let said = r
+                .receipt
+                .as_ref()
+                .map(|x| x.detail.clone())
+                .unwrap_or_default();
             let life = match r.state {
                 crate::job::State::Succeeded => Life::Done(said),
                 crate::job::State::Failed => Life::Failed(said),
@@ -299,7 +317,15 @@ impl<'a> Daemon<'a> {
     /// begun here and ended by the worker with how it really ended.
     fn start_folder_backup(&mut self, src: std::path::PathBuf, dest: std::path::PathBuf) -> String {
         let t = self.now_acting();
-        let plan = match crate::floor::plan_backup(&src, &dest, &self.floor_stamp()) {
+        // Reserve a distinct target at planning time. Two requests can arrive
+        // in the same second while the first worker is still queued, so an
+        // existence check alone cannot distinguish the in-flight destination.
+        let stamp = format!(
+            "{}-{}",
+            self.floor_stamp(),
+            SEQ.fetch_add(1, Ordering::Relaxed)
+        );
+        let plan = match crate::floor::plan_backup(&src, &dest, &stamp) {
             Ok(p) => p,
             Err(why) => return why,
         };
@@ -332,7 +358,7 @@ impl<'a> Daemon<'a> {
             } else {
                 crate::job::State::Failed
             };
-            let detail: String = done.said.chars().take(300).collect();
+            let detail = receipt_detail(&done.said);
             // The record is closed before the errand reports, so nothing can
             // read "finished" beside a job still shown running.
             crate::heard!(crate::job::end(&store, &job_id, stage, state, &detail));
@@ -453,7 +479,7 @@ impl<'a> Daemon<'a> {
             .or_else(crate::crash::unpoison)
             .ok()
             .and_then(|g| *g)
-            .is_some_and(|(_, up)| up);
+            .is_some_and(|(_, up, _)| up);
         if self.helpers.is_running("model-server") || up_elsewhere {
             return None;
         }

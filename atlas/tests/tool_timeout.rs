@@ -20,9 +20,11 @@ fn tool(command: &str, args: &[&str], timeout_secs: u64) -> ExternalTool {
     ExternalTool {
         command: command.into(),
         args: args.iter().map(|s| s.to_string()).collect(),
+        current_dir: None,
         stdin_text: false,
         result_file: None,
         timeout_secs,
+        expected_sha256: None,
     }
 }
 

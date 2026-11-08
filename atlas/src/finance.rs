@@ -194,8 +194,7 @@ impl FinanceConfig {
             // the AI app, a "chase" in a film title) need a money word
             // beside them; "Robinhood" or "Schwab" alone is enough.
             let needs_cue = AMBIGUOUS_STEMS.contains(&stem);
-            t.contains(&d)
-                || (!stem.is_empty() && (cue || !needs_cue) && words.iter().any(|w| *w == stem))
+            t.contains(&d) || (!stem.is_empty() && (cue || !needs_cue) && words.contains(&stem))
         })
     }
 }

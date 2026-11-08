@@ -42,12 +42,21 @@ use std::sync::{Mutex, OnceLock};
 fn home() -> &'static PathBuf {
     static HOME: OnceLock<PathBuf> = OnceLock::new();
     HOME.get_or_init(|| {
-        let h = std::env::temp_dir().join(format!("atlas-phone-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&h);
-        std::fs::create_dir_all(h.join("config")).unwrap();
-        for f in std::fs::read_dir("config").unwrap().flatten() {
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_else(|error| panic!("system clock must be after the Unix epoch: {error}"))
+            .as_nanos();
+        let h = std::env::temp_dir().join(format!("atlas-phone-{}-{stamp}", std::process::id()));
+        std::fs::create_dir_all(h.join("config")).unwrap_or_else(|error| {
+            panic!("create phone test config directory: {error}");
+        });
+        for f in std::fs::read_dir("config")
+            .unwrap_or_else(|error| panic!("read shipped config directory: {error}"))
+            .flatten()
+        {
             if f.path().is_file() {
-                std::fs::copy(f.path(), h.join("config").join(f.file_name())).unwrap();
+                std::fs::copy(f.path(), h.join("config").join(f.file_name()))
+                    .unwrap_or_else(|error| panic!("copy shipped config fixture: {error}"));
             }
         }
         std::env::set_var("ATLAS_HOME", &h);
@@ -61,7 +70,10 @@ static ONE_AT_A_TIME: Mutex<()> = Mutex::new(());
 fn with_daemon<T>(f: impl FnOnce(&mut Daemon) -> T) -> T {
     let _g = ONE_AT_A_TIME.lock().unwrap_or_else(|p| p.into_inner());
     let h = home();
-    let cfg: &'static Config = Box::leak(Box::new(Config::load(&h.join("config")).unwrap()));
+    let cfg: &'static Config = Box::leak(Box::new(
+        Config::load(&h.join("config"))
+            .unwrap_or_else(|error| panic!("load phone test config: {error}")),
+    ));
     let plat: &'static MockPlatform = Box::leak(Box::new(MockPlatform::new(vec![Monitor {
         id: 1,
         x: 0,
@@ -70,18 +82,19 @@ fn with_daemon<T>(f: impl FnOnce(&mut Daemon) -> T) -> T {
         height: 1040,
         primary: true,
     }])));
-    let store_dir = std::env::temp_dir().join(format!(
-        "atlas-phone-store-{}-{:?}",
-        std::process::id(),
-        std::thread::current().id()
-    ));
-    let _ = std::fs::remove_dir_all(&store_dir);
-    std::fs::create_dir_all(&store_dir).unwrap();
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_else(|error| panic!("system clock must be after the Unix epoch: {error}"))
+        .as_nanos();
+    let store_dir = std::env::temp_dir().join(format!("atlas-phone-store-{stamp}"));
+    std::fs::create_dir_all(&store_dir).unwrap_or_else(|error| {
+        panic!("create phone test store directory: {error}");
+    });
     std::fs::write(
         store_dir.join("roster.json"),
         r#"{"businesses":{"Northwind LLC":["Jordan"]}}"#,
     )
-    .unwrap();
+    .unwrap_or_else(|error| panic!("write phone test roster: {error}"));
     // Watching its settings, as the running Atlas does, so a change on a
     // page is picked up the way it is for real.
     let mut d = Daemon::new(
@@ -476,7 +489,7 @@ fn every_page_is_built_for_everyone_on_every_screen() {
 /// say: a `<label for>`, an `aria-label`, or a wrapping label.
 fn labelled(name: &str, h: &str) {
     let mut at = 0;
-    while let Some(i) = h[at..].find(|c| c == '<').map(|i| i + at) {
+    while let Some(i) = h[at..].find('<').map(|i| i + at) {
         at = i + 1;
         let tag = &h[i..];
         let kind = ["<input", "<select", "<textarea"]

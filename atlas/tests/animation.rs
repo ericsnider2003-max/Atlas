@@ -378,9 +378,21 @@ fn render_runs_the_configured_command_then_checks_the_output() {
     std::fs::write(&svg, "<svg/>").unwrap();
     let out = d.join("out.png");
 
-    // `cp` isn't a program on Windows; `copy` is a cmd built-in.
+    // Use a script on Windows so paths containing spaces remain one argument.
     let cmd = if cfg!(windows) {
-        format!("cmd /c copy /y {} {{out}}", fixture.display())
+        let script = d.join("copy.ps1");
+        std::fs::write(
+            &script,
+            format!(
+                "$fixture = '{}'; Copy-Item -LiteralPath $fixture -Destination $args[0] -Force\n",
+                fixture.display().to_string().replace('\'', "''")
+            ),
+        )
+        .unwrap();
+        format!(
+            "powershell -NoProfile -File \"{}\" \"{{out}}\"",
+            script.display()
+        )
     } else {
         format!("cp {} {{out}}", fixture.display())
     };
@@ -423,6 +435,24 @@ fn render_with_no_command_is_an_honest_error_not_a_pretend_success() {
         r.is_err(),
         "no rasteriser configured must be an error, not empty findings"
     );
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+#[test]
+fn render_rejects_an_unterminated_renderer_quote_before_launch() {
+    let d = scratch_dir("malformed-command");
+    let r = render(
+        &d.join("in.svg"),
+        &d.join("out.png"),
+        "renderer --input \"{in}",
+        &Expect {
+            kind: RenderKind::Png,
+            width: 1,
+            height: 1,
+        },
+    );
+    let error = r.expect_err("malformed renderer configuration must be rejected");
+    assert!(error.contains("unterminated quote"), "{error}");
     let _ = std::fs::remove_dir_all(&d);
 }
 

@@ -20,11 +20,26 @@ use atlas::proactive::{Proactive, ProactiveConfig};
 use atlas::store::Store;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 fn scratch(tag: &str) -> PathBuf {
-    let d = std::env::temp_dir().join(format!("atlas-yours-{tag}-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&d);
-    std::fs::create_dir_all(&d).unwrap();
+    static NEXT: AtomicU64 = AtomicU64::new(0);
+    let nonce = NEXT.fetch_add(1, Ordering::Relaxed);
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let d = std::env::temp_dir().join(format!(
+        "atlas-yours-{tag}-{}-{timestamp}-{nonce}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&d).unwrap_or_else(|error| {
+        panic!(
+            "create acting-on-your-things scratch directory {}: {error}",
+            d.display()
+        )
+    });
     d
 }
 
@@ -336,7 +351,10 @@ fn undo_asks_and_then_actually_takes_it_back() {
     // The second yes closes it, checks it, and only then marks the entry
     // undone, so a later "undo" does not offer it again.
     let said = d.turn("yes", 1_002);
-    assert!(said.contains("Undone.") && said.contains("Closed notepad"), "{said}");
+    assert!(
+        said.contains("Undone.") && said.contains("Closed notepad"),
+        "{said}"
+    );
     assert!(
         d.history
             .done
@@ -360,7 +378,9 @@ fn an_abandoned_undo_question_does_not_mark_the_entry_undone_later() {
         true,
         10,
     );
-    assert!(d.turn("undo", 1_000).starts_with("Undo \"opened notepad\"?"));
+    assert!(d
+        .turn("undo", 1_000)
+        .starts_with("Undo \"opened notepad\"?"));
     let q = d.turn("yes", 1_001);
     assert!(q.contains("Go ahead?"), "{q}");
     // Something else instead of an answer: the question is dropped.

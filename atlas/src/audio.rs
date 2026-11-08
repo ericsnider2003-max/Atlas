@@ -595,22 +595,44 @@ pub fn probe_devices(ffmpeg_cmd: &str) -> crate::error::Result<Vec<Device>> {
 /// these commands writes its listing to stderr, and dshow and avfoundation
 /// exit non-zero while doing it.
 pub fn probe(ffmpeg_cmd: &str, inputs: bool) -> crate::error::Result<Vec<Device>> {
-    use std::process::Stdio;
     let (_, args) = listing_command(inputs);
-    let out = crate::tools::command(ffmpeg_cmd)
-        .args(&args)
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .output()
-        .map_err(|e| {
-            crate::error::AtlasError::Platform(format!(
-                "could not run '{ffmpeg_cmd}' to list audio devices: {e}"
-            ))
-        })?;
-    let mut text = String::from_utf8_lossy(&out.stderr).to_string();
+    let mut command = crate::tools::command(ffmpeg_cmd);
+    command.args(&args);
+    // Device discovery is part of the spoken turn path. A disconnected or
+    // driver-owned input must not hold the daemon until the child gives up.
+    let ran = crate::tools::run_scoped(
+        &mut command,
+        std::time::Duration::from_secs(3),
+        8 * 1024 * 1024,
+        None,
+        None,
+    );
+    let (stderr, stdout) = match ran.end {
+        crate::tools::ProcessEnd::Exited(_) if !ran.truncated => (ran.stderr, ran.stdout),
+        crate::tools::ProcessEnd::TimedOut => {
+            return Err(crate::error::AtlasError::Platform(
+                "audio device listing exceeded its 3-second limit".into(),
+            ));
+        }
+        crate::tools::ProcessEnd::Stopped => {
+            return Err(crate::error::AtlasError::Platform(
+                "audio device listing was stopped".into(),
+            ));
+        }
+        crate::tools::ProcessEnd::Failed(why) => {
+            return Err(crate::error::AtlasError::Platform(format!(
+                "could not run '{ffmpeg_cmd}' to list audio devices: {why}"
+            )));
+        }
+        crate::tools::ProcessEnd::Exited(_) => {
+            return Err(crate::error::AtlasError::Platform(
+                "audio device listing exceeded its output limit".into(),
+            ));
+        }
+    };
+    let mut text = String::from_utf8_lossy(&stderr).to_string();
     text.push('\n');
-    text.push_str(&String::from_utf8_lossy(&out.stdout));
+    text.push_str(&String::from_utf8_lossy(&stdout));
     Ok(parse_listing(&text, inputs))
 }
 
@@ -994,4 +1016,29 @@ pub fn turned_up(samples: &[i16], gain: f32) -> Vec<i16> {
         .iter()
         .map(|s| ((*s as f32) * gain).clamp(i16::MIN as f32, i16::MAX as f32) as i16)
         .collect()
+}
+
+#[cfg(all(test, windows))]
+mod process_tests {
+    use super::*;
+    use std::time::{Duration, Instant};
+
+    #[test]
+    fn a_hung_device_listing_is_bounded() {
+        let fixture = format!(
+            "{}\\tests\\fixtures\\audio-listing-sleeps.cmd",
+            env!("CARGO_MANIFEST_DIR")
+        );
+        let started = Instant::now();
+        let result = probe(&fixture, true);
+
+        assert!(
+            result.is_err(),
+            "a timed-out listing must not look successful"
+        );
+        assert!(
+            started.elapsed() < Duration::from_secs(5),
+            "device discovery must not block the daemon for the child process lifetime"
+        );
+    }
 }

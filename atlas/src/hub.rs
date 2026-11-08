@@ -230,11 +230,7 @@ impl Page {
                 // Sync is on the phone (24 Oct 2026, standalone-first): it
                 // is where the phone says what waits for the laptop and what
                 // newest-wins replaced.
-                Page::Phone
-                    | Page::Updates
-                    | Page::Offline
-                    | Page::Gestures
-                    | Page::AddOns
+                Page::Phone | Page::Updates | Page::Offline | Page::Gestures | Page::AddOns
             ))
     }
 

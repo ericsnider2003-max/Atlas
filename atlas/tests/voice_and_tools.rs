@@ -8,16 +8,18 @@ use atlas::voice::{clean_transcript, ToolsConfig, Voice};
 /// does, so everything goes through one.
 fn sh(script: &str, stdin_text: bool, result_file: Option<&str>) -> ExternalTool {
     let (command, first) = if cfg!(windows) {
-        ("cmd", "/c")
+        ("powershell", "-Command")
     } else {
         ("sh", "-c")
     };
     ExternalTool {
         command: command.into(),
         args: vec![first.into(), script.into()],
+        current_dir: None,
         stdin_text,
         result_file: result_file.map(str::to_string),
         timeout_secs: 120,
+        expected_sha256: None,
     }
 }
 
@@ -31,11 +33,10 @@ fn a_real_binary() -> &'static str {
 }
 
 fn copy(from: &str, to: &str) -> ExternalTool {
-    // No quotes on Windows: `cmd /c` strips and re-interprets them in ways
-    // that fight Rust's own argument escaping, and these temp paths contain
-    // no spaces.
+    // Quote Windows paths: the checkout and temp roots can contain spaces,
+    // and cmd.exe otherwise treats each path component as a separate token.
     let script = if cfg!(windows) {
-        format!("copy /y {from} {to} >nul")
+        format!("Copy-Item -LiteralPath '{from}' -Destination '{to}' -Force")
     } else {
         format!("cp '{from}' '{to}'")
     };
@@ -43,7 +44,10 @@ fn copy(from: &str, to: &str) -> ExternalTool {
 }
 
 fn test_tools() -> ToolsConfig {
-    let dir = std::env::temp_dir().join("atlas-voice-test");
+    static NEXT_FIXTURE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let serial = NEXT_FIXTURE.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let dir =
+        std::env::temp_dir().join(format!("atlas-voice-test-{}-{serial}", std::process::id()));
     let _ = std::fs::create_dir_all(&dir);
     let fixture = dir.join("heard.txt");
     std::fs::write(&fixture, "boot workspace\n").unwrap();
@@ -51,12 +55,12 @@ fn test_tools() -> ToolsConfig {
     let work = dir.display().to_string();
 
     let write_stdin_to_out = if cfg!(windows) {
-        "more > {out_wav}"
+        "[Console]::In.ReadToEnd() | Set-Content -LiteralPath '{out_wav}' -NoNewline"
     } else {
         "cat > '{out_wav}'"
     };
     let show_out = if cfg!(windows) {
-        "type {out_wav}"
+        "Get-Content -LiteralPath '{out_wav}' -Raw"
     } else {
         "cat '{out_wav}'"
     };
@@ -137,7 +141,15 @@ fn tool_runs_and_returns_stdout() {
 
 #[test]
 fn tool_pipes_stdin_when_configured() {
-    let t = sh(if cfg!(windows) { "more" } else { "cat" }, true, None);
+    let t = sh(
+        if cfg!(windows) {
+            "[Console]::In.ReadToEnd()"
+        } else {
+            "cat"
+        },
+        true,
+        None,
+    );
     let out = t.run(&vars(&[]), Some("spoken text")).unwrap();
     assert_eq!(out.trim(), "spoken text");
 }
@@ -147,9 +159,11 @@ fn missing_binary_gives_an_actionable_error() {
     let t = ExternalTool {
         command: "definitely-not-installed-xyz".into(),
         args: vec![],
+        current_dir: None,
         stdin_text: false,
         result_file: None,
         timeout_secs: 120,
+        expected_sha256: None,
     };
     let e = t.run(&vars(&[]), None).unwrap_err().to_string();
     assert!(
@@ -191,7 +205,17 @@ fn transcript_read_from_result_file_not_stdout() {
 fn speak_synthesizes_and_plays() {
     let cfg = test_tools();
     Voice::new(&cfg).speak("workspace online").unwrap();
-    let wav = std::fs::read_to_string(format!("{}/turn_out.wav", cfg.work_dir)).unwrap();
+    let wav = std::fs::read_dir(&cfg.work_dir)
+        .unwrap()
+        .filter_map(|entry| entry.ok().map(|entry| entry.path()))
+        .find(|path| {
+            path.file_name().is_some_and(|name| {
+                name.to_string_lossy().starts_with("turn-")
+                    && name.to_string_lossy().ends_with("_out.wav")
+            })
+        })
+        .and_then(|path| std::fs::read_to_string(path).ok())
+        .expect("voice synthesis did not create a unique output WAV");
     assert_eq!(wav.trim(), "workspace online");
 }
 
@@ -307,14 +331,12 @@ fn capture_works_on_a_fresh_install_where_the_folder_does_not_exist_yet() {
 fn with_wake(enabled: bool, marker: &std::path::Path) -> ToolsConfig {
     let mut cfg = test_tools();
     // Recording leaves a mark, so a recording that happened can be seen.
-    let fixture = std::env::temp_dir()
-        .join("atlas-voice-test")
-        .join("heard.txt");
+    let fixture = std::path::Path::new(&cfg.work_dir).join("heard.txt");
     let script = if cfg!(windows) {
         format!(
-            "echo x > {} & copy /y {} {{in_wav}} >nul",
-            marker.display(),
-            fixture.display()
+            "Set-Content -LiteralPath '{marker}' -Value x; Copy-Item -LiteralPath '{fixture}' -Destination '{{in_wav}}' -Force",
+            marker = marker.display(),
+            fixture = fixture.display(),
         )
     } else {
         format!(
@@ -338,7 +360,7 @@ fn with_wake(enabled: bool, marker: &std::path::Path) -> ToolsConfig {
 fn a_wake_word_switched_off_is_not_listened_for() {
     // `wake: enabled: false` is what ships. `wake_once` never read it, so
     // every pass of the loop recorded a clip and ran speech-to-text on it.
-    let marker = std::env::temp_dir().join("atlas-wake-off-marker");
+    let marker = crate::common::unique_temp("wake-off-marker");
     let _ = std::fs::remove_file(&marker);
     let cfg = with_wake(false, &marker);
     let started = std::time::Instant::now();
@@ -355,7 +377,7 @@ fn a_wake_word_switched_off_is_not_listened_for() {
 
     // Switched on, the same setup does listen -- so the test above is
     // measuring the switch, not a broken fixture.
-    let on_marker = std::env::temp_dir().join("atlas-wake-on-marker");
+    let on_marker = crate::common::unique_temp("wake-on-marker");
     let _ = std::fs::remove_file(&on_marker);
     let on = with_wake(true, &on_marker);
     assert!(
@@ -414,4 +436,82 @@ fn the_loop_sets_the_tier_from_the_wake_setting() {
         src.contains("self.tiers.set_wake(on);"),
         "a changed setting no longer moves the tier"
     );
+}
+
+#[cfg(windows)]
+#[test]
+fn enabled_private_voice_runs_through_the_real_speech_pipeline() {
+    let nonce = format!(
+        "{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    );
+    let root = std::env::temp_dir().join(format!("atlas-private-voice-{nonce}"));
+    let work = root.join("work");
+    let private = root.join("private");
+    let voice_dir = private.join("voice");
+    std::fs::create_dir_all(&voice_dir).unwrap();
+    std::fs::create_dir_all(&work).unwrap();
+    let source = root.join("fixture.wav");
+    std::fs::write(&source, atlas::audio::wav_bytes(&[0; 160], 16_000)).unwrap();
+    let entrypoint = voice_dir.join("run.cmd");
+    std::fs::write(
+        &entrypoint,
+        format!(
+            "@echo off\r\npowershell -NoProfile -NonInteractive -Command \"$j=[Console]::In.ReadToEnd()|ConvertFrom-Json; Copy-Item -LiteralPath '{}' -Destination $j.output_wav -Force\"\r\n",
+            source.display(),
+        ),
+    )
+    .unwrap();
+    let sha256 = atlas::digest::sha256_file_hex(&entrypoint).unwrap();
+    std::fs::write(
+        private.join("voice/manifest.json"),
+        serde_json::to_vec(&serde_json::json!({
+            "schema": 1,
+            "kind": "voice",
+            "model_id": "atlas-private-voice-v1",
+            "runtime": "command",
+            "entrypoint": "voice/run.cmd",
+            "artifact_dir": "voice",
+            "sha256": sha256,
+            "license": "private",
+            "dataset_version": "voice-001"
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+
+    let mut cfg = test_tools();
+    cfg.work_dir = work.display().to_string();
+    cfg.private_models = atlas::private_models::PrivateModelsConfig {
+        root: private.clone(),
+        voice: atlas::private_models::PrivateModelSlot {
+            enabled: true,
+            manifest: "voice/manifest.json".into(),
+            timeout_seconds: 10,
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+    cfg.tts = sh("exit /b 97", false, None);
+    Voice::new(&cfg).speak("private voice live test").unwrap();
+    Voice::new(&cfg)
+        .say_as("audition-voice", "private audition live test")
+        .unwrap();
+
+    std::fs::write(&entrypoint, b"@echo off\r\nexit /b 97\r\n").unwrap();
+    let error = Voice::new(&cfg)
+        .speak("tampered private voice")
+        .expect_err("a provider changed after manifest validation must not run");
+    assert!(
+        error
+            .to_string()
+            .contains("private voice provider is unavailable"),
+        "{error}"
+    );
+
+    let _ = std::fs::remove_dir_all(root);
 }

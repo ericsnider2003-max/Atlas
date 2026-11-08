@@ -692,23 +692,23 @@ impl<'a> Daemon<'a> {
                     if let Some(reply) = self.fill_from_context(&intent, call) {
                         reply
                     } else {
-                    // When the reason we are asking is that the *reading* was
-                    // inferred rather than matched, say the reading. The model's
-                    // own `say` is what it planned to announce while doing the
-                    // thing, which is the wrong sentence for a question -- and
-                    // "I didn't catch that" would throw away a reading Atlas
-                    // actually made and force you to start the sentence over.
-                    // Naming it lets you correct one word.
-                    let ask = if understanding == crate::understood::Understanding::Inferred
-                        && crate::policy::classify(&intent) == Decision::ProceedAndReport
-                    {
-                        crate::understood::checking(&intent.plain())
-                    } else {
-                        decision.say.clone()
-                    };
-                    self.note_unsure(&ask, Some(Vec::new()));
-                    self.session.ask(&ask);
-                    ask
+                        // When the reason we are asking is that the *reading* was
+                        // inferred rather than matched, say the reading. The model's
+                        // own `say` is what it planned to announce while doing the
+                        // thing, which is the wrong sentence for a question -- and
+                        // "I didn't catch that" would throw away a reading Atlas
+                        // actually made and force you to start the sentence over.
+                        // Naming it lets you correct one word.
+                        let ask = if understanding == crate::understood::Understanding::Inferred
+                            && crate::policy::classify(&intent) == Decision::ProceedAndReport
+                        {
+                            crate::understood::checking(&intent.plain())
+                        } else {
+                            decision.say.clone()
+                        };
+                        self.note_unsure(&ask, Some(Vec::new()));
+                        self.session.ask(&ask);
+                        ask
                     }
                 }
                 // Never ask about something that would be refused anyway: a
@@ -1124,6 +1124,7 @@ impl<'a> Daemon<'a> {
             );
             crate::heard!(crate::job::upsert(&self.store, r));
         }
+        let mut completion_unconfirmed = false;
         if let Some(state) = ended {
             use std::sync::atomic::{AtomicU64, Ordering};
             static SEQ: AtomicU64 = AtomicU64::new(1);
@@ -1134,22 +1135,38 @@ impl<'a> Daemon<'a> {
             } else {
                 reply.chars().take(300).collect()
             };
-            crate::heard!(crate::job::finish(
+            if crate::heard!(crate::job::finish(
                 &self.store,
                 &id,
                 &stage,
                 state,
                 &detail,
                 "chat request"
-            ));
+            ))
+            .is_none()
+            {
+                // The action may already have happened, so this is not a
+                // failure claim. It is an unconfirmed outcome: repeating it
+                // blindly could duplicate the real-world effect.
+                completion_unconfirmed = true;
+            }
         }
+        let reply = if completion_unconfirmed {
+            format!(
+                "{} I couldn't save the completion receipt, so check before repeating.",
+                reply.trim_end()
+            )
+        } else {
+            reply
+        };
         self.journal.record_at(
             Act::Asked,
             said,
-            !matches!(
-                ended,
-                Some(crate::job::State::Failed | crate::job::State::Uncertain)
-            ),
+            !completion_unconfirmed
+                && !matches!(
+                    ended,
+                    Some(crate::job::State::Failed | crate::job::State::Uncertain)
+                ),
             _t,
         );
         self.persist();
@@ -1206,7 +1223,8 @@ impl<'a> Daemon<'a> {
             Resolution::Clear { value, .. } => {
                 let filled = with_target(intent, value);
                 let said = stated(&filled.plain(), &r).unwrap_or_default();
-                let mut grade = crate::policy::Decision::max(call, crate::policy::classify(&filled));
+                let mut grade =
+                    crate::policy::Decision::max(call, crate::policy::classify(&filled));
                 if matches!(filled, Intent::Message(_)) || self.session.tainted_by_outside {
                     grade = crate::policy::Decision::max(grade, Decision::RequireApproval);
                 }
@@ -1262,7 +1280,10 @@ mod fill_tests {
         let reply = d
             .fill_from_context(&Intent::Message(String::new()), Decision::ProceedAndReport)
             .expect("a message with no one named is read against the context");
-        assert!(d.session.is_waiting(), "nothing may be sent unasked: {reply}");
+        assert!(
+            d.session.is_waiting(),
+            "nothing may be sent unasked: {reply}"
+        );
         assert!(reply.contains("Sam") && reply.contains('?'), "{reply}");
     }
 }

@@ -276,6 +276,15 @@ pub fn serve(
 /// laptop's model) behind it; or just that connection.
 fn phone_llm(tools: &crate::voice::ToolsConfig) -> Option<std::sync::Arc<dyn crate::brain::Llm>> {
     let configured = crate::models::connection(tools);
+    // An explicitly enabled private reasoning provider is authoritative. The
+    // phone's convenience model must not silently bypass it or lower the
+    // quality tier by answering first.
+    if tools.private_models.reasoning.enabled {
+        return configured.map(|c| {
+            std::sync::Arc::new(crate::applebrain::AppleFirst::new(c))
+                as std::sync::Arc<dyn crate::brain::Llm>
+        });
+    }
     #[cfg(feature = "phone-llm")]
     {
         let dir = crate::models::Registry::dir_for(&tools.models);

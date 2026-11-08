@@ -555,13 +555,33 @@ fn with_the_laptop_off_the_phone_answers_queues_honestly_and_it_runs_when_the_la
         "\"check what time it is\": Queued until your laptop is reachable (not seen yet)."
     );
     // The same line on the phone's Hub: the Queued lane and the Sync page.
-    let outstanding = atlas::hublive::reply(&mut phone, atlas::server::Action::Hub(atlas::hub::Page::Outstanding)).body;
-    let lane = &outstanding[outstanding.find("id=lane-queued>").expect("the Queued lane")..];
+    let outstanding = atlas::hublive::reply(
+        &mut phone,
+        atlas::server::Action::Hub(atlas::hub::Page::Outstanding),
+    )
+    .body;
+    let lane = &outstanding[outstanding
+        .find("id=lane-queued>")
+        .expect("the Queued lane")..];
     let lane = &lane[..lane.find("</section>").unwrap()];
-    assert!(lane.contains("Check what time it is.") && lane.contains("Queued until your laptop is reachable"), "{lane}");
-    let sync = atlas::hublive::reply(&mut phone, atlas::server::Action::Hub(atlas::hub::Page::Sync)).body;
-    assert!(sync.contains("Waiting for your laptop (1)"), "the Sync page doesn't show the outbox");
-    assert!(sync.contains("Queued until your laptop is reachable"), "the Sync page's line differs");
+    assert!(
+        lane.contains("Check what time it is.")
+            && lane.contains("Queued until your laptop is reachable"),
+        "{lane}"
+    );
+    let sync = atlas::hublive::reply(
+        &mut phone,
+        atlas::server::Action::Hub(atlas::hub::Page::Sync),
+    )
+    .body;
+    assert!(
+        sync.contains("Waiting for your laptop (1)"),
+        "the Sync page doesn't show the outbox"
+    );
+    assert!(
+        sync.contains("Queued until your laptop is reachable"),
+        "the Sync page's line differs"
+    );
     // The phone keeps syncing into the void: nothing is lost or doubled.
     phone.turn("sync", T + 60);
     phone.turn("sync", T + 120);
@@ -628,30 +648,56 @@ fn the_same_thing_changed_on_both_devices_keeps_the_newer_and_the_other_can_be_p
     assert!(!said.contains("Which?"), "{said}");
     let replaced: Vec<atlas::sync::Replaced> = ls.load(atlas::sync::REPLACED_KEY);
     assert_eq!(replaced.len(), 1, "{replaced:?}");
-    assert_eq!((replaced[0].kept.as_str(), replaced[0].replaced.as_str()), ("parked", "done"));
+    assert_eq!(
+        (replaced[0].kept.as_str(), replaced[0].replaced.as_str()),
+        ("parked", "done")
+    );
     let what = laptop.turn("what did sync replace?", now + 230);
-    assert!(what.contains("kept \"parked\"") && what.contains("replaced \"done\""), "{what}");
+    assert!(
+        what.contains("kept \"parked\"") && what.contains("replaced \"done\""),
+        "{what}"
+    );
 
-    let page = atlas::hublive::reply(&mut laptop, atlas::server::Action::Hub(atlas::hub::Page::Sync)).body;
-    assert!(page.contains("Replaced by sync (1)") && page.contains("Put back the most recent"), "the Sync page doesn't show what was replaced");
+    let page = atlas::hublive::reply(
+        &mut laptop,
+        atlas::server::Action::Hub(atlas::hub::Page::Sync),
+    )
+    .body;
+    assert!(
+        page.contains("Replaced by sync (1)") && page.contains("Put back the most recent"),
+        "the Sync page doesn't show what was replaced"
+    );
     let back = laptop.turn("put back what sync replaced", now + 300);
     assert!(back.starts_with("Put back the VPS audit"), "{back}");
     let replaced: Vec<atlas::sync::Replaced> = ls.load(atlas::sync::REPLACED_KEY);
-    assert!(replaced.is_empty(), "put back, so no longer pending: {replaced:?}");
+    assert!(
+        replaced.is_empty(),
+        "put back, so no longer pending: {replaced:?}"
+    );
     let newest = |s: &Store| -> Option<String> {
         let log: Option<atlas::sync::Log> = s.load("synclog");
         log?.events
             .iter()
             .filter_map(|e| match &e.what {
-                atlas::sync::What::Changed { id, to, .. } if id == "the VPS audit" => Some((e.hlc, e.at, to.clone())),
+                atlas::sync::What::Changed { id, to, .. } if id == "the VPS audit" => {
+                    Some((e.hlc, e.at, to.clone()))
+                }
                 _ => None,
             })
             .max_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)))
             .map(|x| x.2)
     };
-    assert_eq!(newest(&ls).as_deref(), Some("done"), "the put-back isn't the newest on the laptop");
+    assert_eq!(
+        newest(&ls).as_deref(),
+        Some("done"),
+        "the put-back isn't the newest on the laptop"
+    );
     phone.turn("sync", now + 310);
-    assert_eq!(newest(&ps).as_deref(), Some("done"), "the put-back never reached the phone");
+    assert_eq!(
+        newest(&ps).as_deref(),
+        Some("done"),
+        "the put-back never reached the phone"
+    );
     let again = laptop.turn("put back what sync replaced", now + 320);
     assert_eq!(again, "There's nothing sync replaced to put back.");
 }

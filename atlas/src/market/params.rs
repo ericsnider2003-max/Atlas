@@ -391,7 +391,7 @@ mod tests {
     fn the_trend_gates_keep_their_dead_zone() {
         // A cross-parameter invariant. Frozen values are checked one at a time,
         // so a relationship between two of them needs saying explicitly.
-        assert!(
+        const _: () = assert!(
             regime::EXIT_TREND < regime::ENTER_TREND,
             "the exit gate has risen above the entry gate; the label will now \
              flip every time the measure grazes the threshold"

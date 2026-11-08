@@ -700,7 +700,13 @@ impl Drop for Recording {
         // setting means.
         let cfg = RetentionConfig {
             delete_audio_after_transcribing: true,
-            ..Default::default()
+            total_budget_mb: 500,
+            scratch_minutes: 10,
+            captures_hours: 24,
+            logs_mb: 4,
+            notes_days: 365,
+            approvals_detailed: 200,
+            session_turns: 40,
         };
         discard_audio(&self.path, &cfg);
         for p in &self.alongside {
@@ -758,8 +764,10 @@ mod a_call_is_not_scratch {
     #[test]
     fn logs_are_never_evicted_for_space() {
         let root = std::path::Path::new("/data");
-        let mut cfg = RetentionConfig::default();
-        cfg.total_budget_mb = 0;
+        let cfg = RetentionConfig {
+            total_budget_mb: 0,
+            ..RetentionConfig::default()
+        };
         let log = Item {
             path: root.join("logs").join("atlas.log"),
             bytes: 4096,

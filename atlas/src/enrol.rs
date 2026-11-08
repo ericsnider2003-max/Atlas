@@ -700,32 +700,6 @@ impl SignupAttempts {
     }
 }
 
-#[cfg(test)]
-mod signup_attempt_fences {
-    use super::*;
-    #[test]
-    fn restart_and_unknown_status_never_allow_duplicate_signup() {
-        let e = Enrolment::new("example.test", "owner", 12);
-        let mut attempts = SignupAttempts::default();
-        assert!(attempts.begin(&e));
-        let bytes = serde_json::to_vec(&attempts).unwrap();
-        let mut restored: SignupAttempts = serde_json::from_slice(&bytes).unwrap();
-        assert!(!restored.may_start("EXAMPLE.TEST", "OWNER"));
-        assert!(!restored.settle(
-            &Enrolment::new("example.test", "owner", 13),
-            SignupState::OwnerAbsent,
-            "stale receipt"
-        ));
-        assert!(restored.settle(&e, SignupState::OwnerAbsent, "Owner checked the service"));
-        assert!(restored.may_start("example.test", "owner"));
-        let future = String::from_utf8(bytes)
-            .unwrap()
-            .replace("pending", "future_unknown_state");
-        let unknown: SignupAttempts = serde_json::from_str(&future).unwrap();
-        assert!(!unknown.may_start("example.test", "owner"));
-    }
-}
-
 impl Enrolment {
     pub fn new(domain: &str, username: &str, at: u64) -> Self {
         Enrolment {
@@ -836,5 +810,30 @@ impl Enrolment {
             Phase::Abandoned(s) => s.spoken(),
             _ => format!("Working on the {} signup.", self.domain),
         }
+    }
+}
+#[cfg(test)]
+mod signup_attempt_fences {
+    use super::*;
+    #[test]
+    fn restart_and_unknown_status_never_allow_duplicate_signup() {
+        let e = Enrolment::new("example.test", "owner", 12);
+        let mut attempts = SignupAttempts::default();
+        assert!(attempts.begin(&e));
+        let bytes = serde_json::to_vec(&attempts).unwrap();
+        let mut restored: SignupAttempts = serde_json::from_slice(&bytes).unwrap();
+        assert!(!restored.may_start("EXAMPLE.TEST", "OWNER"));
+        assert!(!restored.settle(
+            &Enrolment::new("example.test", "owner", 13),
+            SignupState::OwnerAbsent,
+            "stale receipt"
+        ));
+        assert!(restored.settle(&e, SignupState::OwnerAbsent, "Owner checked the service"));
+        assert!(restored.may_start("example.test", "owner"));
+        let future = String::from_utf8(bytes)
+            .unwrap()
+            .replace("pending", "future_unknown_state");
+        let unknown: SignupAttempts = serde_json::from_str(&future).unwrap();
+        assert!(!unknown.may_start("example.test", "owner"));
     }
 }

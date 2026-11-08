@@ -18,11 +18,21 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 thread_local! {
     static BACKGROUND: Cell<bool> = const { Cell::new(false) };
+    static USER_REQUESTED: Cell<bool> = const { Cell::new(false) };
 }
 
 /// Whether the calling thread was marked as background work.
 pub fn on_background_thread() -> bool {
     BACKGROUND.with(|b| b.get())
+}
+
+/// Mark a user-requested errand as background work without power-throttling
+/// it. It must not block the answer/tick thread, but it also must not be
+/// treated like unattended housekeeping when the owner is waiting for the
+/// result under laptop pressure.
+pub fn this_thread_for_user() {
+    BACKGROUND.with(|b| b.set(true));
+    USER_REQUESTED.with(|requested| requested.set(true));
 }
 
 static WARNED: AtomicBool = AtomicBool::new(false);
@@ -84,6 +94,9 @@ pub fn this_thread() {
 
 /// Put a child process (by id) in efficiency mode with below-normal priority.
 pub fn child(pid: u32) {
+    if USER_REQUESTED.with(|requested| requested.get()) {
+        return;
+    }
     apply_child(pid, false);
 }
 
@@ -100,9 +113,8 @@ fn apply_child(pid: u32, idle: bool) {
         use windows::Win32::System::Threading::{
             OpenProcess, ProcessPowerThrottling, SetPriorityClass, SetProcessInformation,
             BELOW_NORMAL_PRIORITY_CLASS, IDLE_PRIORITY_CLASS,
-            PROCESS_POWER_THROTTLING_CURRENT_VERSION,
-            PROCESS_POWER_THROTTLING_EXECUTION_SPEED, PROCESS_POWER_THROTTLING_STATE,
-            PROCESS_SET_INFORMATION,
+            PROCESS_POWER_THROTTLING_CURRENT_VERSION, PROCESS_POWER_THROTTLING_EXECUTION_SPEED,
+            PROCESS_POWER_THROTTLING_STATE, PROCESS_SET_INFORMATION,
         };
         // SAFETY: the handle is opened and closed here; `state` is a live,
         // correctly sized struct for the call.

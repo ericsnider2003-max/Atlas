@@ -25,6 +25,8 @@ pub const SNOOZE_SECS: u64 = 4 * 60 * 60;
 /// The saved snoozes, and what was last said (what "not now" refers to).
 pub const SNOOZED_KEY: &str = "needs_you_snoozed";
 pub const LAST_KEY: &str = "needs_you_last";
+/// The last timed check-in, kept separate from an explicit user request.
+pub const CHECK_IN_LAST_KEY: &str = "needs_you_check_in_last";
 /// What a check-in has already said, with when (24 Oct 2026).
 pub const SURFACED_KEY: &str = "needs_you_surfaced";
 /// The least time between two spoken check-ins.

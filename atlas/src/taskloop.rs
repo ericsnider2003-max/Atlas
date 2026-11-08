@@ -25,7 +25,7 @@
 //! would need your OK stops the loop and asks (the question is the reply);
 //! long work goes to the background crew and the loop ends there, saying
 //! what started and what follows when it's done; a failed prerequisite stops
-//! the dependent request with its actual blocker. The same call twice ends it.
+//! the dependent request with a failed outcome. The same call twice ends it.
 
 use crate::brain::{ChatRequest, Llm, Msg, ToolCall, Turn};
 
@@ -64,7 +64,9 @@ pub trait Hands {
 pub enum Verdict {
     /// The model answered after doing what it needed.
     Finished,
-    /// A step needs the person or failed: the reply names the blocker.
+    /// The model or its provider failed before the request was complete.
+    Failed,
+    /// A step needs the person: the reply names the blocker.
     Blocked,
     /// Long work is running in the background; the rest follows it.
     Started,
@@ -79,6 +81,7 @@ impl Verdict {
     pub fn plain(&self) -> &'static str {
         match self {
             Verdict::Finished => "finished",
+            Verdict::Failed => "failed",
             Verdict::Blocked => "stopped to ask",
             Verdict::Started => "handed long work to the background",
             Verdict::OutOfSteps => "ran out of steps",
@@ -376,7 +379,7 @@ pub fn run_watched(
         let reply = match llm.chat(&req, &mut |_| true) {
             Ok(r) => r,
             Err(e) => {
-                verdict = Verdict::Finished;
+                verdict = Verdict::Failed;
                 answer = if steps.is_empty() {
                     format!("My language model stopped before I could start that: {e}")
                 } else {
@@ -421,12 +424,14 @@ pub fn run_watched(
             }
             Outcome::Failed(_) => {
                 // A stop can arrive while the daemon is carrying out this
-                // step. Keep cancellation distinct from a failed prerequisite.
+                // step. Keep cancellation distinct from a failed prerequisite;
+                // a real tool failure is not an approval question.
                 if let Some(why) = watch.stop() {
                     verdict = Verdict::Stopped;
                     answer = why;
                 } else {
-                    verdict = Verdict::Blocked;
+                    verdict = Verdict::Failed;
+                    answer = outcome.text().to_string();
                 }
                 break;
             }
@@ -487,6 +492,10 @@ fn compose(plan: &[String], steps: &[Step], verdict: Verdict, answer: &str) -> S
             .filter(|t| !t.is_empty())
             .collect::<Vec<_>>()
             .join(" "),
+        Verdict::Failed if !answer.trim().is_empty() => answer.trim().to_string(),
+        Verdict::Failed => {
+            "I couldn't finish because the language model stopped before answering.".to_string()
+        }
         Verdict::Blocked => last,
         Verdict::Started => {
             if rest.is_empty() {
@@ -529,4 +538,36 @@ fn compose(plan: &[String], steps: &[Step], verdict: Verdict, answer: &str) -> S
         }
     };
     crate::backed::without_unbacked_claims(&text, started)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{run_watched, Hands, Outcome, Unwatched, Verdict};
+    use crate::brain::{MockLlm, ToolCall, Turn};
+
+    struct FailingHands;
+
+    impl Hands for FailingHands {
+        fn act(&mut self, _: &ToolCall) -> Outcome {
+            Outcome::Failed("permission denied".into())
+        }
+    }
+
+    #[test]
+    fn tool_failure_is_failed_not_an_approval_wait() {
+        let llm = MockLlm(r#"<tool_call>{"name":"write_file","arguments":{}}</tool_call>"#.into());
+        let mut hands = FailingHands;
+        let mut watch = Unwatched;
+        let run = run_watched(
+            &llm,
+            &Turn::default(),
+            &["write the file".into()],
+            &mut hands,
+            1,
+            &mut watch,
+        );
+
+        assert_eq!(run.verdict, Verdict::Failed);
+        assert!(run.reply.contains("permission denied"));
+    }
 }

@@ -80,8 +80,10 @@ mod sync_fact_recovery {
             Kind::Project,
             100,
         );
-        let mut legacy = Book::default();
-        legacy.facts = vec![first.clone(), other.clone()];
+        let legacy = Book {
+            facts: vec![first.clone(), other.clone()],
+            ..Book::default()
+        };
         store.save("facts", &legacy).unwrap();
         store
             .save(

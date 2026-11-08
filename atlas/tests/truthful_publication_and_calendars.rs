@@ -198,11 +198,18 @@ fn snapshot(title: Option<&str>) -> String {
     format!("BEGIN:VCALENDAR\r\nVERSION:2.0\r\n{}END:VCALENDAR\r\n", title.map(|t| format!("BEGIN:VEVENT\r\nUID:same-uid\r\nSUMMARY:{t}\r\nDTSTART:20261008T100000Z\r\nDTEND:20261008T110000Z\r\nEND:VEVENT\r\n")).unwrap_or_default())
 }
 fn titles(calendar: &Calendar) -> Vec<String> {
-    serde_json::to_value(calendar).unwrap()["events"]
+    let value = serde_json::to_value(calendar)
+        .unwrap_or_else(|error| panic!("serialize calendar fixture: {error}"));
+    value["events"]
         .as_array()
-        .unwrap()
+        .unwrap_or_else(|| panic!("serialized calendar has no events array"))
         .iter()
-        .map(|e| e["title"].as_str().unwrap().to_string())
+        .map(|e| {
+            e["title"]
+                .as_str()
+                .unwrap_or_else(|| panic!("calendar event has no string title: {e}"))
+                .to_string()
+        })
         .collect()
 }
 

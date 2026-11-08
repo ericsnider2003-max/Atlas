@@ -200,6 +200,33 @@ pub const NO_ENCODER: &str =
      share no words with the question. Install an embedding model and name it under \
      tools.meaning.encoder to close the gap.";
 
+/// Which encoder this is, for telling vectors apart: the program and its
+/// arguments, and the size and date of any argument that is a file (the
+/// model). Change the model file and the fingerprint changes with it.
+/// Empty when there is no encoder.
+pub fn fingerprint(cfg: &MeaningConfig, vars: &Vars) -> String {
+    let Some(tool) = cfg.encoder.as_ref() else {
+        return String::new();
+    };
+    let (cmd, args) = tool.resolved(vars);
+    let mut parts = vec![cmd];
+    for a in args {
+        let p = std::path::Path::new(&a);
+        match std::fs::metadata(p) {
+            Ok(m) if m.is_file() => {
+                let when = m
+                    .modified()
+                    .ok()
+                    .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                    .map(|d| d.as_secs())
+                    .unwrap_or(0);
+                parts.push(format!("{a}@{}:{when}", m.len()));
+            }
+            _ => parts.push(a),
+        }
+    }
+    key("encoder", &parts.join("\u{1f}"))
+}
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -243,32 +270,4 @@ mod tests {
         let err = embed(&MeaningConfig::default(), &Vars::new(), "anything").unwrap_err();
         assert!(format!("{err}").contains("no encoder"), "{err}");
     }
-}
-
-/// Which encoder this is, for telling vectors apart: the program and its
-/// arguments, and the size and date of any argument that is a file (the
-/// model). Change the model file and the fingerprint changes with it.
-/// Empty when there is no encoder.
-pub fn fingerprint(cfg: &MeaningConfig, vars: &Vars) -> String {
-    let Some(tool) = cfg.encoder.as_ref() else {
-        return String::new();
-    };
-    let (cmd, args) = tool.resolved(vars);
-    let mut parts = vec![cmd];
-    for a in args {
-        let p = std::path::Path::new(&a);
-        match std::fs::metadata(p) {
-            Ok(m) if m.is_file() => {
-                let when = m
-                    .modified()
-                    .ok()
-                    .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-                    .map(|d| d.as_secs())
-                    .unwrap_or(0);
-                parts.push(format!("{a}@{}:{when}", m.len()));
-            }
-            _ => parts.push(a),
-        }
-    }
-    key("encoder", &parts.join("\u{1f}"))
 }

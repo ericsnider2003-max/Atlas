@@ -41,19 +41,20 @@ fn alone() -> MutexGuard<'static, ()> {
     ONCE.call_once(|| {
         let p = home();
         let _ = std::fs::remove_dir_all(&p);
-        std::fs::create_dir_all(p.join("data").join("state")).unwrap();
+        std::fs::create_dir_all(p.join("data").join("state"))
+            .unwrap_or_else(|error| panic!("create friend install state: {error}"));
         std::env::set_var("ATLAS_HOME", &p);
     });
     atlas::handover::Handover::default()
         .save(&atlas::roots::install_state())
-        .unwrap();
+        .unwrap_or_else(|error| panic!("save friend handover: {error}"));
     g
 }
 
 fn tmp(tag: &str) -> PathBuf {
     let d = std::env::temp_dir().join(format!("atlas-friend-{tag}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&d);
-    std::fs::create_dir_all(&d).unwrap();
+    std::fs::create_dir_all(&d).unwrap_or_else(|error| panic!("create {d:?}: {error}"));
     d
 }
 
@@ -69,7 +70,7 @@ fn plat() -> MockPlatform {
 }
 
 fn shipped() -> Config {
-    Config::load(Path::new("config")).unwrap()
+    Config::load(Path::new("config")).unwrap_or_else(|error| panic!("load shipped config: {error}"))
 }
 
 /// A model that remembers every system prompt it was given.
@@ -78,7 +79,10 @@ struct Heard(Mutex<Vec<String>>);
 
 impl Llm for Heard {
     fn complete(&self, system: &str, _user: &str) -> atlas::error::Result<String> {
-        self.0.lock().unwrap().push(system.to_string());
+        self.0
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .push(system.to_string());
         Ok("Here's one: I told my computer a joke. It didn't laugh; it just processed it.".into())
     }
 }

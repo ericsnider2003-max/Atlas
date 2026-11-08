@@ -26,6 +26,65 @@
 
 use serde::{Deserialize, Serialize};
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ServerTimingsReceipt {
+    pub cached_prompt_tokens: u64,
+    pub prompt_tokens: u64,
+    pub prompt_ms: u64,
+    pub completion_tokens: u64,
+    pub completion_ms: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ActionReceipt {
+    pub id: String,
+    pub status: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RuntimeReceipt {
+    pub turn: Turn,
+    pub model_id: String,
+    pub context_tokens: u32,
+    pub prompt_tokens: Option<u64>,
+    pub fallback_reason: Option<String>,
+    pub terminal: String,
+    pub server_timings: Option<ServerTimingsReceipt>,
+    pub action: Option<ActionReceipt>,
+}
+
+impl RuntimeReceipt {
+    pub fn new(
+        turn: Turn,
+        model_id: String,
+        context_tokens: u32,
+        prompt_tokens: Option<u64>,
+        fallback_reason: Option<String>,
+        terminal: String,
+    ) -> Self {
+        Self {
+            turn,
+            model_id,
+            context_tokens,
+            prompt_tokens,
+            fallback_reason,
+            terminal,
+            server_timings: None,
+            action: None,
+        }
+    }
+
+    pub fn with_server_timings(mut self, timings: ServerTimingsReceipt) -> Self {
+        self.server_timings = Some(timings);
+        self
+    }
+
+    pub fn with_action(mut self, id: String, status: String) -> Self {
+        self.action = Some(ActionReceipt { id, status });
+        self
+    }
+}
+
 /// The parts of a turn, in the order they happen.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -413,6 +472,18 @@ impl Laps {
     }
 }
 
+/// The silence from the end of your speech to Atlas's first sound (Phase
+/// 0.2): speech-to-text's time plus the time from the words arriving to the
+/// first playback. `None` when either wasn't measured (a typed turn has no
+/// end of speech; a reply that never played has no first sound) -- a missing
+/// figure, never a guessed one.
+pub fn silence_before_first_sound(
+    heard_ms: Option<u64>,
+    first_sound_ms: Option<u64>,
+) -> Option<u64> {
+    Some(heard_ms? + first_sound_ms?)
+}
+
 #[cfg(test)]
 mod laps_tests {
     use super::*;
@@ -424,16 +495,4 @@ mod laps_tests {
         assert_eq!(l.slowest(2), vec![("b", 50), ("d", 20)]);
         assert_eq!(l.plain(5), "b 50ms, d 20ms, a 5ms");
     }
-}
-
-/// The silence from the end of your speech to Atlas's first sound (Phase
-/// 0.2): speech-to-text's time plus the time from the words arriving to the
-/// first playback. `None` when either wasn't measured (a typed turn has no
-/// end of speech; a reply that never played has no first sound) -- a missing
-/// figure, never a guessed one.
-pub fn silence_before_first_sound(
-    heard_ms: Option<u64>,
-    first_sound_ms: Option<u64>,
-) -> Option<u64> {
-    Some(heard_ms? + first_sound_ms?)
 }

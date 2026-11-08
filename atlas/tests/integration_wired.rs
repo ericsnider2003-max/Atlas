@@ -476,7 +476,10 @@ fn the_question_before_posting_names_the_draft_and_the_time() {
         q.contains("Shipping today with the new build and a\u{2026}") && q.contains("Go ahead?"),
         "{q}"
     );
-    assert!(q.contains("9:00") || q.contains("09:00") || q.contains("9 AM") || q.contains("9am"), "{q}");
+    assert!(
+        q.contains("9:00") || q.contains("09:00") || q.contains("9 AM") || q.contains("9am"),
+        "{q}"
+    );
     assert_eq!(
         d.publisher.posts.last().unwrap().state,
         atlas::publish::PostState::AwaitingApproval,
@@ -484,10 +487,15 @@ fn the_question_before_posting_names_the_draft_and_the_time() {
     );
 
     let mut d = daemon(&c, &p, "post-question-2");
-    let id = d.publisher.draft(Channel::X, "Shipping today with the new build");
+    let id = d
+        .publisher
+        .draft(Channel::X, "Shipping today with the new build");
     d.publisher.request_approval(id);
     let q = d.turn("schedule the post", 1_790_760_000);
-    assert!(q.contains("Shipping today with the new build") && q.contains("what time?"), "{q}");
+    assert!(
+        q.contains("Shipping today with the new build") && q.contains("what time?"),
+        "{q}"
+    );
     assert!(!q.contains("scheduling your post"), "{q}");
 }
 
@@ -501,7 +509,11 @@ fn a_no_to_what_time_is_not_a_time() {
     let t = 1_790_760_000;
     for (tag, answer, want) in [
         ("p-notnow", "not now", PostState::AwaitingApproval),
-        ("p-dontnow", "no, don't post it now", PostState::AwaitingApproval),
+        (
+            "p-dontnow",
+            "no, don't post it now",
+            PostState::AwaitingApproval,
+        ),
         ("p-no", "no", PostState::AwaitingApproval),
         ("p-never", "never mind", PostState::AwaitingApproval),
         ("p-nowbad", "now isn't good", PostState::AwaitingApproval),

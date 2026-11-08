@@ -159,7 +159,9 @@ pub fn with_handed_over_banner(page: String) -> String {
 /// inviting another, and taking a key from another device.
 /// Where sync stands, in plain words, before anything to set up.
 pub(super) fn sync_status_html(st: &SyncStatus) -> String {
-    let mut out = String::from("<section class=syncnow aria-labelledby=syncnow-h><h2 id=syncnow-h>Right now</h2>");
+    let mut out = String::from(
+        "<section class=syncnow aria-labelledby=syncnow-h><h2 id=syncnow-h>Right now</h2>",
+    );
     out.push_str(&match &st.last_heard {
         Some(t) => format!("<p>Last heard from your other devices at {}.</p>", esc(t)),
         None => "<p>Not in touch with your other devices yet.</p>".to_string(),
@@ -168,7 +170,10 @@ pub(super) fn sync_status_html(st: &SyncStatus) -> String {
         out.push_str("<p class=nothing>Nothing waiting for your laptop, and nothing replaced.</p>");
     }
     if !st.waiting.is_empty() {
-        out.push_str(&format!("<h3>Waiting for your laptop ({})</h3><ul>", st.waiting.len()));
+        out.push_str(&format!(
+            "<h3>Waiting for your laptop ({})</h3><ul>",
+            st.waiting.len()
+        ));
         for (what, status) in &st.waiting {
             out.push_str(&format!("<li><b>{}</b> {}</li>", esc(what), esc(status)));
         }

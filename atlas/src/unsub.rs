@@ -349,6 +349,38 @@ pub fn one_click(header: &str) -> Option<(String, &'static str)> {
         .map(|m| (m.to_string(), ""))
 }
 
+/// Where the last look's plans wait for your "go ahead", per account.
+pub const PENDING: &str = "unsub_pending";
+
+/// "Unsubscribe from those": the go-ahead after the report.
+pub fn go_ahead(said: &str) -> bool {
+    let t: String = said
+        .to_lowercase()
+        .chars()
+        .map(|c| {
+            if c.is_alphanumeric() || c == ' ' {
+                c
+            } else {
+                ' '
+            }
+        })
+        .collect();
+    let t = t.split_whitespace().collect::<Vec<_>>().join(" ");
+    [
+        "unsubscribe from those",
+        "unsubscribe from them",
+        "unsubscribe from all of them",
+        "unsubscribe me from those",
+        "unsubscribe me from them",
+        "go ahead and unsubscribe",
+        "yes unsubscribe",
+        "do the unsubscribes",
+        "unsubscribe from all those",
+    ]
+    .iter()
+    .any(|p| t.starts_with(p) || t == *p)
+}
+
 #[cfg(test)]
 mod senders_from_tests {
     use super::*;
@@ -513,36 +545,4 @@ mod senders_from_tests {
         let senders = senders_from(&messages, now);
         assert!(senders.is_empty());
     }
-}
-
-/// Where the last look's plans wait for your "go ahead", per account.
-pub const PENDING: &str = "unsub_pending";
-
-/// "Unsubscribe from those": the go-ahead after the report.
-pub fn go_ahead(said: &str) -> bool {
-    let t: String = said
-        .to_lowercase()
-        .chars()
-        .map(|c| {
-            if c.is_alphanumeric() || c == ' ' {
-                c
-            } else {
-                ' '
-            }
-        })
-        .collect();
-    let t = t.split_whitespace().collect::<Vec<_>>().join(" ");
-    [
-        "unsubscribe from those",
-        "unsubscribe from them",
-        "unsubscribe from all of them",
-        "unsubscribe me from those",
-        "unsubscribe me from them",
-        "go ahead and unsubscribe",
-        "yes unsubscribe",
-        "do the unsubscribes",
-        "unsubscribe from all those",
-    ]
-    .iter()
-    .any(|p| t.starts_with(p) || t == *p)
 }

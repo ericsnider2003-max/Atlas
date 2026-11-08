@@ -1919,7 +1919,11 @@ impl<'a> Daemon<'a> {
             })
             .map(|p| (p.id, p.body.clone()))?;
         let words: Vec<&str> = body.split_whitespace().take(8).collect();
-        let more = if body.split_whitespace().count() > 8 { "\u{2026}" } else { "" };
+        let more = if body.split_whitespace().count() > 8 {
+            "\u{2026}"
+        } else {
+            ""
+        };
         let what = format!("post \"{}{more}\"", words.join(" "));
         match self.time_for_post(said, t) {
             Some(at) if at <= t => {
@@ -4665,7 +4669,7 @@ mod creator_daemon_journey_tests {
         assert!(title.contains("Suggested wording; review against the transcript"));
         assert!(
             crate::studio::title_and_description(
-                &captured
+                captured
                     .lock()
                     .unwrap()
                     .split("synthetic reply: ")
@@ -5815,7 +5819,6 @@ mod publication_terminal_results {
     }
 }
 
-
 /// "Now" as the answer to "what time?": only when that is all it says
 /// ("now", "right now", "post it now", "now please"). "Not now", "now isn't
 /// good" and "not right now, later" are not a time (22 Oct 2026: they were
@@ -5830,40 +5833,39 @@ fn now_as_a_time(said: &str) -> bool {
     words.contains(&"now") && words.iter().all(|w| FILLER.contains(w))
 }
 
-
 impl<'a> Daemon<'a> {
     /// A decline of "what time?": "no", "not now", "don't", "cancel", "stop",
     /// "never mind", "leave it", "later"/"not yet" with no time in it. A real
     /// time ("at 6pm", "tomorrow at 9") is never a decline.
     pub(super) fn declines_the_post_time(&self, said: &str, t: u64) -> bool {
         let has_a_time = self.time_for_post(said, t).is_some();
-    if now_as_a_time(said) {
-        return false;
-    }
-    if crate::session::is_no(said) {
-        return true;
-    }
-    let t = crate::intent::normalize(said);
-    let words: Vec<&str> = t.split_whitespace().collect();
-    let has = |w: &str| words.contains(&w);
-    let phrase = |p: &str| format!(" {t} ").contains(&format!(" {p} "));
-    if has("no")
-        || has("not")
-        || has("dont")
-        || has("never")
-        || has("cancel")
-        || has("stop")
-        || has("wait")
-        || has("isnt")
-        || has("wont")
-        || has("cant")
-        || phrase("do not")
-        || phrase("leave it")
-        || phrase("hold off")
-        || phrase("never mind")
-    {
-        return true;
-    }
-    !has_a_time && (has("later") || has("nevermind") || phrase("not yet"))
+        if now_as_a_time(said) {
+            return false;
+        }
+        if crate::session::is_no(said) {
+            return true;
+        }
+        let t = crate::intent::normalize(said);
+        let words: Vec<&str> = t.split_whitespace().collect();
+        let has = |w: &str| words.contains(&w);
+        let phrase = |p: &str| format!(" {t} ").contains(&format!(" {p} "));
+        if has("no")
+            || has("not")
+            || has("dont")
+            || has("never")
+            || has("cancel")
+            || has("stop")
+            || has("wait")
+            || has("isnt")
+            || has("wont")
+            || has("cant")
+            || phrase("do not")
+            || phrase("leave it")
+            || phrase("hold off")
+            || phrase("never mind")
+        {
+            return true;
+        }
+        !has_a_time && (has("later") || has("nevermind") || phrase("not yet"))
     }
 }

@@ -292,6 +292,7 @@ pub fn all() -> Vec<Capability> {
 
         Capability { id: "speak", what: "talk back, in a voice you choose by asking", area: Speaking, state: Blocked, needs: Some("piper"), offline: true, added: 2, runs: &[Needs::Audio], modules: &["tts", "speech", "spoken_form", "speaking", "speakthread", "voicepick"] },
         Capability { id: "persona", what: "have opinions and disagree with you", area: Speaking, state: Working, needs: None, offline: true, added: 3, runs: &[Needs::JustThinking], modules: &["persona"] },
+        Capability { id: "private_models", what: "run an explicitly installed private reasoning or voice provider through Atlas's model and speech seams without silently downgrading", area: Thinking, state: Working, needs: None, offline: true, added: 40, runs: &[Needs::JustThinking, Needs::Audio], modules: &["private_models"] },
         Capability { id: "certainty", what: "say it doesn't know rather than guessing", area: Speaking, state: Working, needs: None, offline: true, added: 11, runs: &[Needs::JustThinking], modules: &["certainty"] },
         Capability { id: "wanted", what: "work out whether you want solutions or to be heard", area: Speaking, state: Working, needs: None, offline: true, added: 18, runs: &[Needs::JustThinking], modules: &["wanted"] },
         Capability { id: "worklog", what: "keep where your time went — which app, for how long, your longest stretch of focus, and what you were in the middle of when you come back from a break — on this machine only", area: Time, state: Untested, needs: Some("Windows, for keyboard and mouse timing"), offline: true, added: 35, runs: &[Needs::ReadScreen, Needs::Background], modules: &["worklog", "awareness"] },
@@ -546,7 +547,7 @@ pub fn all() -> Vec<Capability> {
         Capability { id: "health", what: "watch the machine -- a filling disk, memory running short, a backup that stopped, a battery going", area: Itself, state: Untested, needs: Some("your machine"), offline: true, added: 40, runs: &[Needs::Background], modules: &["health"] },
         Capability { id: "lanes", what: "be busy without making you wait -- work that needs your windows waits for a gap, and a long job says how it's going", area: Itself, state: Untested, needs: Some("your machine"), offline: true, added: 40, runs: &[Needs::Background], modules: &["lanes", "channel"] },
         Capability { id: "earned", what: "earn the right to act on its own, one kind of work at a time, business and personal kept apart", area: Thinking, state: Working, needs: None, offline: true, added: 40, runs: &[Needs::JustThinking], modules: &["earned"] },
-        Capability { id: "policy", what: "ask before anything that changes your things or leaves this machine, and before using an app it doesn't know -- and remember when you say it may", area: Keeping, state: Working, needs: None, offline: true, added: 40, runs: &[Needs::JustThinking], modules: &["policy", "categories", "grants"] },
+        Capability { id: "policy", what: "ask before anything that changes your things or leaves this machine, and before using an app it doesn't know -- and remember when you say it may", area: Keeping, state: Working, needs: None, offline: true, added: 40, runs: &[Needs::JustThinking], modules: &["policy", "categories", "grants", "resource_policy"] },
         Capability { id: "brief", what: "give you a morning brief -- what came in overnight against your day, drafts ready, and the short list only you can decide", area: Time, state: Working, needs: None, offline: true, added: 40, runs: &[Needs::Files], modules: &["brief"] },
         Capability { id: "daily", what: "run the day as a day -- today's list closes at midnight and you choose what carries over", area: Time, state: Working, needs: None, offline: true, added: 40, runs: &[Needs::JustThinking], modules: &["daily"] },
         Capability { id: "returning", what: "when you come back, say what happened while you were away -- the part that matters, not all of it", area: Time, state: Working, needs: None, offline: true, added: 40, runs: &[Needs::JustThinking], modules: &["returning"] },
@@ -1183,7 +1184,17 @@ const ABILITY_FLOOR: f64 = 3.0;
 pub fn answer_can(what: &str, research_on: bool) -> Option<String> {
     let found = find_abilities(what, research_on, 2);
     let first = found.first()?;
-    let mut s = format!("Yes -- I can {}: {}.", first.what, state_said(first));
+    let first_record = first.record();
+    let lead = match first_record.availability {
+        Availability::Available if first_record.evidence != EvidenceLevel::Unproven => {
+            "Yes -- I can"
+        }
+        Availability::Disabled => "Not right now --",
+        Availability::NeedsDependency => "Not yet --",
+        Availability::Available => "Not proven yet --",
+        Availability::Planned => "Not yet --",
+    };
+    let mut s = format!("{lead} {}: {}.", first.what, state_said(first));
     if let Some(second) = found.get(1) {
         s.push_str(&format!(" Also: {} ({}).", second.what, state_said(second)));
     }
@@ -2019,7 +2030,11 @@ pub fn claimed_modules() -> std::collections::BTreeSet<&'static str> {
 // 24 Oct 2026: + `needs_you`, `preflight`, `teachmode`, `whatif` (plans A-F
 // proof slices, each a thing a person asks for) = 507.
 // 24 Oct 2026: + `bundled` (the models that ship inside the phone app) = 508.
-pub const MODULES_IN_TREE: usize = 508;
+// 28 Oct 2026: + `private_models` (validated private-provider contracts;
+// internal plumbing until a real provider route is wired) = 509.
+// 6 Nov 2026: + `context_budget`, `fallback_privacy`, and
+// `resource_admission` (pure local model/runtime boundaries) = 514.
+pub const MODULES_IN_TREE: usize = 514;
 
 /// Every module no capability claims, and why it is not one.
 ///
@@ -2037,6 +2052,10 @@ pub const MODULES_IN_TREE: usize = 508;
 /// a feature cannot be filed as plumbing without somebody writing down why it
 /// is not one.
 pub const PLUMBING: &[(&str, &str)] = &[
+    ("context_budget", "pure token-budget accounting used by prompt fitting; it is an internal boundary, not a user-facing ability"),
+    ("fallback_privacy", "removes local-only context before a secondary model call; it is a privacy boundary, not a user-facing ability"),
+    ("resource_admission", "shared free-memory threshold arithmetic for heavyweight local engines; it is an admission boundary, not a user-facing ability"),
+    ("capability_boundary", "pure capability-policy admission and subset validation; the provider execution boundary is retained as an explicit foundation seam, not presented as a user-facing capability until a real provider is wired"),
     ("creative", "gated Creative Workspace Core slice retained for the post-foundation release; not claimed as a currently wired user capability"),
     ("artifact", "bounded durable-work artifact references used to connect receipts without exposing file paths"),
     ("evidence", "bounded immutable observation bundles and snapshot reuse shared by capability and job evidence; not a user-facing ability"),
@@ -2212,6 +2231,16 @@ mod evidence_tests {
         let on = can_for("research", true).unwrap();
         assert!(!off.0 && off.1.contains("switched off"), "{off:?}");
         assert!(on.0 && on.1.contains("yes"), "{on:?}");
+    }
+
+    #[test]
+    fn direct_capability_answer_does_not_claim_a_blocked_ability_is_available() {
+        let answer = super::answer_can("can you hear a wake word", false).unwrap();
+        assert!(
+            !answer.starts_with("Yes"),
+            "a blocked ability must not receive an affirmative lead: {answer}"
+        );
+        assert!(answer.contains("waiting on whisper"), "{answer}");
     }
 
     #[test]

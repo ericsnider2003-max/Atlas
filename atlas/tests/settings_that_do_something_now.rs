@@ -38,12 +38,20 @@ mod common; // `common::source_of`: a module's source wherever its files live
 
 use atlas::config::Config;
 use std::path::Path;
+use std::sync::atomic::{AtomicU64, Ordering};
+
+static SCRATCH_SEQUENCE: AtomicU64 = AtomicU64::new(0);
+
+fn scratch_dir(label: &str) -> std::path::PathBuf {
+    let sequence = SCRATCH_SEQUENCE.fetch_add(1, Ordering::Relaxed);
+    std::env::temp_dir().join(format!("atlas-{label}-{}-{sequence}", std::process::id()))
+}
 
 fn tools() -> atlas::voice::ToolsConfig {
     Config::load(Path::new("config"))
-        .expect("config/ loads")
+        .unwrap_or_else(|error| panic!("config/ loads: {error}"))
         .tools
-        .expect("tools.yaml")
+        .unwrap_or_else(|| panic!("config/tools.yaml is present"))
 }
 
 fn live_source(path: &str) -> String {
@@ -368,7 +376,7 @@ fn catching_a_thought_asks_nothing_and_puts_a_task_on_the_list() {
         height: 1040,
         primary: true,
     }]);
-    let dir = std::env::temp_dir().join(format!("atlas-capture-{}", std::process::id()));
+    let dir = scratch_dir("capture");
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).expect("scratch");
     let mut d = Daemon::new(
@@ -406,20 +414,25 @@ fn catching_a_thought_asks_nothing_and_puts_a_task_on_the_list() {
 /// The shipped config with one line changed, in a directory of its own.
 fn config_with_provider(dir: &Path, provider: &str) -> std::path::PathBuf {
     fn copy_into(from: &Path, to: &Path) {
-        std::fs::create_dir_all(to).expect("config dir");
-        for e in std::fs::read_dir(from).expect("shipped config/").flatten() {
+        std::fs::create_dir_all(to).unwrap_or_else(|error| panic!("create {to:?}: {error}"));
+        for e in std::fs::read_dir(from)
+            .unwrap_or_else(|error| panic!("read shipped config {from:?}: {error}"))
+            .flatten()
+        {
             let (src, dst) = (e.path(), to.join(e.file_name()));
             if src.is_dir() {
                 copy_into(&src, &dst);
             } else {
-                std::fs::copy(&src, &dst).expect("copy config file");
+                std::fs::copy(&src, &dst)
+                    .unwrap_or_else(|error| panic!("copy {src:?} to {dst:?}: {error}"));
             }
         }
     }
     let cfg = dir.join("config");
     copy_into(Path::new("config"), &cfg);
     let tools = cfg.join("tools.yaml");
-    let raw = std::fs::read_to_string(&tools).expect("tools.yaml");
+    let raw =
+        std::fs::read_to_string(&tools).unwrap_or_else(|error| panic!("read {tools:?}: {error}"));
     let mut out = String::with_capacity(raw.len());
     let mut done = false;
     for line in raw.lines() {
@@ -432,7 +445,7 @@ fn config_with_provider(dir: &Path, provider: &str) -> std::path::PathBuf {
         }
     }
     assert!(done, "no provider: line in the shipped tools.yaml");
-    std::fs::write(&tools, out).expect("write tools.yaml");
+    std::fs::write(&tools, out).unwrap_or_else(|error| panic!("write {tools:?}: {error}"));
     cfg
 }
 
@@ -445,7 +458,7 @@ fn sync_setup_with_nothing_after_it_uses_the_provider_you_configured() {
     // End to end, because the deciding code is `run_sync_setup` in `main.rs`
     // and the honest way to show a config value reached it is to run the
     // program twice against two files.
-    let home = std::env::temp_dir().join(format!("atlas-cloud-{}", std::process::id()));
+    let home = scratch_dir("cloud");
     let _ = std::fs::remove_dir_all(&home);
     std::fs::create_dir_all(&home).expect("scratch");
 
@@ -1056,7 +1069,7 @@ fn a_bundle_written_by_the_daemon_is_sealed_and_opens_by_hand() {
     use atlas::proactive::{Proactive, ProactiveConfig};
     use atlas::store::Store;
 
-    let root = std::env::temp_dir().join(format!("atlas-sealing-{}", std::process::id()));
+    let root = scratch_dir("sealing");
     let _ = std::fs::remove_dir_all(&root);
     let folder = root.join("carrier");
     std::fs::create_dir_all(&folder).expect("carrier");
@@ -1181,7 +1194,7 @@ fn a_lost_key_costs_nothing() {
     use atlas::proactive::{Proactive, ProactiveConfig};
     use atlas::store::Store;
 
-    let root = std::env::temp_dir().join(format!("atlas-lostkey-{}", std::process::id()));
+    let root = scratch_dir("lostkey");
     let _ = std::fs::remove_dir_all(&root);
     let folder = root.join("carrier");
     std::fs::create_dir_all(&folder).expect("carrier");
@@ -1299,7 +1312,7 @@ fn a_new_device_gets_the_key_from_the_pairing_it_already_does() {
     // thing that opens the key. Nothing extra is typed.
     use atlas::sync::{leave_handoff, sweep_handoffs, take_handoff};
 
-    let folder = std::env::temp_dir().join(format!("atlas-handoff-{}", std::process::id()));
+    let folder = scratch_dir("handoff");
     let _ = std::fs::remove_dir_all(&folder);
     std::fs::create_dir_all(&folder).expect("folder");
 
@@ -1414,7 +1427,7 @@ fn pairing_is_ten_characters_and_the_folder_carries_the_rest() {
     // in the folder both machines already share, sealed.
     use atlas::household::{leave_invitation, new_invite_code, sweep_invitations, take_invitation};
 
-    let folder = std::env::temp_dir().join(format!("atlas-invite-{}", std::process::id()));
+    let folder = scratch_dir("invite");
     let _ = std::fs::remove_dir_all(&folder);
     std::fs::create_dir_all(&folder).expect("folder");
 
@@ -1680,9 +1693,11 @@ fn a_fault() -> atlas::selfaudit::Signal {
 fn how_often_it_looks_at_itself_is_the_number_you_set() {
     use atlas::selfaudit::{time_to_look, SelfAuditConfig};
     let day = 86_400u64;
-    let mut cfg = SelfAuditConfig::default();
-    cfg.enabled = true;
-    cfg.every_days = 7;
+    let mut cfg = SelfAuditConfig {
+        enabled: true,
+        every_days: 7,
+        ..SelfAuditConfig::default()
+    };
 
     let now = 100 * day;
     // Six days after the last look is not seven.
@@ -1736,8 +1751,10 @@ fn telling_it_not_to_ask_is_the_difference_between_a_question_and_a_start() {
         "the fixture must clear its own bar or this tests nothing"
     );
 
-    let mut cfg = SelfAuditConfig::default();
-    cfg.enabled = true;
+    let mut cfg = SelfAuditConfig {
+        enabled: true,
+        ..SelfAuditConfig::default()
+    };
 
     // The default: it asks, and starts nothing.
     assert!(!cfg.act_without_asking);
@@ -1828,8 +1845,10 @@ fn granted(domain: &str) -> atlas::signin::Access {
 #[test]
 fn the_check_that_saves_you_from_a_lookalike_domain_is_actually_reachable() {
     use atlas::signin::{Access, Allowed, Refused, SignInConfig};
-    let mut cfg = SignInConfig::default();
-    cfg.enabled = true;
+    let mut cfg = SignInConfig {
+        enabled: true,
+        ..SignInConfig::default()
+    };
 
     let a = granted("mybank.com");
     // The whole point of the module, and it runs without needing a browser.
@@ -1962,8 +1981,10 @@ fn a_request_that_is_not_obviously_a_read_asks_before_the_other_machine_runs_it(
 
     // Turned off, nothing is gated -- which is the other half of it being a
     // setting rather than a behaviour.
-    let mut off = RemoteConfig::default();
-    off.confirm_side_effects = false;
+    let off = RemoteConfig {
+        confirm_side_effects: false,
+        ..RemoteConfig::default()
+    };
     assert!(!needs_your_yes("delete the old exports", &off));
 
     // What it says instead of running names the way through and the way out.
@@ -2340,7 +2361,7 @@ fn a_peer_named_by_address_syncs_straight_across_off_the_local_network() {
     });
 
     // This machine.
-    let root = std::env::temp_dir().join(format!("atlas-tailnet-{}", std::process::id()));
+    let root = scratch_dir("tailnet");
     let _ = std::fs::remove_dir_all(&root);
     let folder = root.join("carrier");
     std::fs::create_dir_all(&folder).expect("carrier");

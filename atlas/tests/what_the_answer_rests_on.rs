@@ -37,6 +37,7 @@ fn note(sources: Vec<(usize, &str)>, attempts: Vec<String>) -> Note {
             .map(|(chars, url)| Source {
                 url: url.into(),
                 chars,
+                content_sha256: String::new(),
             })
             .collect(),
         created: 0,

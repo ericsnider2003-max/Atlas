@@ -10,11 +10,23 @@ use atlas::accounts::{Book, Change, SecondFactor, Stakes};
 use atlas::hub;
 use atlas::store::Store;
 use std::path::PathBuf;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 fn tmp(tag: &str) -> PathBuf {
-    let p = std::env::temp_dir().join(format!("atlas-accounts-{tag}"));
-    let _ = std::fs::remove_dir_all(&p);
-    std::fs::create_dir_all(&p).unwrap();
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("system clock must be after the Unix epoch")
+        .as_nanos();
+    let p = std::env::temp_dir().join(format!(
+        "atlas-accounts-{tag}-{}-{nonce}",
+        std::process::id()
+    ));
+    std::fs::create_dir(&p).unwrap_or_else(|error| {
+        panic!(
+            "create unique accounts fixture directory {}: {error}",
+            p.display()
+        )
+    });
     p
 }
 

@@ -16,16 +16,21 @@ use std::time::{Duration, Instant};
 
 fn get(port: u16, path: &str, token: &str) -> (String, Duration) {
     let started = Instant::now();
-    let mut s = TcpStream::connect(("127.0.0.1", port)).expect("the hub is listening");
-    s.set_read_timeout(Some(Duration::from_secs(20))).unwrap();
+    let mut s = TcpStream::connect(("127.0.0.1", port))
+        .unwrap_or_else(|error| panic!("the hub is listening: {error}"));
+    s.set_read_timeout(Some(Duration::from_secs(20)))
+        .unwrap_or_else(|error| panic!("hub read timeout can be set: {error}"));
     write!(
         s,
         "GET {path} HTTP/1.1\r\nHost: 127.0.0.1\r\nCookie: atlas_hub={token}\r\nConnection: close\r\n\r\n"
     )
-    .unwrap();
+    .unwrap_or_else(|error| panic!("hub request can be written: {error}"));
     let mut out = Vec::new();
     let _ = s.read_to_end(&mut out);
-    (String::from_utf8_lossy(&out).into_owned(), started.elapsed())
+    (
+        String::from_utf8_lossy(&out).into_owned(),
+        started.elapsed(),
+    )
 }
 
 #[test]
@@ -86,7 +91,12 @@ fn the_real_program_draws_settings_without_running_out_of_stack() {
     // Let the loop make its first published copy, then ask.
     std::thread::sleep(Duration::from_secs(3));
     let mut report = String::new();
-    for path in ["/hub/settings", "/hub", "/hub/permissions", "/hub/live.json"] {
+    for path in [
+        "/hub/settings",
+        "/hub",
+        "/hub/permissions",
+        "/hub/live.json",
+    ] {
         let (reply, took) = get(port, path, &token);
         report.push_str(&format!("{path} {:?} {} bytes\n", took, reply.len()));
         if !reply.starts_with("HTTP/1.1 200") {

@@ -402,7 +402,7 @@ fn you_can_ask_what_is_queued_to_go_out() {
 
 #[test]
 fn the_queue_survives_a_restart() {
-    let d = std::env::temp_dir().join("atlas-publish-test");
+    let d = crate::common::unique_temp("publish-test");
     let _ = std::fs::remove_dir_all(&d);
     let store = atlas::store::Store::new(&d);
     let mut p = Publisher::default();

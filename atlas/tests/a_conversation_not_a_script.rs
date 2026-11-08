@@ -286,7 +286,10 @@ fn the_instructions_change_with_the_register() {
         working, chatting,
         "the same prompt for a task and a conversation"
     );
-    assert!(working.contains("Answer briefly and stop"), "got:\n{working}");
+    assert!(
+        working.contains("Answer briefly and stop"),
+        "got:\n{working}"
+    );
     // 29 Sep 2026: "Talk like a person: follow a tangent ... up to about
     // eight sentences" read, to the 4B model on Eric's laptop, as licence to
     // ramble. A conversation now answers first and runs to a few sentences.

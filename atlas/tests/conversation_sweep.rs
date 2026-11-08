@@ -3,6 +3,7 @@
 //! a pause after it, "bye" thrown away, and the wake word lost for good.
 
 use atlas::intent::{Intent, Parser};
+use atlas::thread::{Exchange, Thread, ThreadConfig};
 
 fn parser() -> Parser {
     let c = atlas::config::Config::load(std::path::Path::new("config")).unwrap();
@@ -205,6 +206,58 @@ fn what_atlas_said_on_its_own_is_shown_to_the_model() {
     );
     // And no empty turn of yours is made up for it.
     assert!(!all.contains("content: \"\""), "{all}");
+}
+
+#[test]
+fn a_suppressed_duplicate_reply_does_not_leave_an_unmatched_user_turn() {
+    let mut th = atlas::thread::Thread::default();
+    let repeated = "The same answer stays here while preserving enough shared words to cross the near-copy threshold.";
+    th.append("first request", repeated, None, 10);
+    th.append("second request", repeated, None, 20);
+    let shown = format!("{:?}", th.messages(10, 4000));
+    assert!(shown.contains("first request"), "{shown}");
+    assert!(!shown.contains("second request"), "{shown}");
+}
+
+#[test]
+fn an_expanding_folded_summary_cannot_crowd_out_the_current_turn() {
+    let mut th = atlas::thread::Thread {
+        summary: "older context ".repeat(2_000),
+        ..Default::default()
+    };
+    th.append(
+        "the current request must remain",
+        "the current answer",
+        None,
+        10,
+    );
+    let shown = format!("{:?}", th.messages(10, 100));
+    assert!(shown.contains("the current request must remain"), "{shown}");
+    assert!(
+        shown.len() < 700,
+        "summary escaped the context budget: {}",
+        shown.len()
+    );
+}
+
+#[test]
+fn ordinary_context_counts_the_folded_summary_against_its_budget() {
+    let mut thread = Thread::default();
+    let cfg = ThreadConfig {
+        context_chars: 120,
+        ..ThreadConfig::default()
+    };
+    thread.summary = "重要な記録。".repeat(100);
+    thread.recent.push(Exchange {
+        said: "the current request must remain visible".into(),
+        reply: "the current reply".into(),
+        at: 1,
+        about: None,
+    });
+
+    let context = thread.context(&cfg);
+    assert!(context.len() <= cfg.context_chars);
+    assert!(context.contains("the current request must remain visible"));
 }
 
 /// The open floor after a reply: a voice that clearly isn't yours isn't

@@ -2205,18 +2205,20 @@ pub fn understand(said: &str, listed: usize) -> Option<Said> {
     }
     // "Not interested in crypto gigs", "no crypto opportunities": said with
     // the kind, it's the hunter's even with no list showing.
-    if let Some(v) = topic_then_kind(
-        bare,
-        &[
-            "not interested in ",
-            "i'm not interested in ",
-            "im not interested in ",
-            "no ",
-            "skip ",
-            "no more ",
-        ],
-    ) {
-        return Some(Said::Avoid(v));
+    if listed == 0 {
+        if let Some(v) = topic_then_kind(
+            bare,
+            &[
+                "not interested in ",
+                "i'm not interested in ",
+                "im not interested in ",
+                "no ",
+                "skip ",
+                "no more ",
+            ],
+        ) {
+            return Some(Said::Avoid(v));
+        }
     }
     if listed == 0 {
         return None;

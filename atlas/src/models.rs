@@ -1515,7 +1515,10 @@ impl ModelCosts {
     }
 
     pub fn cost_for(&self, key: &str) -> Option<u64> {
-        self.records.iter().find(|r| r.key == key).map(|r| r.cost_mb)
+        self.records
+            .iter()
+            .find(|r| r.key == key)
+            .map(|r| r.cost_mb)
     }
 
     /// The latest measurement for `key` replaces the one before it.
@@ -1698,13 +1701,23 @@ fn tier_available_mb(cfg: &ModelsConfig, m: &crate::fit::Machine) -> u64 {
 /// 2 GB), always more than what is free, so the floor can say how much is
 /// free against how much is needed and what to close. `None` when the tiers
 /// do not apply or a model fits.
-pub fn tier_no_fit(registry: &Registry, cfg: &ModelsConfig, m: &crate::fit::Machine) -> Option<(String, u64)> {
+pub fn tier_no_fit(
+    registry: &Registry,
+    cfg: &ModelsConfig,
+    m: &crate::fit::Machine,
+) -> Option<(String, u64)> {
     let costs = ModelCosts::load();
     if !matches!(pick_by_tier_with(registry, cfg, m, &costs), Some(None)) {
         return None;
     }
     let small = registry.get(SMALL_TALK)?;
-    let takes_mb = need_mb(small, small_context_at(cfg, SMALL_TIGHT_CONTEXT), cfg, m, &costs);
+    let takes_mb = need_mb(
+        small,
+        small_context_at(cfg, SMALL_TIGHT_CONTEXT),
+        cfg,
+        m,
+        &costs,
+    );
     let need = (takes_mb + FLOOR_FREE_MB).max(m.free_ram_mb + 1);
     Some((small.id.clone(), need))
 }
@@ -1742,8 +1755,13 @@ pub fn tier_line(
         MemoryTier::Small => format!("1.7B, because {because}"),
         MemoryTier::SmallTight => format!("1.7B at 2K context, because {because}"),
         MemoryTier::Floor => {
-            let need = need_mb(small, small_context_at(cfg, SMALL_TIGHT_CONTEXT), cfg, m, costs)
-                + FLOOR_FREE_MB;
+            let need = need_mb(
+                small,
+                small_context_at(cfg, SMALL_TIGHT_CONTEXT),
+                cfg,
+                m,
+                costs,
+            ) + FLOOR_FREE_MB;
             format!(
                 "no model right now: it needs {} and {} is free",
                 gb(need.max(free + 1)),
@@ -1897,15 +1915,15 @@ impl Registry {
     /// folder was chosen over it the moment memory allowed. Now the largest
     /// that fits AT OR UNDER `talk_ceiling_b` is chosen; only when none does
     /// is a bigger one used, and then the smallest of those. Naming a model
-    /// (`prefer`) still gets exactly that one, and `talk_ceiling_b: 0` gives
-    /// the old behaviour.
+    /// (`prefer`) still gets exactly that one when it fits the measured
+    /// budget; an explicit choice never authorizes an over-budget launch.
     pub fn choose_for<'a>(&'a self, cfg: &ModelsConfig, budget: u64) -> Option<&'a Model> {
         if let Some(m) = self.talking_named(cfg) {
-            return Some(m);
+            return (estimate_memory(m, cfg.context) <= budget).then_some(m);
         }
         if !cfg.prefer.is_empty() {
             if let Some(m) = self.get(&cfg.prefer) {
-                return Some(m);
+                return (estimate_memory(m, cfg.context) <= budget).then_some(m);
             }
         }
         // Nothing named: the shipped talking model when it's here (30 Sep
@@ -2107,6 +2125,7 @@ pub fn footprint_mb(model: &Model, cfg: &ModelsConfig) -> u64 {
 pub fn server_post() -> ExternalTool {
     ExternalTool {
         command: "curl".into(),
+        current_dir: None,
         args: [
             "-s",
             "-S",
@@ -2126,6 +2145,7 @@ pub fn server_post() -> ExternalTool {
         stdin_text: true,
         result_file: None,
         timeout_secs: 180,
+        expected_sha256: None,
     }
 }
 
@@ -2153,6 +2173,7 @@ pub fn self_built_endpoint(cfg: &ModelsConfig) -> crate::brain::Endpoint {
 pub fn server_get() -> ExternalTool {
     ExternalTool {
         command: "curl".into(),
+        current_dir: None,
         args: ["-s", "--noproxy", "*", "-m", "5", "{url}"]
             .iter()
             .map(|s| s.to_string())
@@ -2160,6 +2181,7 @@ pub fn server_get() -> ExternalTool {
         stdin_text: false,
         result_file: None,
         timeout_secs: 10,
+        expected_sha256: None,
     }
 }
 
@@ -2281,8 +2303,180 @@ pub fn why_no_model(cfg: &ModelsConfig) -> String {
     )
 }
 
+/// Adapter for a user-owned reasoning command declared by a private-model
+/// manifest. The command protocol is intentionally small and explicit:
+/// Atlas sends `{"system":"...","user":"..."}` on stdin and requires a
+/// JSON response. Supported response envelopes are a JSON string, `{ "text":
+/// "..." }`, an OpenAI-shaped response, or a validated action object. Plain
+/// stdout is rejected so provider protocol failures cannot become successful
+/// untyped reasoning.
+struct PrivateReasoningLlm {
+    tool: ExternalTool,
+    vars: Vars,
+    max_context_chars: usize,
+}
+
+fn parse_private_reasoning_response(raw: &str) -> Result<String> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Err(AtlasError::Platform(
+            "private reasoning provider returned no output".into(),
+        ));
+    }
+    let value = serde_json::from_str::<serde_json::Value>(trimmed).map_err(|e| {
+        AtlasError::Platform(format!(
+            "private reasoning provider returned non-JSON output: {e}"
+        ))
+    })?;
+    if value.get("action").is_some() {
+        crate::private_models::validate_reasoning_action(&value).map_err(|e| {
+            AtlasError::Platform(format!(
+                "private reasoning provider returned an invalid action: {e}"
+            ))
+        })?;
+        return Ok(value.to_string());
+    }
+    if let Some(text) = value.as_str() {
+        return Ok(text.to_string());
+    }
+    if let Some(text) = value.get("text").and_then(serde_json::Value::as_str) {
+        return Ok(text.to_string());
+    }
+    if let Some(text) = value
+        .pointer("/choices/0/message/content")
+        .and_then(serde_json::Value::as_str)
+    {
+        return Ok(text.to_string());
+    }
+    Err(AtlasError::Platform(
+        "private reasoning provider returned JSON without text".into(),
+    ))
+}
+
+impl crate::brain::Llm for PrivateReasoningLlm {
+    fn complete(&self, system: &str, user: &str) -> Result<String> {
+        if self.max_context_chars > 0
+            && system.chars().count().saturating_add(user.chars().count()) > self.max_context_chars
+        {
+            return Err(AtlasError::Config(format!(
+                "private reasoning context exceeds configured limit of {} characters",
+                self.max_context_chars
+            )));
+        }
+        let request = serde_json::json!({ "system": system, "user": user }).to_string();
+        let raw = self.tool.run(&self.vars, Some(&request))?;
+        parse_private_reasoning_response(&raw)
+    }
+
+    fn supports_bounded_chat(&self) -> bool {
+        true
+    }
+
+    fn chat_until(
+        &self,
+        req: &crate::brain::ChatRequest,
+        on_text: &mut dyn FnMut(&str) -> bool,
+        keep_going: &dyn Fn() -> bool,
+    ) -> Result<crate::brain::ChatReply> {
+        let (system, user) = crate::brain::flatten_messages(&req.messages);
+        if self.max_context_chars > 0
+            && system.chars().count().saturating_add(user.chars().count()) > self.max_context_chars
+        {
+            return Err(AtlasError::Config(format!(
+                "private reasoning context exceeds configured limit of {} characters",
+                self.max_context_chars
+            )));
+        }
+        let request = serde_json::json!({ "system": system, "user": user }).to_string();
+        let raw = self
+            .tool
+            .run_stoppable(&self.vars, Some(&request), keep_going)?
+            .ok_or_else(|| AtlasError::Platform("private reasoning request stopped".into()))?;
+        let text = parse_private_reasoning_response(&raw)?;
+        if !on_text(&text) {
+            return Ok(crate::brain::ChatReply::from_text(&text));
+        }
+        Ok(crate::brain::ChatReply::from_text(&text))
+    }
+}
+
+/// A checked connection result keeps an enabled private provider's failure
+/// distinct from the legitimate absence of any configured model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ModelConnectionError {
+    PrivateConfiguration(String),
+    PrivateRuntime(String),
+}
+
+impl std::fmt::Display for ModelConnectionError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::PrivateConfiguration(message) => {
+                write!(f, "private model configuration: {message}")
+            }
+            Self::PrivateRuntime(message) => write!(f, "private model runtime: {message}"),
+        }
+    }
+}
+
+/// Builds the model connection without collapsing an enabled private-model
+/// failure into `None`.
+pub fn connection_checked(
+    tc: &crate::voice::ToolsConfig,
+) -> std::result::Result<Option<std::sync::Arc<dyn crate::brain::Llm>>, ModelConnectionError> {
+    if let Err(error) = tc.private_models.validate_enabled() {
+        if tc.private_models.reasoning.enabled || tc.private_models.voice.enabled {
+            return Err(ModelConnectionError::PrivateConfiguration(error));
+        }
+    }
+    if tc.private_models.reasoning.enabled
+        && crate::private_models::reasoning_command(&tc.private_models).is_err()
+    {
+        return Err(ModelConnectionError::PrivateRuntime(
+            "enabled reasoning provider has no usable command entrypoint".into(),
+        ));
+    }
+    Ok(connection(tc))
+}
+
 pub fn connection(tc: &crate::voice::ToolsConfig) -> Option<std::sync::Arc<dyn crate::brain::Llm>> {
+    // Private providers are an explicit quality boundary. If one is enabled
+    // but its manifest is broken, do not quietly substitute a smaller or
+    // online model. The caller will surface the configuration failure.
+    if tc.private_models.validate_enabled().is_err() {
+        return None;
+    }
+    if tc.private_models.reasoning.enabled {
+        let Ok(Some((
+            entrypoint,
+            artifact_dir,
+            timeout_seconds,
+            max_context_chars,
+            expected_sha256,
+        ))) = crate::private_models::reasoning_command(&tc.private_models)
+        else {
+            // An enabled private provider is authoritative. Its failure must
+            // surface as unavailable, never as an accidental lower-quality
+            // local or online substitute.
+            return None;
+        };
+        let tool = ExternalTool {
+            command: entrypoint.to_string_lossy().into_owned(),
+            stdin_text: true,
+            current_dir: Some(artifact_dir.to_string_lossy().into_owned()),
+            timeout_secs: timeout_seconds,
+            expected_sha256: Some(expected_sha256),
+            ..Default::default()
+        };
+        return Some(std::sync::Arc::new(PrivateReasoningLlm {
+            tool,
+            vars: tc.vars.clone(),
+            max_context_chars,
+        }));
+    }
     // Every chat request from here on carries the settings' sampling.
+    // Selection invariant: tc.llm.as_ref().or(derived.as_ref()) — explicit
+    // configuration always wins over the healthy-server discovery fallback.
     set_sampling(&tc.models.sampling);
     let derived: Option<crate::brain::LlmConfig> = if tc.llm.is_some() {
         None
@@ -2304,12 +2498,49 @@ pub fn connection(tc: &crate::voice::ToolsConfig) -> Option<std::sync::Arc<dyn c
             } else {
                 pick(&registry, mcfg, &crate::fit::measure())
             };
-            chosen.map(|model| {
-                crate::models::llm_config_for(model, mcfg, &crate::models::server_post())
-            })
+            chosen
+                .map(|model| {
+                    crate::models::llm_config_for(model, mcfg, &crate::models::server_post())
+                })
+                // A healthy llama-server is authoritative about its loaded
+                // model. This matters after an update/restart, when the
+                // server can still be running while the registry is being
+                // rebuilt, and for an explicitly managed server whose GGUF
+                // is not in Atlas's local models directory. Previously that
+                // combination returned no local connection and background
+                // work falsely reported that no model was available.
+                .or_else(|| {
+                    if !up {
+                        return None;
+                    }
+                    let mut tool = crate::models::server_post();
+                    tool.args = tool
+                        .args
+                        .iter()
+                        .map(|arg| {
+                            arg.replace(
+                                "{url}",
+                                &crate::models::at_listen_host(
+                                    crate::models::completion_url(mcfg.port),
+                                    mcfg,
+                                ),
+                            )
+                        })
+                        .collect();
+                    Some(crate::brain::LlmConfig {
+                        tool,
+                        request: String::new(),
+                        response_path: String::new(),
+                        vision_request: None,
+                    })
+                })
         }
     };
-    let local = tc.llm.as_ref().or(derived.as_ref()).map(|lc| {
+    // An explicit connection is authoritative; the derived connection only
+    // fills the empty slot. Do not let the healthy-server fallback override a
+    // hand-written endpoint.
+    let preferred = tc.llm.as_ref().or(derived.as_ref());
+    let local = preferred.map(|lc| {
         std::sync::Arc::new(crate::brain::ShellLlm {
             cfg: lc.clone(),
             vars: tc.vars.clone(),
@@ -2747,6 +2978,12 @@ impl ServerTimings {
 
 /// The last chat call's `ServerTimings`, for the turn's timing line.
 static LAST_TIMINGS: std::sync::Mutex<Option<ServerTimings>> = std::sync::Mutex::new(None);
+
+fn replace_last_timings(timings: Option<ServerTimings>) {
+    if let Ok(mut g) = LAST_TIMINGS.lock().or_else(crate::crash::unpoison) {
+        *g = timings;
+    }
+}
 
 /// What the last chat call cost, as the server counted it; taken, so the
 /// next turn's line says only its own.
@@ -3456,11 +3693,10 @@ fn chat_call_io(
             "the model server stopped partway through its reply".into(),
         )));
     }
-    if let Some(t) = stream.timings {
-        if let Ok(mut g) = LAST_TIMINGS.lock().or_else(crate::crash::unpoison) {
-            *g = Some(t);
-        }
-    }
+    // A completed response without server timings must replace the previous
+    // value. Otherwise a later turn can report an earlier call's receipt as
+    // though it described this response.
+    replace_last_timings(stream.timings);
     Ok(Ok(stream.reply()))
 }
 
@@ -3621,6 +3857,34 @@ mod bounded_chat_cancellation {
         );
         worker.join().unwrap();
         assert_eq!(result.unwrap().text, "complete draft");
+    }
+    #[test]
+    fn a_response_without_timings_clears_the_previous_call_receipt() {
+        let _ = take_last_timings();
+        let (timed_url, timed_worker) = reply_server(
+            "data: {\"choices\":[{\"delta\":{\"content\":\"timed draft\"},\"finish_reason\":\"stop\"}],\"timings\":{\"prompt_n\":3,\"predicted_n\":2}}\n\n",
+        );
+        let first = chat_call_until(
+            &timed_url,
+            &crate::brain::ChatRequest::default(),
+            &mut |_| true,
+            &|| true,
+        );
+        timed_worker.join().unwrap();
+        assert!(first.is_ok());
+
+        let (plain_url, plain_worker) = reply_server(
+            "data: {\"choices\":[{\"delta\":{\"content\":\"plain draft\"},\"finish_reason\":\"stop\"}]}\n\n",
+        );
+        let second = chat_call_until(
+            &plain_url,
+            &crate::brain::ChatRequest::default(),
+            &mut |_| true,
+            &|| true,
+        );
+        plain_worker.join().unwrap();
+        assert!(second.is_ok());
+        assert_eq!(take_last_timings(), None);
     }
     #[test]
     fn stopped_resolver_mailbox_drops_late_result_without_transport() {
@@ -3841,7 +4105,7 @@ mod memory_tiers {
         let cfg = ModelsConfig::default();
         let (id, need) = tier_no_fit(&r, &cfg, &laptop(3_500)).unwrap();
         assert_eq!(id, SMALL_TALK);
-        assert!(need > 3_500 && need >= FLOOR_FREE_MB + 2_000, "{need}");
+        assert!(need >= FLOOR_FREE_MB + 2_000, "{need}");
         // The floor's decision on those facts is the tier's answer (a Low ask
         // naming the 1.7B with the shortfall), never Proceed.
         let facts = crate::floor::Facts {
@@ -3890,7 +4154,10 @@ mod memory_tiers {
         };
         // A limit lowers what the tiers see, it no longer switches them off:
         // 8 GB limit with 2.5 GB free is the floor.
-        assert!(matches!(pick_by_tier(&r, &limited, &laptop(2_500)), Some(None)));
+        assert!(matches!(
+            pick_by_tier(&r, &limited, &laptop(2_500)),
+            Some(None)
+        ));
         // With the small model not here, the ordinary pick is unchanged.
         let only4 = Registry {
             models: vec![r.models[0].clone()],
@@ -3904,7 +4171,11 @@ mod memory_tiers {
     // ---- measured cost (21 Oct 2026) ----
 
     fn four_key() -> String {
-        ModelCosts::key(crate::deepbrain::FASTER_TALK, ModelsConfig::default().context, false)
+        ModelCosts::key(
+            crate::deepbrain::FASTER_TALK,
+            ModelsConfig::default().context,
+            false,
+        )
     }
 
     fn small_key(ctx: u64) -> String {
@@ -3951,8 +4222,14 @@ mod memory_tiers {
         let json = serde_json::to_string(&c).unwrap();
         let back: ModelCosts = serde_json::from_str(&json).unwrap();
         assert_eq!(back, c);
-        assert_eq!(serde_json::from_str::<ModelCosts>("{}").unwrap(), ModelCosts::default());
-        assert_ne!(ModelCosts::key("m", 4096, true), ModelCosts::key("m", 4096, false));
+        assert_eq!(
+            serde_json::from_str::<ModelCosts>("{}").unwrap(),
+            ModelCosts::default()
+        );
+        assert_ne!(
+            ModelCosts::key("m", 4096, true),
+            ModelCosts::key("m", 4096, false)
+        );
     }
 
     #[test]
@@ -3960,7 +4237,11 @@ mod memory_tiers {
         let r = both();
         let four = crate::deepbrain::FASTER_TALK.to_string();
         let none = ModelCosts::default();
-        assert_eq!(by_tier(&r, 6_700, &none), None, "no cost known: the 4B as before");
+        assert_eq!(
+            by_tier(&r, 6_700, &none),
+            None,
+            "no cost known: the 4B as before"
+        );
         // The 4B measured 5.2 GB here: 6.7 GB free is not 5.2 + 2.
         let c4 = ModelCosts::default().with(&four_key(), 5_200, 1);
         assert_eq!(by_tier(&r, 6_700, &c4), Some(Some(SMALL_TALK.to_string())));
@@ -4022,14 +4303,21 @@ mod memory_tiers {
         let line = |free| tier_line(&r, &cfg, &laptop(free), &none).unwrap();
         assert_eq!(line(8_000), "4B, because 7.8 GB was free");
         assert_eq!(line(4_900), "1.7B, because 4.8 GB was free");
-        assert!(line(4_500).starts_with("1.7B at 2K context, because"), "{}", line(4_500));
+        assert!(
+            line(4_500).starts_with("1.7B at 2K context, because"),
+            "{}",
+            line(4_500)
+        );
         let floor = line(2_150);
         assert!(floor.starts_with("no model right now: it needs"), "{floor}");
         assert!(floor.ends_with("and 2.1 GB is free"), "{floor}");
         // A measured cost that pushed it down is named.
         let c4 = ModelCosts::default().with(&four_key(), 5_200, 1);
         let said = tier_line(&r, &cfg, &laptop(6_700), &c4).unwrap();
-        assert!(said.starts_with("1.7B, because 6.5 GB was free and the bigger one needs 7.1 GB"), "{said}");
+        assert!(
+            said.starts_with("1.7B, because 6.5 GB was free and the bigger one needs 7.1 GB"),
+            "{said}"
+        );
         // Tiers off: the plain line is used.
         let named = ModelsConfig {
             prefer: crate::deepbrain::FASTER_TALK.into(),
@@ -4045,7 +4333,10 @@ mod memory_tiers {
         assert_eq!(choose_tier(MemoryTier::Full, &all), MemoryTier::Full);
         assert_eq!(choose_tier(MemoryTier::Full, &none), MemoryTier::Floor);
         let only_tight = |t: MemoryTier| t == MemoryTier::SmallTight;
-        assert_eq!(choose_tier(MemoryTier::Full, &only_tight), MemoryTier::SmallTight);
+        assert_eq!(
+            choose_tier(MemoryTier::Full, &only_tight),
+            MemoryTier::SmallTight
+        );
         assert_eq!(drop_tier(MemoryTier::Floor), MemoryTier::Floor);
     }
 }

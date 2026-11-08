@@ -409,6 +409,14 @@ fn the_file_you_meant_is_found_in_what_you_said() {
         Some("C:\\docs\\tides.pdf")
     );
     assert_eq!(path_in("read this pdf", &["pdf"]), None);
+    assert_eq!(
+        path_in(
+            "compare C:\\reports\\old.pdf with C:\\reports\\new.pdf",
+            &["pdf"]
+        )
+        .as_deref(),
+        Some("C:\\reports\\old.pdf")
+    );
 }
 
 #[test]

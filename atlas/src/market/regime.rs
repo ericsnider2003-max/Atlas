@@ -562,7 +562,7 @@ mod tests {
 
     #[test]
     fn leaving_a_trend_is_easier_than_entering_one() {
-        assert!(EXIT_TREND < ENTER_TREND);
+        const _: () = assert!(EXIT_TREND < ENTER_TREND);
     }
 
     #[test]

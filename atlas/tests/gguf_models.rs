@@ -314,7 +314,7 @@ fn an_empty_models_directory_says_so() {
         .contains("no GGUF models"));
     // Contrast case, not just the phrase: a registry that actually has a
     // model must not say the directory is empty.
-    let d = std::env::temp_dir().join("atlas-models-empty-contrast");
+    let d = crate::common::unique_temp("models-empty-contrast");
     let _ = std::fs::remove_dir_all(&d);
     std::fs::create_dir_all(&d).unwrap();
     std::fs::write(d.join("good.gguf"), llama7b()).unwrap();
@@ -327,7 +327,7 @@ fn an_empty_models_directory_says_so() {
 
 #[test]
 fn scanning_a_directory_skips_unreadable_files_instead_of_aborting() {
-    let d = std::env::temp_dir().join("atlas-models-test");
+    let d = crate::common::unique_temp("models-test");
     let _ = std::fs::remove_dir_all(&d);
     std::fs::create_dir_all(&d).unwrap();
     std::fs::write(d.join("good.gguf"), llama7b()).unwrap();

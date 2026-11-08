@@ -429,6 +429,62 @@ fn render_with_floor(
     Ok(plan.output.clone())
 }
 
+/// Pull a file path and what's wanted out of "edit C:\\clips\\trip.mp4: cut it
+/// to a minute", "edit "my trip.mp4" to cut the dead air". The path is the
+/// quoted part, or the first word with a media extension.
+pub fn path_and_wish(said: &str) -> Option<(String, String)> {
+    const EXT: &[&str] = &[".mp4", ".mov", ".mkv", ".avi", ".webm", ".m4v"];
+    if let Some(a) = said.find('"') {
+        if let Some(b) = said[a + 1..].find('"') {
+            let path = said[a + 1..a + 1 + b].to_string();
+            let wish = said[a + 2 + b..]
+                .trim()
+                .trim_start_matches([':', ','])
+                .trim();
+            let wish = wish.strip_prefix("to ").unwrap_or(wish).to_string();
+            return Some((path, wish));
+        }
+    }
+    let words: Vec<&str> = said.split_whitespace().collect();
+    let i = words.iter().position(|w| {
+        let l = w.to_lowercase();
+        EXT.iter()
+            .any(|e| l.trim_end_matches([':', ',', '.']).ends_with(e))
+    })?;
+    let path = words[i].trim_end_matches([':', ',']).to_string();
+    let rest = words[i + 1..].join(" ");
+    let wish = rest.strip_prefix("to ").unwrap_or(&rest).trim().to_string();
+    Some((path, wish))
+}
+
+/// Where the working copy and the result go: beside Atlas's video work, and
+/// beside the original, never over it (Eric, 25 Sep 2026, G8: "make a copy,
+/// then do the work").
+pub fn copy_and_result_paths(
+    original: &std::path::Path,
+    work_dir: &std::path::Path,
+) -> (std::path::PathBuf, std::path::PathBuf) {
+    let stem = original
+        .file_stem()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_else(|| "video".into());
+    let ext = original
+        .extension()
+        .map(|e| e.to_string_lossy().to_string())
+        .unwrap_or_else(|| "mp4".into());
+    let copy = work_dir.join(format!("{stem}.working-copy.{ext}"));
+    let dir = original
+        .parent()
+        .map(|p| p.to_path_buf())
+        .unwrap_or_default();
+    let mut result = dir.join(format!("{stem}.edited.{ext}"));
+    let mut n = 2;
+    while result.exists() {
+        result = dir.join(format!("{stem}.edited-{n}.{ext}"));
+        n += 1;
+    }
+    (copy, result)
+}
 #[cfg(test)]
 mod render_timeout_tests {
     use super::*;
@@ -488,61 +544,4 @@ mod render_timeout_tests {
         full.timeout_secs = full.timeout_secs.max(RENDER_TIMEOUT_SECS);
         assert_eq!(full.timeout_secs, 7_200);
     }
-}
-
-/// Pull a file path and what's wanted out of "edit C:\\clips\\trip.mp4: cut it
-/// to a minute", "edit "my trip.mp4" to cut the dead air". The path is the
-/// quoted part, or the first word with a media extension.
-pub fn path_and_wish(said: &str) -> Option<(String, String)> {
-    const EXT: &[&str] = &[".mp4", ".mov", ".mkv", ".avi", ".webm", ".m4v"];
-    if let Some(a) = said.find('"') {
-        if let Some(b) = said[a + 1..].find('"') {
-            let path = said[a + 1..a + 1 + b].to_string();
-            let wish = said[a + 2 + b..]
-                .trim()
-                .trim_start_matches([':', ','])
-                .trim();
-            let wish = wish.strip_prefix("to ").unwrap_or(wish).to_string();
-            return Some((path, wish));
-        }
-    }
-    let words: Vec<&str> = said.split_whitespace().collect();
-    let i = words.iter().position(|w| {
-        let l = w.to_lowercase();
-        EXT.iter()
-            .any(|e| l.trim_end_matches([':', ',', '.']).ends_with(e))
-    })?;
-    let path = words[i].trim_end_matches([':', ',']).to_string();
-    let rest = words[i + 1..].join(" ");
-    let wish = rest.strip_prefix("to ").unwrap_or(&rest).trim().to_string();
-    Some((path, wish))
-}
-
-/// Where the working copy and the result go: beside Atlas's video work, and
-/// beside the original, never over it (Eric, 25 Sep 2026, G8: "make a copy,
-/// then do the work").
-pub fn copy_and_result_paths(
-    original: &std::path::Path,
-    work_dir: &std::path::Path,
-) -> (std::path::PathBuf, std::path::PathBuf) {
-    let stem = original
-        .file_stem()
-        .map(|s| s.to_string_lossy().to_string())
-        .unwrap_or_else(|| "video".into());
-    let ext = original
-        .extension()
-        .map(|e| e.to_string_lossy().to_string())
-        .unwrap_or_else(|| "mp4".into());
-    let copy = work_dir.join(format!("{stem}.working-copy.{ext}"));
-    let dir = original
-        .parent()
-        .map(|p| p.to_path_buf())
-        .unwrap_or_default();
-    let mut result = dir.join(format!("{stem}.edited.{ext}"));
-    let mut n = 2;
-    while result.exists() {
-        result = dir.join(format!("{stem}.edited-{n}.{ext}"));
-        n += 1;
-    }
-    (copy, result)
 }

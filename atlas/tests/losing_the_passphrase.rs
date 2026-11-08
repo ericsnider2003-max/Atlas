@@ -45,12 +45,12 @@ fn cfg() -> VaultConfig {
 fn set_up() -> (Vault, String) {
     let mut v = Vault::default();
     v.open(PASSPHRASE, 100, &cfg())
-        .expect("first open sets the passphrase");
+        .unwrap_or_else(|error| panic!("first open sets the passphrase: {error}"));
     let code = v
         .issue_recovery_key(100, &cfg())
-        .expect("no recovery key was made");
+        .unwrap_or_else(|error| panic!("issue recovery key fixture: {error}"));
     v.put("bank", Kind::Login, "correct horse battery staple", 100)
-        .unwrap();
+        .unwrap_or_else(|error| panic!("save bank secret fixture: {error}"));
     v.lock();
     (v, code)
 }

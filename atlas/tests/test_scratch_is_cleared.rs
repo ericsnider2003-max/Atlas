@@ -61,7 +61,8 @@ fn nothing_outside_a_builds_own_scratch_is_ever_touched() {
 
 #[test]
 fn under_cargo_the_temp_dir_is_the_checkouts_own_scratch() {
-    let cfg = std::fs::read_to_string(".cargo/config.toml").unwrap();
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    let cfg = std::fs::read_to_string(root.join(".cargo/config.toml")).unwrap();
     for var in ["TMPDIR", "TMP", "TEMP"] {
         assert!(
             cfg.contains(&format!(
@@ -78,7 +79,7 @@ fn under_cargo_the_temp_dir_is_the_checkouts_own_scratch() {
     );
     // It exists in every checkout, so a fresh build's linker has somewhere
     // to write (the laptop's release build failed without it).
-    let ignore = std::fs::read_to_string("../.gitignore").unwrap();
+    let ignore = std::fs::read_to_string(root.join("../.gitignore")).unwrap();
     assert!(ignore.contains("atlas/scratch/*") && ignore.contains("!atlas/scratch/.gitkeep"));
-    assert!(std::path::Path::new("scratch/.gitkeep").is_file());
+    assert!(root.join("scratch/.gitkeep").is_file());
 }

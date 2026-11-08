@@ -441,6 +441,13 @@ webview2-com-sys = { path = "vendor/webview2-com-sys" }
 name = "a_misspelt_setting_is_reported"
 path = "tests/a_misspelt_setting_is_reported.rs"
 
+# Opt-in live acceptance path. It always runs its offline routing assertions;
+# the model-backed portion requires ATLAS_REAL_MODEL_URL and is deliberately
+# skipped when no local endpoint is available.
+[[test]]
+name = "a_real_model_answers_him"
+path = "tests/a_real_model_answers_him.rs"
+
 # Its own process: the memory it measures is this process's alone (the floor,
 # 20 Oct 2026: Atlas with no language model loaded).
 [[test]]

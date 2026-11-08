@@ -49,9 +49,10 @@ fn a_machine_with_room_keeps_the_model_loaded() {
     let mut h = Helpers::new(cfg);
     h.want("model-server", 0, 1, || Ok(None)).unwrap();
     h.done("model-server", 1);
-    // An hour and a half with nobody talking: on 30 Sep this was three stops
-    // and three cold starts.
-    let _ = h.reap(1 + 5400);
+    // Just inside the bounded residency window: the model stays warm until
+    // the configured 30-minute contract expires, without silently turning a
+    // fit decision into indefinite residency.
+    let _ = h.reap(1 + MODEL_RESIDENT_SECS - 1);
     assert!(h.is_running("model-server"));
 }
 

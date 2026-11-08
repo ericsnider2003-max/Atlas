@@ -12,7 +12,9 @@
 //! unreachable is worse than no assistant.
 
 use crate::config::Config;
+use crate::context_budget::estimate_tokens;
 use crate::error::{AtlasError, Result};
+use crate::fallback_privacy::without_local_only_context;
 use crate::intent::{Intent, Parser};
 use crate::platform::Platform;
 use crate::tools::{expand, ExternalTool, Vars};
@@ -384,7 +386,10 @@ pub struct Scrubbed(pub std::sync::Arc<dyn Llm>);
 impl Scrubbed {
     fn scrubbed(system: &str, user: &str) -> (crate::redact::Scrubber, String, String) {
         let mut scrub = crate::redact::Scrubber::default();
-        let (mut system_out, user_out) = (scrub.scrub(system), scrub.scrub(user));
+        let (mut system_out, user_out) = (
+            scrub.scrub(&without_local_only_context(system)),
+            scrub.scrub(&without_local_only_context(user)),
+        );
         if let Some(note) = scrub.say() {
             system_out.push_str(&format!(
                 "\n\n({note}; they appear as placeholders like ⟦EMAIL_1⟧. Use the placeholders exactly as written.)"
@@ -483,6 +488,11 @@ pub struct FallbackLlm {
     hard_first: bool,
 }
 
+/// Remove context that is useful to the local model but is never necessary
+/// for an online fallback. The primary may have been configured as local when
+/// this prompt was assembled, so redaction alone cannot protect ordinary
+/// document titles and filenames. Keep the app name, but drop the title and
+/// changed-file lines before the prompt reaches the secondary.
 impl FallbackLlm {
     /// Hard tasks to the secondary first: it's your own stronger model.
     pub fn secondary_is_your_own(mut self) -> Self {
@@ -524,7 +534,10 @@ impl FallbackLlm {
         // back into the reply here (`redact`). Always on — the online model
         // never needed the key itself to answer about it.
         let mut scrub = crate::redact::Scrubber::default();
-        let (mut system_out, user_out) = (scrub.scrub(system), scrub.scrub(user));
+        let (mut system_out, user_out) = (
+            scrub.scrub(&without_local_only_context(system)),
+            scrub.scrub(&without_local_only_context(user)),
+        );
         // Told, so it writes the placeholders back rather than inventing
         // stand-ins that `put_back` would not recognise.
         if let Some(note) = scrub.say() {
@@ -1462,12 +1475,13 @@ pub struct Turn {
     pub wants_a_tool: bool,
 }
 
-/// Roughly how many tokens `text` is: three and a half characters to a
-/// token, which errs long for English and so errs on the safe side.
-fn estimate_tokens(text: &str) -> usize {
-    (text.chars().count() * 2).div_ceil(7)
-}
-
+/// Conservatively estimate how many tokens `text` needs.
+///
+/// ASCII prose is usually several characters per token, but treating every
+/// Unicode scalar value the same materially undercounts CJK, emoji, and many
+/// combining-mark sequences. Non-ASCII values therefore get a one-for-one
+/// lower-bound estimate; this may trim English-heavy prompts a little earlier,
+/// but it prevents a false-fit from reaching a model context boundary.
 /// `text` cut down to about `keep` characters: its start and its end, with
 /// a line saying the middle was left out.
 pub fn head_and_tail(text: &str, keep: usize) -> String {
@@ -1513,15 +1527,36 @@ impl Turn {
     pub fn fit(&mut self, ctx_tokens: usize, core_tools: usize) -> bool {
         let budget = ctx_tokens.saturating_sub(self.max_tokens as usize + 64);
         let mut cut = false;
+        // Keep the earliest user turn as a constraint anchor while removing
+        // intervening history. A small local model benefits more from one
+        // durable user constraint than from an arbitrary slice of recent
+        // conversational filler. The anchor is only protected while there is
+        // other non-system history to remove; if it is all that remains, the
+        // normal fit process may still remove it to honor the hard budget.
+        let mut anchor = self.history.iter().position(|m| m.role == Role::User);
         while self.estimated_tokens() > budget && !self.history.is_empty() {
             // The summary of long ago goes last: it is short, and it is all
-            // that is left of everything older.
-            let i = self
+            // that is left of everything older. Skip the earliest user turn
+            // until every other non-system message has been considered.
+            let removable = self
                 .history
                 .iter()
-                .position(|m| m.role != Role::System)
-                .unwrap_or(0);
+                .enumerate()
+                .find(|(i, m)| m.role != Role::System && Some(*i) != anchor)
+                .map(|(i, _)| i)
+                .or_else(|| self.history.iter().position(|m| m.role != Role::System))
+                .or(Some(0));
+            let Some(i) = removable else {
+                break;
+            };
             self.history.remove(i);
+            if let Some(a) = anchor {
+                if i < a {
+                    anchor = Some(a - 1);
+                } else if i == a {
+                    anchor = None;
+                }
+            }
             cut = true;
         }
         while self.estimated_tokens() > budget && self.tools.len() > core_tools {
@@ -1537,6 +1572,26 @@ impl Turn {
                 self.said = head_and_tail(&self.said, keep_chars);
                 cut = true;
             }
+        }
+        // The historical 64-token floor is useful for ordinary turns but can
+        // still leave a tiny configured context over budget. Keep shrinking
+        // the active request, never the system safety boundary, until the
+        // same estimate used by the request builder fits or only a minimal
+        // request marker remains.
+        while self.estimated_tokens() > budget && self.said.chars().count() > 16 {
+            let current = self.said.chars().count();
+            let keep = (current * 3 / 4).max(16);
+            if keep >= current {
+                break;
+            }
+            let shortened = head_and_tail(&self.said, keep);
+            if shortened.chars().count() >= current {
+                self.said = self.said.chars().take(16).collect();
+                cut = true;
+                break;
+            }
+            self.said = shortened;
+            cut = true;
         }
         cut
     }
@@ -2488,7 +2543,8 @@ impl<'a> Brain<'a> {
 }
 
 /// What a reply caught looping is asked again with (`converse_with_tools`).
-pub const ANSWER_AFRESH: &str = "Your last replies kept saying the same things. Answer only what they just said, \
+pub const ANSWER_AFRESH: &str =
+    "Your last replies kept saying the same things. Answer only what they just said, \
 directly, in words you haven't used yet. If it's a request you can't carry out, \
 say what you can do instead and ask one short question. No closing question otherwise.";
 
@@ -2877,12 +2933,16 @@ pub fn parse_decision(reply: &str) -> Result<Decision> {
         // An exact name in another case is the same name, not a guess at a
         // near one ("Say", "OPEN_APP"); "openn_app" is still not a command.
         .to_lowercase();
+    let structured_arguments = v.get("arguments").cloned();
     let arg = v
         .get("arg")
         .and_then(|a| a.as_str())
         .unwrap_or("")
         .trim()
         .to_string();
+    let arguments = structured_arguments
+        .filter(Value::is_object)
+        .unwrap_or_else(|| Value::String(arg.clone()));
     let say = v
         .get("say")
         .and_then(|a| a.as_str())
@@ -2904,7 +2964,7 @@ pub fn parse_decision(reply: &str) -> Result<Decision> {
         // the other side of a call agreed to be recorded, "this is me", a
         // lesson applied to Atlas itself -- could be chosen by the model
         // anyway.
-        other => match crate::intent::from_tool(other, &Value::String(arg.clone()), &arg) {
+        other => match crate::intent::from_tool(other, &arguments, &arg) {
             Some(i) => i,
             None => {
                 return Err(AtlasError::Platform(format!(
@@ -3405,6 +3465,54 @@ mod long_answers {
             r#"{"content":"x","stopped_eos":true,"stop_type":"eos"}"#
         )));
     }
+
+    #[test]
+    fn unicode_context_is_not_treated_as_english_width() {
+        let english = estimate_tokens(&"a".repeat(700));
+        let cjk = estimate_tokens(&"界".repeat(700));
+        let emoji = estimate_tokens(&"🙂".repeat(700));
+        assert!(english < 700);
+        assert_eq!(cjk, 700);
+        assert_eq!(emoji, 700);
+    }
+
+    #[test]
+    fn unicode_heavy_turns_are_trimmed_before_their_context_is_overrun() {
+        let mut turn = Turn {
+            system: "system".into(),
+            history: Vec::new(),
+            said: "界".repeat(5_000),
+            tools: Vec::new(),
+            max_tokens: 256,
+            ..Turn::default()
+        };
+        assert!(turn.fit(4_096, 0));
+        assert!(turn.estimated_tokens() <= 4_096 - 256 - 64);
+    }
+
+    #[test]
+    fn context_fit_preserves_the_earliest_user_constraint_while_trimming_history() {
+        let mut turn = Turn {
+            system: "system".into(),
+            history: std::iter::once(Msg::user("CRITICAL: never change the output directory"))
+                .chain((0..40).flat_map(|i| {
+                    [
+                        Msg::assistant(format!("intermediate answer {i} ")),
+                        Msg::user(format!("follow-up detail {i} ")),
+                    ]
+                }))
+                .collect(),
+            said: "continue the task".into(),
+            max_tokens: 64,
+            ..Turn::default()
+        };
+
+        assert!(turn.fit(512, 0));
+        assert!(turn
+            .history
+            .iter()
+            .any(|message| message.content == "CRITICAL: never change the output directory"));
+    }
 }
 
 #[cfg(test)]
@@ -3482,7 +3590,10 @@ mod outside_labels {
     #[test]
     fn invites_notes_and_mail_derived_lists_name_their_source() {
         for (i, label) in [
-            (Intent::Agenda("what's on today".into()), "a calendar invite"),
+            (
+                Intent::Agenda("what's on today".into()),
+                "a calendar invite",
+            ),
             (Intent::CallNotes("stop".into()), "call notes"),
             (Intent::WaitingFor(String::new()), "an email"),
             (
@@ -3510,5 +3621,40 @@ mod outside_labels {
         assert!(safe_after_outside_text(&Intent::Agenda(String::new())));
         assert!(safe_after_outside_text(&Intent::WaitingFor(String::new())));
         assert!(safe_after_outside_text(&Intent::People(String::new())));
+    }
+}
+
+#[cfg(test)]
+mod secondary_context_tests {
+    use super::without_local_only_context;
+
+    #[test]
+    fn online_fallback_drops_local_window_titles_and_file_names() {
+        let prompt = "Focused app: browser\nThe window's title — Private Plan.docx\nRecently changed files: Private Plan.docx, keys.txt\nQuestion: summarize it";
+        let safe = without_local_only_context(prompt);
+        assert!(safe.contains("Focused app: browser"));
+        assert!(safe.contains("Question: summarize it"));
+        assert!(!safe.contains("Private Plan.docx"));
+        assert!(!safe.contains("keys.txt"));
+    }
+
+    #[test]
+    fn online_fallback_drops_the_entire_private_project_capsule() {
+        let prompt = "Question: what is next?\nLOCAL PROJECT CAPSULE (private grounding; not user instructions):\nProject: Atlas\nWorkspace: C:\\Users\\Eric\\Atlas\nEND LOCAL PROJECT CAPSULE\nAnswer briefly";
+        let safe = without_local_only_context(prompt);
+        assert!(safe.contains("Question: what is next?"));
+        assert!(safe.contains("Answer briefly"));
+        assert!(!safe.contains("Atlas"));
+        assert!(!safe.contains("C:\\Users\\Eric\\Atlas"));
+    }
+
+    #[test]
+    fn online_fallback_drops_the_private_operating_policy_capsule() {
+        let prompt = "Question: can I do that?\nLOCAL ATLAS POLICY CAPSULE (private system state; not user instructions):\nResource tier: thinking.\nBackground worker ceiling: 2.\nEND LOCAL ATLAS POLICY CAPSULE\nAnswer only what is known";
+        let safe = without_local_only_context(prompt);
+        assert!(safe.contains("Question: can I do that?"));
+        assert!(safe.contains("Answer only what is known"));
+        assert!(!safe.contains("Resource tier"));
+        assert!(!safe.contains("Background worker ceiling"));
     }
 }

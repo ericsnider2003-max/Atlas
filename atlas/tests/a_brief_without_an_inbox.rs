@@ -452,7 +452,10 @@ fn prepared_answer(d: &mut Daemon) -> String {
 fn tick_brief_at(d: &mut Daemon, logical_time: u64, expected: bool) -> String {
     let until = std::time::Instant::now()
         + if expected {
-            std::time::Duration::from_secs(5)
+            // Preparation runs on the daemon's worker while the complete
+            // integration binary is active. The old fixed five-second cap
+            // made a valid completion look like a wrong brief under load.
+            crate::common::allowed(std::time::Duration::from_secs(15))
         } else {
             std::time::Duration::from_millis(150)
         };

@@ -282,7 +282,7 @@ mod owner_action_durability_tests {
             let saved: HuntState = store.load_checked(hunt::FILE).unwrap().unwrap();
             assert!(saved.saved.iter().any(|item| item.id == "one"));
             assert!(saved.find("two").is_some());
-            assert!(d.workday.hunt.shown.is_empty());
+            assert_eq!(d.workday.hunt.shown, vec!["one".to_string()]);
         });
     }
     #[test]
@@ -354,7 +354,15 @@ fn edit_opportunity(d: &mut Daemon, id: &str, edit: OwnerEdit) -> Result<Option<
         .unwrap_or_default();
     let title = match edit {
         OwnerEdit::Save => current.save(id).map(|found| found.title),
-        OwnerEdit::Reject => current.not_interested(id),
+        OwnerEdit::Reject => current.not_interested(id).or_else(|| {
+            // A saved item can still be revised during the same numbered
+            // exchange: "save 1" followed by "not interested in 1".
+            let found = current.saved.iter().find(|found| found.id == id)?;
+            current
+                .rejected
+                .insert(found.id.clone(), "you said not interested".into());
+            Some(found.title.clone())
+        }),
         OwnerEdit::RejectKind => current.not_that_kind(id),
     };
     if title.is_none() {
@@ -366,7 +374,13 @@ fn edit_opportunity(d: &mut Daemon, id: &str, edit: OwnerEdit) -> Result<Option<
         .save(hunt::FILE, &current)
         .map_err(|e| format!("Opportunity change wasn't saved; nothing changed: {e}"))?;
     d.workday.hunt.state = Some(current);
-    d.workday.hunt.shown.retain(|shown| shown != id);
+    // A save remains addressable during this exchange so the owner may
+    // immediately revise it with "not interested in 1". Rejections retire it
+    // from the active numbered display; failed edits never reach this point,
+    // so a retry still sees the original item and number.
+    if !matches!(edit, OwnerEdit::Save) {
+        d.workday.hunt.shown.retain(|shown| shown != id);
+    }
     Ok(title)
 }
 
@@ -789,7 +803,14 @@ fn heard_as(d: &mut Daemon, what: Said, t: u64) -> String {
                 Said::NotThatKind(_) => OwnerEdit::RejectKind,
                 _ => OwnerEdit::Reject,
             };
-            match edit_opportunity(d, &id, edit) {
+            let result = edit_opportunity(d, &id, edit);
+            // Saving or dropping an item removes it from `shown`, but the
+            // remaining numbered list stays active for the next utterance.
+            // Refresh after the edit so "save 1" followed by "not interested
+            // in 1" remains a valid voice exchange.
+            d.workday
+                .follow_opportunities(d.workday.hunt.shown.len(), t);
+            match result {
                 Ok(Some(title)) => match edit {
                     OwnerEdit::Save => format!(
                         "Saved \"{title}\". It's on the Opportunities page; nothing's been sent."

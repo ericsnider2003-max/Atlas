@@ -80,6 +80,21 @@ pub struct Note {
     pub during: String,
 }
 
+/// Remove secrets and personal numbers before a crash note becomes durable.
+///
+/// The panic hook is a sink: its input may include a panic payload, a path, or
+/// the operation label that was assembled from user-controlled material. Keep
+/// one scrubber for the whole note so repeated values share a placeholder.
+fn scrub_note(note: Note) -> Note {
+    let mut scrubber = crate::redact::Scrubber::default();
+    Note {
+        at: note.at,
+        what: scrubber.scrub(&note.what),
+        where_: scrubber.scrub(&note.where_),
+        during: scrubber.scrub(&note.during),
+    }
+}
+
 impl Note {
     /// One sentence, for saying out loud.
     ///
@@ -170,7 +185,7 @@ pub fn watch(store_root: &Path) {
     let previous = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
         PANICKED.with(|p| p.set(true));
-        let note = Note {
+        let note = scrub_note(Note {
             at: crate::store::now(),
             what: message_of(info),
             where_: info
@@ -178,7 +193,7 @@ pub fn watch(store_root: &Path) {
                 .map(|l| format!("{}:{}", l.file(), l.line()))
                 .unwrap_or_default(),
             during: current_doing(),
-        };
+        });
         // Best effort, and silent on failure. A panic hook that panics
         // aborts the process, which would turn a recoverable crash into an
         // unrecoverable one — so every step here is allowed to fail.
@@ -456,5 +471,27 @@ mod tests {
         .unwrap();
         assert!(last(&store).is_none());
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_crash_note_scrubs_secrets_before_it_can_be_written() {
+        let secret = "AKIAIOSFODNN7EXAMPLE";
+        let note = scrub_note(Note {
+            at: 1,
+            what: format!("panic after {secret}"),
+            where_: "src/crash.rs:1".into(),
+            during: format!("sending {secret}"),
+        });
+        let json = serde_json::to_string(&note).unwrap();
+        assert!(
+            !json.contains(secret),
+            "raw secret reached crash note: {json}"
+        );
+        assert!(
+            json.contains("⟦AWS_KEY_1⟧"),
+            "redaction placeholder missing: {json}"
+        );
+        assert_eq!(note.what.matches("⟦AWS_KEY_1⟧").count(), 1);
+        assert_eq!(note.during.matches("⟦AWS_KEY_1⟧").count(), 1);
     }
 }

@@ -64,7 +64,8 @@ fn home() {
     let p = std::env::temp_dir().join("atlas-passphrase-never-written");
     ONCE.call_once(|| {
         let _ = std::fs::remove_dir_all(&p);
-        std::fs::create_dir_all(p.join("data").join("state")).unwrap();
+        std::fs::create_dir_all(p.join("data").join("state"))
+            .unwrap_or_else(|error| panic!("passphrase test state directory: {error}"));
         std::env::set_var("ATLAS_HOME", &p);
     });
 }
@@ -72,7 +73,8 @@ fn home() {
 fn state_dir(tag: &str) -> PathBuf {
     let d = std::env::temp_dir().join(format!("atlas-secret-{tag}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&d);
-    std::fs::create_dir_all(&d).unwrap();
+    std::fs::create_dir_all(&d)
+        .unwrap_or_else(|error| panic!("passphrase test directory: {error}"));
     d
 }
 

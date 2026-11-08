@@ -19,6 +19,8 @@
 #![cfg(all(windows, target_env = "gnu"))]
 
 use std::ffi::c_void;
+use std::fs::File;
+use std::io::Read;
 use std::path::PathBuf;
 use std::sync::OnceLock;
 
@@ -45,6 +47,20 @@ pub fn place() -> PathBuf {
 
 static MODULE: OnceLock<usize> = OnceLock::new();
 
+fn locked_loader(path: &std::path::Path) -> Option<File> {
+    use std::os::windows::fs::OpenOptionsExt;
+    let file = std::fs::OpenOptions::new()
+        .read(true)
+        // FILE_SHARE_READ only: deny replacement/deletion while the loader is
+        // verified and passed to LoadLibraryW.
+        .share_mode(0x0000_0001)
+        .open(path)
+        .ok()?;
+    let mut bytes = Vec::new();
+    file.try_clone().ok()?.read_to_end(&mut bytes).ok()?;
+    (bytes == LOADER).then_some(file)
+}
+
 fn module() -> Option<*mut c_void> {
     let m = *MODULE.get_or_init(|| {
         let path = place();
@@ -57,10 +73,15 @@ fn module() -> Option<*mut c_void> {
                 return 0;
             }
         }
+        let Some(lock) = locked_loader(&path) else {
+            return 0;
+        };
         let wide: Vec<u16> = path.as_os_str().encode_wide_z();
         // SAFETY: `wide` is a live NUL-terminated UTF-16 path (`encode_wide_z`) that outlives the
         // call.
-        unsafe { LoadLibraryW(wide.as_ptr()) as usize }
+        let loaded = unsafe { LoadLibraryW(wide.as_ptr()) as usize };
+        drop(lock);
+        loaded
     });
     (m != 0).then_some(m as *mut c_void)
 }
