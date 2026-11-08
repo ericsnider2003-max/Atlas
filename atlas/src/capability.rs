@@ -2036,8 +2036,8 @@ pub fn claimed_modules() -> std::collections::BTreeSet<&'static str> {
 // `resource_admission` (pure local model/runtime boundaries) = 514.
 // 7 Nov 2026: + `execution` (the adapter identity carried by replies and
 // receipts; internal provenance plumbing), `code_response` (shared model
-// response normalization) and the explicit FreeLLMAPI adapter = 518.
-pub const MODULES_IN_TREE: usize = 518;
+// response normalization) and the explicit FreeLLMAPI adapter = 519.
+pub const MODULES_IN_TREE: usize = 519;
 
 /// Every module no capability claims, and why it is not one.
 ///
@@ -2055,6 +2055,7 @@ pub const MODULES_IN_TREE: usize = 518;
 /// a feature cannot be filed as plumbing without somebody writing down why it
 /// is not one.
 pub const PLUMBING: &[(&str, &str)] = &[
+    ("watchdog", "restarts Atlas after an unclean native exit with bounded backoff; process-supervision plumbing, not a user-facing ability"),
     ("code_response", "normalizes model replies for the daemon; internal response plumbing, not a user-facing ability"),
     ("execution", "records the provider, model and runtime identity carried by a reply; internal provenance plumbing, not a user-facing ability"),
     ("context_budget", "pure token-budget accounting used by prompt fitting; it is an internal boundary, not a user-facing ability"),
