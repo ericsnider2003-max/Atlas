@@ -262,6 +262,7 @@ pub mod weather;
 pub mod webpush;
 pub mod whatif;
 pub mod when;
+pub mod watchdog;
 pub mod why;
 pub mod whystopped;
 pub mod window;
