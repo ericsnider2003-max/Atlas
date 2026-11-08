@@ -53,7 +53,7 @@ fn the_program_path_is_quoted_because_real_installs_have_spaces() {
         "the program path is not quoted: {cmd}"
     );
     assert_eq!(
-        cmd, r#""C:\Program Files\Atlas\atlas.exe" --daemon"#,
+        cmd, r#""C:\Program Files\Atlas\atlas.exe" --watchdog"#,
         "the quoting moved; this is the exact string schtasks is handed"
     );
 
@@ -61,7 +61,7 @@ fn the_program_path_is_quoted_because_real_installs_have_spaces() {
     // backwards quotes the flag into the filename and is the same failure.
     let close = cmd.rfind('"').expect("a closing quote");
     assert!(
-        cmd[close..].contains("--daemon"),
+        cmd[close..].contains("--watchdog"),
         "the flag is inside the quoted path, so the program name includes it: {cmd}"
     );
 
@@ -152,7 +152,7 @@ fn the_unit_file_is_something_systemd_would_accept() {
         if l.starts_with("ExecStart=") {
             assert_eq!(section, "[Service]", "ExecStart is in the wrong section");
             assert!(
-                l.contains("--daemon"),
+                l.contains("--watchdog"),
                 "the unit does not start the background mode: {l}"
             );
             assert!(
