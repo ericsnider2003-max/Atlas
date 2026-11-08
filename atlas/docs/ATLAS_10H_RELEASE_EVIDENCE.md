@@ -1,3 +1,5 @@
+> **STALE** — historical release evidence; verify the current branch and receipts before relying on it.
+
 # Atlas hardening and release evidence
 
 Updated: 2026-11-08
