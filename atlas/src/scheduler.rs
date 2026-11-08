@@ -62,6 +62,28 @@ pub struct Job {
 /// failure stopped it for good, and nothing said so).
 pub const FAILS_BEFORE_STOPPING: u32 = 3;
 
+/// Whether a legacy/string-only execution reply can be treated as success.
+///
+/// Most scheduled work carries a typed execution receipt. A few older or
+/// approval-resume paths only have the spoken result available, so keep their
+/// fallback conservative and shared. Checking only for the literal lowercase
+/// prefix `error` let replies such as "I couldn't open ..." reset a recurring
+/// job's failure streak and mark a one-shot job done.
+pub fn result_is_success(result: &str) -> bool {
+    let result = result.trim_start().to_ascii_lowercase();
+    ![
+        "error",
+        "i couldn't",
+        "i can't",
+        "couldn't",
+        "can't",
+        "approval declined",
+        "stopped",
+    ]
+    .iter()
+    .any(|prefix| result.starts_with(prefix))
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Scheduler {
     pub jobs: Vec<Job>,
@@ -308,6 +330,21 @@ fn next_on(on: &str, after: u64) -> Option<u64> {
 #[cfg(test)]
 mod execution_fence_tests {
     use super::*;
+
+    #[test]
+    fn string_only_scheduler_fallback_rejects_natural_failure_replies() {
+        for reply in [
+            "error: the model is unavailable",
+            "I couldn't open the requested file",
+            "I can't reach the browser",
+            "Approval declined; the step was not run.",
+            "Stopped before the scheduled step finished.",
+        ] {
+            assert!(!result_is_success(reply), "false success for {reply:?}");
+        }
+        assert!(result_is_success("Opened the requested file."));
+    }
+
     fn store() -> Store {
         static N: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
         Store::new(std::env::temp_dir().join(format!(

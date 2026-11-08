@@ -43,12 +43,19 @@ pub enum Outcome {
     NeedsYou(String),
     /// Tried and failed, with why.
     Failed(String),
+    /// The worker stopped before reporting a result. Some work may have
+    /// happened, so this is deliberately distinct from a confirmed failure.
+    Unknown(String),
 }
 
 impl Outcome {
     pub fn text(&self) -> &str {
         match self {
-            Outcome::Done(s) | Outcome::Started(s) | Outcome::NeedsYou(s) | Outcome::Failed(s) => s,
+            Outcome::Done(s)
+            | Outcome::Started(s)
+            | Outcome::NeedsYou(s)
+            | Outcome::Failed(s)
+            | Outcome::Unknown(s) => s,
         }
     }
 }
@@ -66,6 +73,9 @@ pub enum Verdict {
     Finished,
     /// The model or its provider failed before the request was complete.
     Failed,
+    /// The worker stopped without enough evidence to call the request failed
+    /// or complete.
+    Unknown,
     /// A step needs the person: the reply names the blocker.
     Blocked,
     /// Long work is running in the background; the rest follows it.
@@ -82,6 +92,7 @@ impl Verdict {
         match self {
             Verdict::Finished => "finished",
             Verdict::Failed => "failed",
+            Verdict::Unknown => "ended without a confirmed result",
             Verdict::Blocked => "stopped to ask",
             Verdict::Started => "handed long work to the background",
             Verdict::OutOfSteps => "ran out of steps",
@@ -105,6 +116,9 @@ pub struct Run {
     pub steps: Vec<Step>,
     pub verdict: Verdict,
     pub reply: String,
+    /// Execution identity attached to the model reply and carried into the
+    /// durable job/evidence projections.
+    pub execution: crate::execution::ExecutionDescriptor,
 }
 
 /// The words that join the parts of a request, turned into a break.
@@ -353,6 +367,7 @@ pub fn run_watched(
     let mut steps: Vec<Step> = Vec::new();
     let mut verdict = Verdict::OutOfSteps;
     let mut answer = String::new();
+    let mut execution = crate::execution::ExecutionDescriptor::default();
     for round in 0..=max_steps {
         if round > 0 {
             if let Some(why) = watch.stop() {
@@ -376,7 +391,7 @@ pub fn run_watched(
             stronger: false,
             output_schema: None,
         };
-        let reply = match llm.chat(&req, &mut |_| true) {
+        let mut reply = match llm.chat(&req, &mut |_| true) {
             Ok(r) => r,
             Err(e) => {
                 verdict = Verdict::Failed;
@@ -391,6 +406,24 @@ pub fn run_watched(
                 break;
             }
         };
+        if reply.execution.is_unknown() {
+            reply.execution = llm.execution_descriptor();
+        }
+        execution = reply.execution.clone();
+        // This loop has one bounded tool execution per model round. A model
+        // response containing several calls is incomplete input for that
+        // contract: executing the first and silently dropping the rest would
+        // lose intent and make the durable receipt describe only part of the
+        // requested action. Refuse before any side effect until the calls can
+        // be correlated and settled as one complete batch.
+        if may_call && reply.tool_calls.len() > 1 {
+            verdict = Verdict::Failed;
+            answer = format!(
+                "The model returned multiple tool calls in one step ({}); none was executed.",
+                reply.tool_calls.len()
+            );
+            break;
+        }
         let Some(call) = reply.tool_calls.first().filter(|_| may_call).cloned() else {
             answer = crate::brain::spoken_text(&reply.text).unwrap_or_default();
             verdict = if steps.len() >= max_steps && !reply.tool_calls.is_empty() {
@@ -435,6 +468,11 @@ pub fn run_watched(
                 }
                 break;
             }
+            Outcome::Unknown(_) => {
+                verdict = Verdict::Unknown;
+                answer = outcome.text().to_string();
+                break;
+            }
             Outcome::Started(_) => {
                 verdict = Verdict::Started;
                 break;
@@ -451,6 +489,7 @@ pub fn run_watched(
         )));
         let (label, text) = match &outcome {
             Outcome::Failed(t) => ("failed", t.as_str()),
+            Outcome::Unknown(t) => ("unconfirmed", t.as_str()),
             o => ("result", o.text()),
         };
         messages.push(Msg::user(format!(
@@ -465,6 +504,7 @@ pub fn run_watched(
         steps,
         verdict,
         reply,
+        execution,
     }
 }
 
@@ -495,6 +535,11 @@ fn compose(plan: &[String], steps: &[Step], verdict: Verdict, answer: &str) -> S
         Verdict::Failed if !answer.trim().is_empty() => answer.trim().to_string(),
         Verdict::Failed => {
             "I couldn't finish because the language model stopped before answering.".to_string()
+        }
+        Verdict::Unknown if !answer.trim().is_empty() => answer.trim().to_string(),
+        Verdict::Unknown => {
+            "I can't confirm whether that finished; check what changed before trying it again."
+                .to_string()
         }
         Verdict::Blocked => last,
         Verdict::Started => {
@@ -543,13 +588,54 @@ fn compose(plan: &[String], steps: &[Step], verdict: Verdict, answer: &str) -> S
 #[cfg(test)]
 mod tests {
     use super::{run_watched, Hands, Outcome, Unwatched, Verdict};
-    use crate::brain::{MockLlm, ToolCall, Turn};
+    use crate::brain::{Llm, MockLlm, ToolCall, Turn};
+    use crate::error::Result as AtlasResult;
+    use crate::execution::ExecutionDescriptor;
+
+    struct Described;
+
+    impl Llm for Described {
+        fn complete(&self, _: &str, _: &str) -> AtlasResult<String> {
+            Ok("finished with the described adapter".into())
+        }
+
+        fn execution_descriptor(&self) -> ExecutionDescriptor {
+            ExecutionDescriptor::new(
+                "fixture-provider",
+                "fixture-model",
+                "fixture-runtime",
+                "fixture-device",
+                "fixture-network",
+                "fixture-cache",
+            )
+            .unwrap()
+        }
+    }
 
     struct FailingHands;
 
     impl Hands for FailingHands {
         fn act(&mut self, _: &ToolCall) -> Outcome {
             Outcome::Failed("permission denied".into())
+        }
+    }
+
+    struct CountingHands {
+        calls: usize,
+    }
+
+    impl Hands for CountingHands {
+        fn act(&mut self, _: &ToolCall) -> Outcome {
+            self.calls += 1;
+            Outcome::Done("executed".into())
+        }
+    }
+
+    struct UnknownHands;
+
+    impl Hands for UnknownHands {
+        fn act(&mut self, _: &ToolCall) -> Outcome {
+            Outcome::Unknown("the worker disappeared before reporting back".into())
         }
     }
 
@@ -569,5 +655,64 @@ mod tests {
 
         assert_eq!(run.verdict, Verdict::Failed);
         assert!(run.reply.contains("permission denied"));
+    }
+
+    #[test]
+    fn unknown_tool_outcome_stays_unknown_instead_of_becoming_failure() {
+        let llm = MockLlm(r#"<tool_call>{"name":"read_file","arguments":{}}</tool_call>"#.into());
+        let mut hands = UnknownHands;
+        let mut watch = Unwatched;
+        let run = run_watched(
+            &llm,
+            &Turn::default(),
+            &["read the file".into()],
+            &mut hands,
+            1,
+            &mut watch,
+        );
+
+        assert_eq!(run.verdict, Verdict::Unknown);
+        assert!(run.reply.contains("worker disappeared"));
+    }
+
+    #[test]
+    fn multiple_tool_calls_are_rejected_before_any_tool_executes() {
+        let llm = MockLlm(
+            r#"<tool_call>{"name":"first","arguments":{}}</tool_call><tool_call>{"name":"second","arguments":{}}</tool_call>"#
+                .into(),
+        );
+        let mut hands = CountingHands { calls: 0 };
+        let mut watch = Unwatched;
+        let run = run_watched(
+            &llm,
+            &Turn::default(),
+            &["perform one operation".into()],
+            &mut hands,
+            1,
+            &mut watch,
+        );
+
+        assert_eq!(hands.calls, 0);
+        assert_eq!(run.verdict, Verdict::Failed);
+        assert!(run.reply.contains("multiple tool calls"));
+    }
+
+    #[test]
+    fn adapter_identity_survives_reply_boundary_into_task_run() {
+        let llm = Described;
+        let mut hands = CountingHands { calls: 0 };
+        let mut watch = Unwatched;
+        let run = run_watched(
+            &llm,
+            &Turn::default(),
+            &["answer the request".into()],
+            &mut hands,
+            1,
+            &mut watch,
+        );
+
+        assert_eq!(run.execution.provider, "fixture-provider");
+        assert_eq!(run.execution.model, "fixture-model");
+        assert_eq!(run.verdict, Verdict::Finished);
     }
 }

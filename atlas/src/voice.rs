@@ -71,6 +71,11 @@ pub struct ToolsConfig {
     /// silently swapped in.
     #[serde(default)]
     pub llm_secondary: Option<crate::brain::LlmConfig>,
+    /// Optional FreeLLMAPI loopback gateway for background research/code
+    /// delegation. It is separate from `llm_secondary` because its bearer key
+    /// is resolved from the vault and its endpoint may forward remotely.
+    #[serde(default)]
+    pub freellmapi: crate::freellmapi::FreeLlmApiConfig,
     #[serde(default)]
     pub proactive: crate::proactive::ProactiveConfig,
     /// Standing watches you write in words — "machine.disk_used_pct above 90
@@ -603,6 +608,10 @@ pub struct Voice<'a> {
     last_listen: std::sync::Arc<std::sync::atomic::AtomicU64>,
     /// The same, for the last `speak()`: synthesis, then playback.
     last_speak: std::sync::Arc<std::sync::atomic::AtomicU64>,
+    /// Speech engines that completed audio delivery since the last turn.
+    /// Shared with the owned speaker thread, because that thread performs the
+    /// actual `speak()` call while the daemon owns the timing receipt.
+    speech_engines: std::sync::Arc<std::sync::Mutex<Vec<String>>>,
     /// Kokoro's next sentence, made while this one plays (`kokoro::Ahead`).
     ahead: crate::kokoro::Ahead,
 }
@@ -713,6 +722,7 @@ impl<'a> Voice<'a> {
             cfg,
             last_listen: std::sync::Arc::new(std::sync::atomic::AtomicU64::new(UNMEASURED)),
             last_speak: std::sync::Arc::new(std::sync::atomic::AtomicU64::new(UNMEASURED)),
+            speech_engines: std::sync::Arc::new(std::sync::Mutex::new(Vec::new())),
             ahead: crate::kokoro::Ahead::default(),
         }
     }
@@ -1313,20 +1323,61 @@ impl<'a> Voice<'a> {
         Ok(())
     }
 
+    fn note_speech_engine(&self, engine: &str) {
+        if let Ok(mut engines) = self.speech_engines.lock().or_else(crate::crash::unpoison) {
+            if !engines.iter().any(|seen| seen == engine) {
+                engines.push(engine.to_string());
+            }
+        }
+    }
+
+    fn configured_fallback_engine(&self) -> &'static str {
+        if self.cfg.private_models.voice.enabled {
+            "private-voice"
+        } else if self.cfg.tts.command.to_lowercase().contains("piper") {
+            "piper"
+        } else {
+            "configured-tts"
+        }
+    }
+
+    pub fn take_speech_engines(&self) -> Vec<String> {
+        self.speech_engines
+            .lock()
+            .or_else(crate::crash::unpoison)
+            .map(|mut engines| std::mem::take(&mut *engines))
+            .unwrap_or_default()
+    }
+
     pub fn speak(&self, text: &str) -> Result<()> {
         // Kokoro, spoken inside Atlas, when it's the engine chosen and it's
         // here; otherwise the configured command (piper) below, as always.
         if self.cfg.tts_engine.engine == crate::tts::Engine::Kokoro {
             match self.speak_kokoro(text) {
-                Kokoro::Done(done) => return done,
+                Kokoro::Done(done) => {
+                    if done.is_ok() {
+                        self.note_speech_engine("kokoro");
+                    }
+                    return done;
+                }
                 Kokoro::Unavailable => {}
                 // Kokoro stopped partway: piper says only what's left (29
                 // Sep 2026: it was handed the whole line, so what you had
                 // already heard was said again).
-                Kokoro::Rest(rest) => return self.speak_with_piper(&rest),
+                Kokoro::Rest(rest) => {
+                    let result = self.speak_with_piper(&rest);
+                    if result.is_ok() {
+                        self.note_speech_engine("kokoro+piper");
+                    }
+                    return result;
+                }
             }
         }
-        self.speak_with_piper(text)
+        let result = self.speak_with_piper(text);
+        if result.is_ok() {
+            self.note_speech_engine(self.configured_fallback_engine());
+        }
+        result
     }
 
     /// Play `{out_wav}`: inside Atlas, through the speaker `audio::choose`
@@ -1628,6 +1679,7 @@ impl Voice<'_> {
         VoiceSpeaker {
             cfg: self.cfg.clone(),
             last_speak: self.last_speak.clone(),
+            speech_engines: self.speech_engines.clone(),
             ahead: self.ahead.clone(),
         }
     }
@@ -2176,6 +2228,7 @@ impl VoiceWork {
             cfg: &self.cfg,
             last_listen: self.last_listen.clone(),
             last_speak: std::sync::Arc::new(std::sync::atomic::AtomicU64::new(UNMEASURED)),
+            speech_engines: std::sync::Arc::new(std::sync::Mutex::new(Vec::new())),
             // The microphone's thread never speaks, so nothing is made ahead.
             ahead: crate::kokoro::Ahead::default(),
         }
@@ -2479,6 +2532,7 @@ impl Drop for PcmStream {
 pub struct VoiceSpeaker {
     cfg: ToolsConfig,
     last_speak: std::sync::Arc<std::sync::atomic::AtomicU64>,
+    speech_engines: std::sync::Arc<std::sync::Mutex<Vec<String>>>,
     ahead: crate::kokoro::Ahead,
 }
 
@@ -2488,6 +2542,7 @@ impl crate::speakthread::SpeakWork for VoiceSpeaker {
             cfg: &self.cfg,
             last_listen: std::sync::Arc::new(std::sync::atomic::AtomicU64::new(UNMEASURED)),
             last_speak: self.last_speak.clone(),
+            speech_engines: self.speech_engines.clone(),
             ahead: self.ahead.clone(),
         }
         .speak(text)
@@ -2497,6 +2552,9 @@ impl crate::speakthread::SpeakWork for VoiceSpeaker {
 impl crate::daemon::Mouth for Voice<'_> {
     fn speak(&self, text: &str) -> Result<()> {
         Voice::speak(self, text)
+    }
+    fn take_speech_engines(&self) -> Vec<String> {
+        Voice::take_speech_engines(self)
     }
     fn prepare(&self, reply: &str) {
         Voice::prepare(self, reply)
